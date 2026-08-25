@@ -1,0 +1,120 @@
+{
+  "$comment": "Single source of truth for AI-assistant deep links. Every entry here was tested, not copied from a blog post. Re-run scripts/verify-endpoints.sh before any client build and update verified_on.",
+  "schema_version": 1,
+  "verified_on": "2026-08-22",
+  "verified_method": "Live navigation in a logged-in Chrome profile; composer contents read via getComputedStyle/DOM inspection. curl alone is NOT sufficient — every one of these apps is a client-rendered SPA that returns HTTP 200 for any query string.",
+
+  "platforms": [
+    {
+      "id": "chatgpt",
+      "label": "ChatGPT",
+      "endpoint": "https://chatgpt.com/",
+      "param": "q",
+      "extra_params": { "hints": "search" },
+      "mode": "prefill",
+      "auto_submits": true,
+      "requires_login": false,
+      "brand_hex": "#000000",
+      "confidence": "high",
+      "verified": "indirect",
+      "notes": "hints=search forces web-search mode so free-tier users can actually fetch the URL in the prompt. Auto-submits on load — keep prompts short. Legacy chat.openai.com/?q= still redirects here. This param has broken before (Aug 2024) and was later restored; it is undocumented.",
+      "default_enabled": true
+    },
+    {
+      "id": "claude",
+      "label": "Claude",
+      "endpoint": "https://claude.ai/new",
+      "param": "q",
+      "extra_params": {},
+      "mode": "prefill",
+      "auto_submits": false,
+      "requires_login": true,
+      "brand_hex": "#D97757",
+      "confidence": "high",
+      "verified": "direct",
+      "notes": "VERIFIED 2026-08-22 in a logged-in session: composer populated with the passed string, no auto-submit, URL self-cleans to /new. Logged-out users hit /login?returnTo=... and the q param survives the round trip. Anthropic officially documents the equivalent claude://claude.ai/new?q= desktop scheme with a ~14,000 char truncation limit.",
+      "default_enabled": true
+    },
+    {
+      "id": "perplexity",
+      "label": "Perplexity",
+      "endpoint": "https://www.perplexity.ai/search/new",
+      "param": "q",
+      "extra_params": {},
+      "mode": "prefill",
+      "auto_submits": true,
+      "requires_login": false,
+      "brand_hex": "#20808D",
+      "confidence": "high",
+      "verified": "indirect",
+      "notes": "/search?q= 301-redirects here with q intact, so either form works; prefer /search/new. Best of the five for logged-out visitors — no auth wall.",
+      "default_enabled": true
+    },
+    {
+      "id": "grok",
+      "label": "Grok",
+      "endpoint": "https://grok.com/",
+      "param": "q",
+      "extra_params": {},
+      "mode": "prefill",
+      "auto_submits": true,
+      "requires_login": true,
+      "brand_hex": "#000000",
+      "confidence": "medium",
+      "verified": "direct",
+      "notes": "VERIFIED 2026-08-22: the q param IS consumed — the prompt renders into the message body — but it auto-submits straight into a sign-in wall for logged-out visitors. The x.com/i/grok?text= alternative also requires an X login (param survives the redirect_after_login round trip). WEAKEST BUTTON OF THE SET: most article readers are not logged into X or grok.com and will hit an auth wall instead of an answer. Consider disabling for consumer-facing sites.",
+      "default_enabled": true
+    },
+    {
+      "id": "googleai",
+      "label": "AI Mode",
+      "endpoint": "https://www.google.com/search",
+      "param": "q",
+      "extra_params": { "udm": "50" },
+      "mode": "prefill",
+      "auto_submits": true,
+      "requires_login": false,
+      "brand_hex": "#4285F4",
+      "confidence": "high",
+      "verified": "indirect",
+      "notes": "udm=50 is Google AI Mode, stable through 2026. Deliberately OMIT the &aep=11 that CiteMET-derived sources append — its function could not be verified and udm=50 alone is sufficient. This is the only reachable Google surface; Gemini itself cannot be prefilled.",
+      "default_enabled": true
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini",
+      "endpoint": "https://gemini.google.com/app",
+      "param": null,
+      "extra_params": {},
+      "mode": "clipboard",
+      "auto_submits": false,
+      "requires_login": true,
+      "brand_hex": "#4285F4",
+      "confidence": "high",
+      "verified": "direct",
+      "notes": "VERIFIED 2026-08-22 as NOT PREFILLABLE. Tested ?q=, ?text=, ?prompt= and ?prompt_text= in a logged-in session — the composer stays .ql-blank in every case and the test string never appears. The ?prompt_text= parameter widely repeated in GEO write-ups is fabricated; do not ship it. Gemini is therefore only available in clipboard mode: copy the prompt, open Gemini, show a 'prompt copied — paste it in' toast. Requires a secure context (HTTPS) for navigator.clipboard; falls back to a textarea+execCommand shim.",
+      "default_enabled": false
+    }
+  ],
+
+  "excluded": [
+    {
+      "id": "copilot",
+      "reason": "Microsoft DELIBERATELY DISABLED prefill in mid-January 2026 after the 'Reprompt' one-click data-exfiltration attack. copilot.microsoft.com/?q= now 302s and strips the param. Do not ship."
+    },
+    {
+      "id": "deepseek",
+      "reason": "chat.deepseek.com returns a 202 bot-challenge; no evidence of prefill support."
+    },
+    {
+      "id": "mistral",
+      "reason": "chat.mistral.ai/chat?q= returns 200 but no documentation or third-party confirmation the param is consumed. Unverified — do not ship without testing."
+    },
+    {
+      "id": "metaai",
+      "reason": "No evidence of any prefill mechanism."
+    }
+  ],
+
+  "stability_warning": "Every endpoint above is an undocumented surface, and the 2026 trend is REMOVAL, not addition. Copilot was killed outright in Jan 2026. Anthropic patched a prompt-injection vector through its own param. Microsoft published security research treating this whole pattern as an attack class. Never hardcode these URLs into generated post content or a database — always render them server-side or from a single filterable config so a broken provider is a one-line fix, not a re-migration."
+}

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>LLM Share Buttons — placement preview for {{CLIENT_NAME}}</title>
+<!--
+  LLM Share Buttons — placement preview
+  Client:      {{CLIENT_NAME}}
+  Prepared by: {{AGENCY_NAME}}
+  Date:        {{DATE}}
+
+  This file is deliberately 100% self-contained: no fonts, scripts, stylesheets
+  or images are loaded from any remote host. Open it straight off disk.
+  The article copy below is filler standing in for a real {{CLIENT_SHORT_NAME}}
+  article — only the widget between the byline and the key-points box is real.
+-->
+<style>
+  /* =========================================================================
+     PALETTE — every colour in this file is defined here and nowhere else.
+     The generating skill substitutes these with the client's extracted values.
+     ========================================================================= */
+  :root {
+    /* Brand */
+    --llm-primary:        {{BRAND_PRIMARY_HEX}};
+    --llm-primary-hover:  {{BRAND_PRIMARY_HOVER_HEX}};
+    --llm-on-primary:     {{BRAND_ON_PRIMARY_HEX}};
+    --llm-focus:          {{BRAND_FOCUS_HEX}};
+
+    /* Surfaces and text */
+    --llm-surface:        {{BRAND_SURFACE_HEX}};
+    --llm-page:           {{BRAND_PAGE_HEX}};
+    --llm-border:         {{BRAND_BORDER_HEX}};
+    --llm-text:           {{BRAND_TEXT_HEX}};
+    --llm-text-muted:     {{BRAND_MUTED_HEX}};
+    --llm-accent-soft:    {{BRAND_ACCENT_SOFT_HEX}};
+
+    /* Demo chrome only — not part of the shipped widget */
+    --demo-shell:         {{BRAND_PAGE_HEX}};
+    --demo-note-bg:       {{BRAND_ACCENT_SOFT_HEX}};
+
+    /* Shape and type */
+    --llm-radius:         {{BRAND_RADIUS}};
+    --llm-font:           {{BRAND_FONT_STACK}};
+    --llm-heading-font:   {{BRAND_HEADING_FONT_STACK}};
+    --llm-gap:            0.5rem;
+    --llm-btn-min-height: 44px;
+  }
+
+  /* ---------- Mock page chrome (illustrative only) ---------- */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--demo-shell);
+    color: var(--llm-text);
+    font-family: var(--llm-font);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .masthead {
+    border-bottom: 1px solid var(--llm-border);
+    background: var(--llm-surface);
+  }
+  .masthead__inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0.9rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .masthead__logo {
+    font-family: var(--llm-heading-font);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--llm-primary);
+    font-size: 1.05rem;
+  }
+  .masthead__nav {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--llm-text-muted);
+    display: flex;
+    gap: 1rem;
+  }
+
+  .article {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 1.75rem 1.25rem 3rem;
+  }
+
+  .breadcrumbs {
+    font-size: 0.78rem;
+    color: var(--llm-text-muted);
+    margin-bottom: 0.9rem;
+  }
+
+  .article h1 {
+    font-family: var(--llm-heading-font);
+    font-size: clamp(1.7rem, 5vw, 2.4rem);
+    line-height: 1.18;
+    letter-spacing: -0.015em;
+    margin: 0 0 1rem;
+    color: var(--llm-text);
+  }
+
+  .byline {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding-bottom: 1.1rem;
+    border-bottom: 1px solid var(--llm-border);
+    font-size: 0.85rem;
+    color: var(--llm-text-muted);
+  }
+  .byline__avatar {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--llm-accent-soft);
+    color: var(--llm-primary);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+  .byline__name { color: var(--llm-text); font-weight: 600; }
+
+  .keypoints {
+    background: var(--llm-accent-soft);
+    border-left: 4px solid var(--llm-primary);
+    border-radius: var(--llm-radius);
+    padding: 1rem 1.15rem;
+    margin: 0 0 1.5rem;
+  }
+  .keypoints h2 {
+    font-family: var(--llm-heading-font);
+    font-size: 1rem;
+    margin: 0 0 0.5rem;
+    color: var(--llm-text);
+  }
+  .keypoints ul { margin: 0; padding-left: 1.1rem; }
+  .keypoints li { margin-bottom: 0.35rem; font-size: 0.95rem; }
+
+  .article p { margin: 0 0 1.15rem; }
+
+  /* =========================================================================
+     THE WIDGET — this is the part that ships.
+     ========================================================================= */
+  .llm-share {
+    margin: 1.25rem 0 1.75rem;
+    font-family: var(--llm-font);
+  }
+
+  .llm-share__heading {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--llm-text-muted);
+    margin: 0 0 var(--llm-gap);
+  }
+
+  .llm-share__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--llm-gap);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .llm-share__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--llm-btn-min-height);
+    padding: 0.5rem 0.875rem;
+    border: 1px solid var(--llm-border);
+    border-radius: var(--llm-radius);
+    background: var(--llm-surface);
+    color: var(--llm-text);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+
+  .llm-share__btn:hover {
+    background: var(--llm-primary);
+    border-color: var(--llm-primary);
+    color: var(--llm-on-primary);
+  }
+
+  .llm-share__btn:active { background: var(--llm-primary-hover); border-color: var(--llm-primary-hover); }
+
+  .llm-share__btn:focus-visible {
+    outline: 3px solid var(--llm-focus);
+    outline-offset: 2px;
+  }
+
+  .llm-share__icon {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: currentColor;
+  }
+
+  /* Wordmark-only is the default compliance-safe state. */
+  .llm-share[data-icons="off"] .llm-share__icon { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .llm-share__btn { transition: none; }
+  }
+
+  @media (max-width: 420px) {
+    .llm-share__btn { flex: 1 1 auto; justify-content: center; }
+  }
+
+  /* ---------- Demo-only controls and legend ---------- */
+  .demo-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0 0 0.9rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px dashed var(--llm-border);
+    border-radius: var(--llm-radius);
+    background: var(--llm-surface);
+    font-size: 0.8rem;
+    color: var(--llm-text-muted);
+    max-width: max-content;
+  }
+  .demo-toggle label { cursor: pointer; display: flex; align-items: center; gap: 0.45rem; min-height: 32px; }
+  .demo-toggle input { accent-color: var(--llm-primary); width: 16px; height: 16px; }
+
+  .legend {
+    margin-top: 2.5rem;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--llm-border);
+    border-radius: var(--llm-radius);
+    background: var(--demo-note-bg);
+    font-size: 0.86rem;
+    line-height: 1.6;
+  }
+  .legend h2 {
+    font-family: var(--llm-heading-font);
+    font-size: 0.95rem;
+    margin: 0 0 0.6rem;
+    color: var(--llm-text);
+  }
+  .legend ul { margin: 0 0 0.75rem; padding-left: 1.15rem; }
+  .legend li { margin-bottom: 0.35rem; }
+  .legend p { margin: 0.5rem 0 0; color: var(--llm-text-muted); }
+  .legend code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: var(--llm-surface);
+    border: 1px solid var(--llm-border);
+    border-radius: 4px;
+    padding: 0.05em 0.35em;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead__inner">
+    <span class="masthead__logo">{{CLIENT_NAME}}</span>
+    <nav class="masthead__nav" aria-label="Example navigation">
+      <span>Guides</span><span>Compare</span><span>About</span>
+    </nav>
+  </div>
+</header>
+
+<main class="article">
+
+  <p class="breadcrumbs">Home &rsaquo; {{EXAMPLE_SECTION_LABEL}} &rsaquo; {{EXAMPLE_ARTICLE_TITLE}}</p>
+
+  <h1>{{EXAMPLE_ARTICLE_TITLE}}</h1>
+
+  <div class="byline">
+    <span class="byline__avatar" aria-hidden="true">{{EXAMPLE_AUTHOR_INITIALS}}</span>
+    <span>
+      By <span class="byline__name">{{EXAMPLE_AUTHOR}}</span><br>
+      Updated {{DATE}}
+    </span>
+  </div>
+
+  <!-- ============ DEMO CONTROL — remove before shipping ============ -->
+  <div class="demo-toggle">
+    <label>
+      <input type="checkbox" id="icon-toggle">
+      Show icons alongside wordmarks
+    </label>
+    <span>(off = wordmark-only, the compliance-safe default)</span>
+  </div>
+
+  <!-- ============ THE WIDGET — this is what ships ============ -->
+  <div class="llm-share" id="llm-share" data-icons="off" role="group" aria-label="Read this article with an AI assistant">
+    <p class="llm-share__heading" id="llm-share-heading">{{WIDGET_HEADING}}</p>
+    <ul class="llm-share__list" id="llm-share-list"></ul>
+  </div>
+  <!-- ============ /THE WIDGET ============ -->
+
+  <div class="keypoints">
+    <h2>Key points</h2>
+    <ul>
+      <li>Placeholder key point standing in for the real article summary.</li>
+      <li>Placeholder key point showing where the summary box sits relative to the widget.</li>
+      <li>Placeholder key point — replace with real copy when reviewing on a live page.</li>
+    </ul>
+  </div>
+
+  <p>This paragraph is filler. It exists so the widget above is shown in its true position: after the byline, before the key-points box and the opening body copy. Nothing about this text is part of the deliverable, and the real article copy will sit here unchanged.</p>
+
+  <p>Scroll behaviour, line length and vertical rhythm here approximate a typical article template. If the live template differs — a wider measure, a sidebar, a hero image between the headline and the byline — the widget still mounts at the same logical point: immediately below the byline block. Confirm the exact insertion point against the real template before the build starts.</p>
+
+  <!-- ============ Legend ============ -->
+  <section class="legend" aria-labelledby="legend-heading">
+    <h2 id="legend-heading">What you are looking at</h2>
+    <ul>
+      <li><strong>The button row</strong> is the entire deliverable. Everything else on this page — masthead, headline, byline, key points, body copy — is filler standing in for a real {{CLIENT_SHORT_NAME}} article so you can judge the widget in context.</li>
+      <li><strong>The buttons are live.</strong> Clicking one opens that AI assistant in a new tab with the prompt already typed, exactly as it will behave on {{CLIENT_DOMAIN}}. Some assistants send the prompt automatically; some require you to be signed in.</li>
+      <li><strong>The buttons use your brand palette</strong>, not the AI companies' colours. Platform identity comes from the wordmark. This is both a design choice and a compliance one — see section 6 of the implementation brief.</li>
+      <li><strong>The toggle above the row</strong> switches between wordmark-only and icon plus wordmark. Wordmark-only is the recommended default and needs no third-party approval. The icons shown in the alternate state are a neutral placeholder glyph, not any company's logo.</li>
+      <li><strong>Accessibility is built in:</strong> every button is keyboard reachable with a visible focus ring, meets the 44px minimum touch target, and announces its assistant name to a screen reader. Try tabbing through the row.</li>
+      <li><strong>Responsive:</strong> narrow the window to 375px. The row wraps onto multiple lines with no horizontal scroll.</li>
+    </ul>
+    <p>This file makes no network requests of any kind — no remote fonts, scripts, stylesheets or images. It is safe to open from disk or email internally. Prepared by {{AGENCY_NAME}}, {{DATE}}.</p>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------------------------------------------------------------
+     Platform config — mirrors _shared/platform-endpoints.json.
+     Verified {{ENDPOINTS_VERIFIED_ON}}. Every entry here was tested live.
+     Do NOT add a parameter that is not in the endpoint contract:
+     Gemini has no working prefill parameter, and Microsoft Copilot's was
+     removed in January 2026.
+     --------------------------------------------------------------------- */
+  var PLATFORMS = [
+    { id: 'chatgpt',    label: 'ChatGPT',    endpoint: 'https://chatgpt.com/',                    param: 'q', extraParams: { hints: 'search' } },
+    { id: 'claude',     label: 'Claude',     endpoint: 'https://claude.ai/new',                   param: 'q', extraParams: {} },
+    { id: 'perplexity', label: 'Perplexity', endpoint: 'https://www.perplexity.ai/search/new',    param: 'q', extraParams: {} },
+    { id: 'grok',       label: 'Grok',       endpoint: 'https://grok.com/',                       param: 'q', extraParams: {} },
+    { id: 'googleai',   label: 'AI Mode',    endpoint: 'https://www.google.com/search',           param: 'q', extraParams: { udm: '50' } }
+  ];
+
+  var PAGE_URL  = '{{EXAMPLE_ARTICLE_URL}}';
+  var PAGE_TOPIC = '{{EXAMPLE_TOPIC_PHRASE}}';
+  var PAGE_TYPE  = '{{EXAMPLE_PAGE_TYPE}}';
+
+  var PROMPT_TEMPLATE = '{{PROMPT_TEMPLATE_JS}}';
+
+  /* Neutral placeholder glyph. Original artwork, monochrome, currentColor.
+     Not a reproduction of any company's logo. Swap per-platform only after
+     brand sign-off, self-hosted from {{ICON_BASE_PATH}}/{platform}.svg. */
+  var GENERIC_ICON =
+    '<svg class="llm-share__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+    '<path d="M20 12.5a7.5 7.5 0 0 1-7.5 7.5H8l-4 3v-4.2A7.5 7.5 0 0 1 12.5 5h0A7.5 7.5 0 0 1 20 12.5Z"/>' +
+    '<path d="M12.4 9.1 13.3 11l1.9.9-1.9.9-.9 1.9-.9-1.9L9.6 12l1.9-.9.9-1.9Z"/>' +
+    '</svg>';
+
+  function buildPrompt(url, topic) {
+    return PROMPT_TEMPLATE.replace(/\{URL\}/g, url).replace(/\{TOPIC\}/g, topic);
+  }
+
+  /* The prompt is percent-encoded exactly once, via encodeURIComponent. */
+  function buildHref(platform, prompt) {
+    var parts = [platform.param + '=' + encodeURIComponent(prompt)];
+    Object.keys(platform.extraParams || {}).forEach(function (key) {
+      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(platform.extraParams[key]));
+    });
+    var separator = platform.endpoint.indexOf('?') === -1 ? '?' : '&';
+    return platform.endpoint + separator + parts.join('&');
+  }
+
+  function trackClick(platformId) {
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+      event: 'llm_share_click',
+      llm_platform: platformId,
+      page_url: PAGE_URL,
+      page_type: PAGE_TYPE,
+      page_topic: PAGE_TOPIC
+    });
+  }
+
+  var prompt = buildPrompt(PAGE_URL, PAGE_TOPIC);
+  var list = document.getElementById('llm-share-list');
+
+  PLATFORMS.forEach(function (platform) {
+    var li = document.createElement('li');
+    var a = document.createElement('a');
+
+    a.className = 'llm-share__btn';
+    a.href = buildHref(platform, prompt);
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.setAttribute('data-platform', platform.id);
+    a.setAttribute('aria-label', 'Summarise this article with ' + platform.label);
+    a.innerHTML = GENERIC_ICON + '<span>' + platform.label + '</span>';
+
+    a.addEventListener('click', function () { trackClick(platform.id); });
+
+    li.appendChild(a);
+    list.appendChild(li);
+  });
+
+  /* Demo-only: wordmark-only vs icon + wordmark. Remove before shipping. */
+  var toggle = document.getElementById('icon-toggle');
+  var widget = document.getElementById('llm-share');
+  toggle.addEventListener('change', function () {
+    widget.setAttribute('data-icons', toggle.checked ? 'on' : 'off');
+  });
+})();
+</script>
+
+<!--
+  ==========================================================================
+  PLACEHOLDER KEY — tokens the generating skill substitutes in this file.
+  ==========================================================================
+  {{AGENCY_NAME}}               Member's agency name
+  {{CLIENT_NAME}}               Client's full name (masthead + title)
+  {{CLIENT_SHORT_NAME}}         Short form used in prose
+  {{CLIENT_DOMAIN}}             Bare domain, e.g. example.com.au
+  {{DATE}}                      Document / "Updated" date
+
+  {{BRAND_PRIMARY_HEX}}         Brand primary colour
+  {{BRAND_PRIMARY_HOVER_HEX}}   Darker primary, used on :active
+  {{BRAND_ON_PRIMARY_HEX}}      Foreground on primary (contrast >= 4.5:1)
+  {{BRAND_FOCUS_HEX}}           Focus ring colour (contrast >= 3:1 vs surface)
+  {{BRAND_SURFACE_HEX}}         Card / button surface colour
+  {{BRAND_PAGE_HEX}}            Page background colour
+  {{BRAND_BORDER_HEX}}          Border / rule colour
+  {{BRAND_TEXT_HEX}}            Body text colour
+  {{BRAND_MUTED_HEX}}           Secondary text colour
+  {{BRAND_ACCENT_SOFT_HEX}}     Soft tint for key-points box and legend
+  {{BRAND_RADIUS}}              Border radius, e.g. 8px
+  {{BRAND_FONT_STACK}}          Body font stack, system fallbacks required
+  {{BRAND_HEADING_FONT_STACK}}  Heading font stack, system fallbacks required
+
+  {{WIDGET_HEADING}}            Heading above the row, e.g. "Read this article with AI:"
+  {{ICON_BASE_PATH}}            Self-hosted icon dir, default /icons/llm-share
+  {{ENDPOINTS_VERIFIED_ON}}     verified_on date from platform-endpoints.json
+  {{PROMPT_TEMPLATE_JS}}        Canonical prompt as a single-quoted JS string
+                                with {URL} and {TOPIC} slots. Must not contain
+                                an unescaped single quote or newline.
+
+  {{EXAMPLE_ARTICLE_TITLE}}     A real in-scope article headline
+  {{EXAMPLE_ARTICLE_URL}}       That article's canonical absolute URL
+  {{EXAMPLE_SECTION_LABEL}}     Section name for the breadcrumb
+  {{EXAMPLE_TOPIC_PHRASE}}      Topic phrase mapped to that section
+  {{EXAMPLE_PAGE_TYPE}}         page_type value for that section
+  {{EXAMPLE_AUTHOR}}            Author name for the byline
+  {{EXAMPLE_AUTHOR_INITIALS}}   1-2 initials for the avatar circle
+
+  NOTE: fonts must be system stacks or locally installed families. This file
+  must never load a webfont, script, stylesheet or image from a remote host.
+  ==========================================================================
+-->
+</body>
+</html>
