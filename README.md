@@ -1,6 +1,6 @@
 # mos-geo-skills
 
-Claude Code skills for GEO work — Generative Engine Optimisation. Built for The Vibe Marketing Lab.
+Claude Code skills for GEO work — Generative Engine Optimisation. Built for The Vibe Marketing Lab. It's a companion pack to the MarketingOS engine (`pipx install marketing-os`): same `mos-*` naming, and it installs alongside the engine's own skills in `~/.claude/skills/`.
 
 GEO is the messy new corner of search where the "engine" is an LLM rather than a results page. A lot of what gets sold as GEO is guesswork. The skills in this pack are the opposite: each one ships with the evidence behind it, including the bits that say "this does less than people claim".
 
@@ -25,7 +25,7 @@ Cross-skill reference material. Not a skill, never linked into `~/.claude/skills
 Skills live in `~/.claude/skills/`. This repo keeps them under version control and junctions them into place, so you edit here and Claude Code picks the change up straight away.
 
 ```bash
-git clone <this-repo> ~/Desktop/mos-geo-skills
+git clone https://github.com/reapzyau/mos-geo-skills.git ~/Desktop/mos-geo-skills
 cd ~/Desktop/mos-geo-skills
 bash setup.sh
 ```
