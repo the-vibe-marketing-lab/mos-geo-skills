@@ -25,7 +25,7 @@ Cross-skill reference material. Not a skill, never linked into `~/.claude/skills
 Skills live in `~/.claude/skills/`. This repo keeps them under version control and junctions them into place, so you edit here and Claude Code picks the change up straight away.
 
 ```bash
-git clone https://github.com/reapzyau/mos-geo-skills.git ~/Desktop/mos-geo-skills
+git clone https://github.com/the-vibe-marketing-lab/mos-geo-skills.git ~/Desktop/mos-geo-skills
 cd ~/Desktop/mos-geo-skills
 bash setup.sh
 ```
