@@ -123,6 +123,9 @@ class Brand360Test(unittest.TestCase):
         self.assertIn("| acme.example | own |", md)
         self.assertIn("| reddit.com | platform |", md)  # platform beats competitor
         self.assertIn("## 6. Search queries", md)
+        self.assertIn("| Engine | Mentions brand | Top cited domains | What it said |", md)
+        self.assertIn("| ChatGPT (API) | **Yes** | acme.example |", md)
+        self.assertIn("| Google AI Overviews | No | - |", md)
         self.assertNotIn("## 7. Failed calls", md)
         # the retry replaced, not duplicated, the AI Overview rows
         self.assertIn("| Google AI Overviews | app | dataforseo | - | 1/1 | 1/1 | 0/1 | 0 |", md)
@@ -142,6 +145,10 @@ class Brand360Test(unittest.TestCase):
         self.assertEqual(outside, (self.dir / "outputs/brand-360/2026-01/acme-co").resolve())
         with self.assertRaises(SystemExit):
             b.run_dir_for("Acme", "16-09-2026", self.dir)
+
+    def test_plain_table_cell(self):
+        self.assertEqual(b.plain("## Top **pick**: [Acme](https://acme.example) ([acme.example](https://acme.example))[1][2] a|b"),
+                         "Top pick: Acme a\\|b")
 
     def test_prompt_limit(self):
         long = dict(PROMPTS, branded=[{"text": "x" * 501}])

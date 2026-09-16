@@ -405,11 +405,35 @@ def bd_ai_overview(cfg, env, prompt, country):
 # ------------------------------------------------------------------ path --
 
 def find_brain(start: Path) -> Path | None:
-    """The nearest folder at or above `start` holding .mos/config.yaml."""
+    """The MarketingOS brain root at or above `start`, without crossing a git
+    repository boundary. A linked git worktree has no .mos/ of its own
+    (.mos/ is gitignored), so it borrows its main checkout's config but the
+    worktree itself is returned as the root."""
     for d in [start, *start.parents]:
         if (d / ".mos" / "config.yaml").is_file():
             return d
+        git = d / ".git"
+        if git.is_file():  # linked worktree: "gitdir: <main>/.git/worktrees/<name>"
+            m = re.match(r"gitdir:\s*(.+)", git.read_text(encoding="utf-8").strip())
+            main = Path(m.group(1)).parents[2] if m else None
+            if main and not main.exists() and re.match(r"^[A-Za-z]:[\\/]", m.group(1)):
+                drive, rest = m.group(1)[0].lower(), m.group(1)[2:].replace("\\", "/")
+                main = Path(f"/mnt/{drive}{rest}").parents[2]  # Windows path seen from WSL
+            return d if main and (main / ".mos" / "config.yaml").is_file() else None
+        if git.is_dir():
+            return None
     return None
+
+
+def plain(text: str) -> str:
+    """Markdown answer -> one clean line for a table cell."""
+    text = re.sub(r"\[\[\d+\]\]\([^)]*\)", "", text or "")      # [[1]](url)
+    text = re.sub(r"\(\[([^\]]*)\]\([^)]*\)\)", "", text)         # ([site](url))
+    text = re.sub(r"\[([^\]]*)\]\(https?://[^)]*\)", r"\1", text)  # [text](url) -> text
+    text = re.sub(r"\[\d+(?:\]\[\d+)*\]", "", text)               # [1][5]
+    text = re.sub(r"(^|\s)#{1,6}\s+", r"\1", text)                 # headings
+    text = re.sub(r"[*_`]{1,3}", "", text)                         # emphasis, code
+    return " ".join(text.split()).replace("|", "\\|")
 
 
 def run_dir_for(brand: str, day: str, start: Path) -> Path:
@@ -798,17 +822,24 @@ def cmd_summarise(args) -> int:
         if not sel:
             continue
         hit = [r for r in sel if mentions(r["answer"], pats)]
-        L.append(f"### {pid}: {sel[0]['prompt']}")
-        L.append(f"Brand mentioned by {len(hit)}/{len(sel)} engines: "
-                 f"{', '.join(r['label'] for r in hit) or 'none'}.")
+        L += [f"### {pid}: {sel[0]['prompt']}", "",
+              f"Brand mentioned by **{len(hit)}/{len(sel)}** engines.", ""]
         top = Counter(domain_of(c["url"]) for r in sel for c in r["citations"]).most_common(8)
-        L.append(f"Most-cited domains: {', '.join(f'{d} ({n})' for d, n in top) or 'none'}")
-        for r in hit:
-            L.append(f"- {r['label']}: \"…{mention_snippet(r['answer'], pats)}…\"")
-        if not args.no_excerpts:
-            for r in sel:
-                if r not in hit:
-                    L.append(f"- {r['label']} (no mention): {' '.join(r['answer'].split())[:args.excerpt]}")
+        if top:
+            L += ["| Most-cited domain | Citations |", "|---|---|"]
+            L += [f"| {d} | {n} |" for d, n in top]
+            L.append("")
+        L += ["| Engine | Mentions brand | Top cited domains | What it said |", "|---|---|---|---|"]
+        for r in sel:
+            mine = Counter(domain_of(c["url"]) for c in r["citations"]).most_common(3)
+            if r in hit:
+                said = f"…{mention_snippet(plain(r['answer']), pats)}…"
+            elif args.no_excerpts:
+                said = ""
+            else:
+                said = plain(r["answer"])[:args.excerpt]
+            L.append(f"| {r['label']} | {'**Yes**' if r in hit else 'No'} | "
+                     f"{', '.join(d for d, _ in mine) or '-'} | {said} |")
         L.append("")
 
     # 5. Cited domains
