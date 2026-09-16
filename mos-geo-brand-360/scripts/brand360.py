@@ -13,12 +13,15 @@ Subcommands
               results.
   summarise   Turn data/results.jsonl into visibility-report.md (+ data/domains.csv),
               the only file the skill reads back (keeps token use down).
+  assemble    Build brand-360-report.md from data/header.md, data/sections-1-17.md
+              and data/section-18.md, with frontmatter and the prompt appendix.
 
 Run folder layout
-  brand-360-report.md     the finished report (written by the skill)
+  brand-360-report.md     the finished report (built by assemble)
   visibility-report.md    the engine summary (written by summarise)
   data/                   prompts.json, results.jsonl, run-meta.json,
-                          domains.csv, raw/ (per-call API responses)
+                          domains.csv, header.md, sections-1-17.md,
+                          section-18.md, raw/ (per-call API responses)
 
 Providers (primary first; a failed or unconfigured primary falls back):
   models  DataForSEO LLM Responses  ->  OpenRouter
@@ -951,6 +954,91 @@ def cmd_summarise(args) -> int:
 
 
 
+# -------------------------------------------------------------- assemble --
+
+REPORT = "brand-360-report.md"
+SNAPSHOT_NOTE = "> Every AI prompt was asked once. Treat single answers as a snapshot, not a rate."
+PROMPT_GROUPS = (("closed_book", "Closed-book (no search)"), ("branded", "Branded"),
+                 ("unbranded", "Unbranded buyer prompts"))
+
+
+def strip_frontmatter(text: str) -> str:
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 4)
+        if end != -1:
+            return text[end + 5:]
+    return text
+
+
+def frontmatter(fields: list[tuple[str, str]], sources: list[str]) -> str:
+    lines = ["---"] + [f"{k}: {v}" for k, v in fields] + ["sources:"]
+    return "\n".join(lines + [f"  - {x}" for x in sources] + ["---", ""])
+
+
+def cmd_assemble(args) -> int:
+    run_dir = Path(args.run_dir)
+    data = run_dir / DATA_DIR
+    meta_path = data / "run-meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    brand = args.brand or meta.get("brand") or sys.exit("--brand is required (no data/run-meta.json)")
+    day = (meta.get("run_at") or time.strftime("%Y-%m-%d"))[:10]
+    brain = find_brain(run_dir.resolve())
+    rel = run_dir.resolve().relative_to(brain).as_posix() if brain else run_dir.name
+
+    parts = {}
+    for name in ("header.md", "sections-1-17.md", "section-18.md"):
+        path = data / name
+        if not path.is_file():
+            sys.exit(f"missing {path} - see references/report-template.md")
+        parts[name] = strip_frontmatter(path.read_text(encoding="utf-8")).strip()
+
+    research = re.sub(r"\A# [^\n]*\n+", "", parts["sections-1-17.md"])  # drop any H1
+    problems = []
+    if not research.startswith("## Entity found"):
+        problems.append("sections-1-17.md must start with '## Entity found'")
+    missing = [n for n in range(1, 18) if not re.search(rf"^## {n}\. ", research, re.M)]
+    if missing:
+        problems.append(f"sections-1-17.md is missing section(s) {missing}")
+    if "\n## References" not in research:
+        problems.append("sections-1-17.md has no '## References' list")
+    if not parts["section-18.md"].startswith("## 18. AI Visibility Scorecard"):
+        problems.append("section-18.md must start with '## 18. AI Visibility Scorecard'")
+    if not parts["header.md"].startswith("- **Brand:**"):
+        problems.append("header.md must start with the '- **Brand:**' line")
+    if problems:
+        sys.exit("assemble refused:\n  - " + "\n  - ".join(problems))
+    body, refs = research.split("\n## References", 1)
+
+    appendix = ["## Appendix: the prompt set (asked once each)", ""]
+    prompts = json.loads((data / "prompts.json").read_text(encoding="utf-8"))
+    for group, title in PROMPT_GROUPS:
+        appendix += [f"**{title}**", ""]
+        appendix += [f"- `{p['id']}` {p['text']}" for p in prompts.get(group, [])] + [""]
+
+    report = (
+        frontmatter([("title", f"{brand} - 360° Brand Intelligence Report"), ("type", "campaign"),
+                     ("description", " ".join(args.description.split())), ("date", day),
+                     ("status", "active")],
+                    [f"{rel}/{Path(VISIBILITY_REPORT).stem}", f"{rel}/{DATA_DIR}/prompts.json"])
+        + f"\n# {brand}: 360° Brand Intelligence Report\n\n"
+        + parts["header.md"] + "\n\n" + SNAPSHOT_NOTE + "\n\n"
+        + body.strip() + "\n\n" + parts["section-18.md"] + "\n\n## References" + refs.rstrip()
+        + "\n\n" + "\n".join(appendix).rstrip() + "\n")
+    (run_dir / REPORT).write_text(report, encoding="utf-8")
+
+    draft = data / "sections-1-17.md"
+    raw_draft = draft.read_text(encoding="utf-8")
+    if not raw_draft.startswith("---\n"):  # the draft is evidence too; give it a contract
+        draft.write_text(frontmatter(
+            [("title", f"{brand} - brand-360 research draft (sections 1-17)"), ("type", "campaign"),
+             ("description", f"Research agent output for sections 1 to 17, assembled unchanged into {REPORT}. "
+                             "Kept as the run's research evidence."),
+             ("date", day), ("status", "draft")],
+            [f"{rel}/{Path(REPORT).stem}"]) + "\n" + raw_draft, encoding="utf-8")
+    print(f"Wrote {run_dir / REPORT}")
+    return 0
+
+
 # ------------------------------------------------------------------ main --
 
 def main() -> int:
@@ -1001,6 +1089,13 @@ def main() -> int:
     p.add_argument("--top-domains", type=int, default=30)
     p.add_argument("--fan-out", type=int, default=12, help="search queries listed per engine")
     p.set_defaults(fn=cmd_summarise)
+
+    p = sub.add_parser("assemble", help="build brand-360-report.md from the data/ parts")
+    p.add_argument("--run-dir", required=True)
+    p.add_argument("--brand", help="defaults to the brand in data/run-meta.json")
+    p.add_argument("--description", required=True,
+                   help="one-line frontmatter description ending in the headline finding")
+    p.set_defaults(fn=cmd_assemble)
 
     args = ap.parse_args()
     return args.fn(args)

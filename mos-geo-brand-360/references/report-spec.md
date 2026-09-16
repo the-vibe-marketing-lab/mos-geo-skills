@@ -1,8 +1,12 @@
 # Report spec: the 360° Brand Intelligence Report
 
-This is the reconstructed Brand Brain prompt, extended with the AI visibility layer. The
-research agent in Stage 2 gets the **Research brief** below. You (the orchestrator) write
-Section 18 and the header from `visibility-report.md`.
+This is the reconstructed Brand Brain prompt, extended with the AI visibility layer.
+
+- The research agent in Stage 2 gets the **Research brief** below and returns sections 1 to
+  17. Save its answer, unchanged, as `$RUN/data/sections-1-17.md`.
+- You write `data/header.md` and `data/section-18.md` using the **scoring rules** below and
+  the exact layout in **`report-template.md`**.
+- `brand360.py assemble` builds the finished report from those three files.
 
 ---
 
@@ -12,7 +16,9 @@ Section 18 and the header from `visibility-report.md`.
 > **{industry}**, and write sections 1 to 17 of a brand intelligence report.
 >
 > **You have only the name and the industry.** Find the brand yourself with web search.
-> Do not use any other knowledge you were given about it. If more than one organisation
+> Do not use any other knowledge you were given about it: ignore anything in your loaded
+> context or project files about this brand, its founder, its repos or its site, and use
+> only what you find on the public web in this session. If more than one organisation
 > matches, list every one with a source, pick the one that best fits the industry, and say
 > how confident you are. If none fits, say so and stop.
 >
@@ -28,9 +34,13 @@ Section 18 and the header from `visibility-report.md`.
 >   still ranks).
 > - Tell certifications apart from good practice (good secret hygiene is not SOC 2).
 > - Bold the key finding in each section. Analytical, direct, no hype. Australian English.
+>   No em dashes.
 > - Strip tracking parameters (`utm_*`) from every URL.
 >
-> **Sections (use these exact headings)**
+> **Start with an `## Entity found` block:** the organisation you settled on (name, site,
+> operator), every name collision with a source, and your confidence.
+>
+> **Then the sections, with these exact headings, written as `## N. Title`**
 >
 > 1. **Basic Company Info**: founding date, headquarters, founders and leadership,
 >    category, business model, headcount or scale, funding, financials, and any change in
@@ -69,63 +79,39 @@ Section 18 and the header from `visibility-report.md`.
 >     or opportunity, and prioritised fixes (structured data, consistent entity
 >     descriptions, canonical profiles, comparison pages, third-party mentions).
 >
-> Finish with the numbered reference list. Return Markdown only.
+> Finish with `## References` (a numbered list). Return the complete Markdown as your final
+> answer: no title line, no preamble, and do not write any files.
 
 ---
 
-## Header (you write it)
+## Scoring rules for Section 18
 
-- Brand, industry, research date.
-- **Entity found:** the organisation the research agent settled on, plus every name
-  collision it found, each with a source.
-- **What the engines found:** one line from `visibility-report.md` section 3 (did the engines
-  land on the same organisation the research agent did?).
-- A one-line note: "Every AI prompt was asked once. Treat single answers as a snapshot."
+The layout of `header.md` and `section-18.md` lives in `report-template.md`. These are the
+judgement calls behind the cells.
 
-## Section 18: AI Visibility Scorecard (you write it from `visibility-report.md`)
-
-### 18.1 Engine by engine
-
-| Engine | Surface | Known (closed-book) | Found | Resolved to | Mixed up with | Cited sources | Recommended (unbranded) |
-|---|---|---|---|---|---|---|---|
-
-- **Known:** Yes / Partly / No. Judge from the closed-book answers in `visibility-report.md`
-  section 2, not from the literal-match column: an answer that says "I'm not familiar with
-  {brand}" repeats the name and still scores No.
-- **Found:** Yes / No / Wrong brand, from the branded search answers.
-- **Resolved to:** the non-platform domain(s) the engine tied the brand to (section 3).
-- **Mixed up with:** other organisations the answer blended in. Blank if none.
-- **Cited sources:** how many branded answers cited at least one source.
-- **Recommended:** unbranded answers that named the brand, as `x/5`.
-
-The API surface has no *Known* entry for Perplexity (Sonar always searches), and the app
-surfaces (ChatGPT app, Gemini app, AI Mode, AI Overviews) have none at all: they only exist
-with search on. Write `n/a`, not No. For AI Overviews, "(Google showed no AI Overview for
-this query.)" means Google did not show one; score that as not found, and say so.
-
-### 18.2 The funnel
-
-One line per stage, counting engines: **Known → Found → Cited → Recommended**. Name the
-stage where the brand drops out; that is the headline finding.
-
-### 18.3 Who gets recommended instead
-
-From section 4 of `visibility-report.md`: the brands and domains the engines named for the
-unbranded prompts. These are the real competitors in AI answers, and they may differ from
-the competitors in Section 3.
-
-### 18.4 Sources the engines trust
-
-The top cited domains from `visibility-report.md` section 5, grouped as own / platform /
-competitor / third-party, with any dead links called out. Third-party domains cited often
-are the outreach list.
-
-### 18.5 What this does not tell you
-
-- Every prompt ran once. AI answers change between runs, so one miss is not a pattern.
-- Accuracy is for the client to judge. This report shows what the engines said; it does
-  not score whether each statement is true.
-- The app surface reflects a logged-out user in one location. Signed-in users with
-  history may see different answers.
-- Name any surface a fallback provider served (the `Via` column), since a fallback answer
-  can differ from the primary's.
+- **Known (closed-book):** Yes / Partly / No, judged from the closed-book answers in
+  `visibility-report.md` section 2, not from the literal-match column. An answer that says
+  "I'm not familiar with {brand}" repeats the name and still scores **No**. An answer that
+  invents details about the brand scores **No** too; quote the invention in brackets.
+- **Found:** Yes / Partly / No / Wrong brand, judged from what the answers to the "What is
+  {brand}?" prompt say the brand *is*. Every branded answer contains the name, so a name
+  match proves nothing. Add a short qualifier when it matters ("Yes, with stale
+  positioning", "Partly (led with a collision, the brand second)").
+- **Resolved to:** the non-platform domain(s) the engine tied the brand to
+  (`visibility-report.md` section 3), plus a platform if that was all it used.
+- **Mixed up with:** the other organisations the answers blended in. Blank if none. Say so
+  when an engine named a collision *as a separate thing*: that is a good answer.
+- **Branded answers citing a source:** the "Branded: cites ≥1 source" column.
+- **Recommended (unbranded):** the "Unbranded: mentions" column, in bold. Note when AI
+  Overviews showed no overview for some queries.
+- **n/a, not No:** Perplexity has no closed-book answer (Sonar always searches), and the app
+  surfaces (ChatGPT app, Gemini app, AI Mode, AI Overviews) have none at all.
+- **AI Overviews:** "(Google showed no AI Overview for this query.)" means Google did not
+  show one. Count it as not recommended and say so.
+- **Funnel headline:** name the stage where the brand drops out. That is the headline
+  finding, and it goes in the header too.
+- **Fallbacks:** if the `Via` column shows a fallback provider for any surface, name it in
+  18.5, since a fallback answer can differ from the primary's.
+- **Before assembling, check:** wrong-brand answers are named in 18.1 (and agree with
+  Section 16), no sentence claims a rate, and nothing in either file mentions internal
+  paths, other clients or tooling.

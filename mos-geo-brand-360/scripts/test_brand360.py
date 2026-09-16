@@ -155,6 +155,36 @@ class Brand360Test(unittest.TestCase):
         self.assertEqual(b.plain("## Top **pick**: [Acme](https://acme.example) ([acme.example](https://acme.example))[1][2] a|b"),
                          "Top pick: Acme a\\|b")
 
+    def test_assemble_builds_and_refuses(self):
+        run = self.dir / "run"
+        data = run / "data"
+        data.mkdir(parents=True)
+        (data / "prompts.json").write_text(json.dumps(PROMPTS))
+        (data / "run-meta.json").write_text(json.dumps({"brand": "Acme Widgets", "run_at": "2026-09-16 10:00:00"}))
+        sections = "## Entity found\n\nAcme.\n\n" + "".join(f"## {n}. S{n}\n\nx [1]\n\n" for n in range(1, 18))
+        (data / "sections-1-17.md").write_text(sections + "## References\n\n1. https://acme.example/\n")
+        (data / "header.md").write_text("- **Brand:** Acme Widgets\n")
+        (data / "section-18.md").write_text("## 18. AI Visibility Scorecard\n\nBody.\n")
+        args = Namespace(run_dir=str(run), brand=None, description="Latest audit. Headline - x.")
+        with mock.patch("builtins.print"):
+            b.cmd_assemble(args)
+        report = (run / "brand-360-report.md").read_text()
+        self.assertTrue(report.startswith("---\ntitle: Acme Widgets - 360° Brand Intelligence Report\ntype: campaign\n"))
+        order = ["# Acme Widgets: 360° Brand Intelligence Report", "- **Brand:** Acme Widgets", b.SNAPSHOT_NOTE,
+                 "## Entity found", "## 17. S17", "## 18. AI Visibility Scorecard", "## References",
+                 "## Appendix: the prompt set (asked once each)", "- `un01` Best widget maker in Australia"]
+        positions = [report.index(x) for x in order]
+        self.assertEqual(positions, sorted(positions))
+        draft = (data / "sections-1-17.md").read_text()
+        self.assertTrue(draft.startswith("---\ntitle: Acme Widgets - brand-360 research draft (sections 1-17)"))
+        with mock.patch("builtins.print"):  # a second build is identical (draft frontmatter is stripped)
+            b.cmd_assemble(args)
+        self.assertEqual((run / "brand-360-report.md").read_text(), report)
+        (data / "sections-1-17.md").write_text(sections.replace("## 9. S9", "## Nine"))
+        with self.assertRaises(SystemExit) as cm:
+            b.cmd_assemble(args)
+        self.assertIn("missing section(s) [9]", str(cm.exception))
+
     def test_prompt_limit(self):
         long = dict(PROMPTS, branded=[{"text": "x" * 501}])
         (self.dir / "prompts.json").write_text(json.dumps(long))

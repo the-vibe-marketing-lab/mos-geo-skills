@@ -48,7 +48,7 @@ researcher had prior context.
 | 2 | Engine run + research (in parallel) | `data/results.jsonl` saved; sections 1 to 17 drafted |
 | 3 | Summarise | `visibility-report.md` written |
 | 4 | Confirm the entity | User picked their real website (after the run) |
-| 5 | Write the report | Section 18 filled from `visibility-report.md`; every flag intact |
+| 5 | Write the report | `assemble` builds `brand-360-report.md` without refusing |
 
 Set `SKILL=<this skill's folder>`, then get the run folder from the script, run from the
 user's project:
@@ -72,10 +72,11 @@ Every run folder has the same shape:
 
 ```
 <run folder>/
-  brand-360-report.md      the finished report (you write it in Stage 5)
+  brand-360-report.md      the finished report (built by `assemble` in Stage 5)
   visibility-report.md     the engine summary (written by `summarise`)
   data/                    prompts.json, results.jsonl, run-meta.json, domains.csv,
-                           sections-1-17.md (research draft), raw/ (per-call API responses)
+                           sections-1-17.md (research draft), header.md and
+                           section-18.md (your report parts), raw/ (per-call API responses)
 ```
 
 Never invent another location. Run folders can hold client data: never commit them into
@@ -162,25 +163,24 @@ This answer labels rows. It never changes what the engines said.
 
 ## Stage 5: Write the report
 
-Assemble `$RUN/brand-360-report.md`:
+The report is **assembled, never hand-built**, so every run has exactly the same shape.
 
-0. Frontmatter, so a MarketingOS brain's `mos validate` accepts it: `title`, `type: campaign`,
-   a one-line `description` with the headline, `date`, `status: active`, and `sources` listing
-   the run folder's `visibility-report.md` and `data/prompts.json` (paths relative to the brain root).
-1. The header, per `references/report-spec.md`.
-2. Sections 1 to 17 from the research agent, unchanged apart from fixing broken formatting.
-3. **Section 18, the AI Visibility Scorecard**, written from `visibility-report.md` exactly as the
-   spec lays out: the engine table, the funnel (Known → Found → Cited → Recommended), who
-   gets recommended instead, trusted sources, and what the data does not tell you.
-4. The numbered reference list.
+1. Read **`references/report-template.md`** and the scoring rules in
+   **`references/report-spec.md`**.
+2. Write `$RUN/data/header.md` and `$RUN/data/section-18.md` from `visibility-report.md`
+   and the research draft, following the template line for line.
+3. Build the report:
 
-Before handing over, check:
+```bash
+python3 "$SKILL/scripts/brand360.py" assemble --run-dir "$RUN" \
+  --description "<First|Latest> /mos-geo-brand-360 audit of <short name>. 17-section brand research plus an AI Visibility Scorecard across <surfaces>. Headline - <headline>."
+```
 
-- **Known is judged from meaning, not the name match.** "I'm not familiar with X" is No.
-- **Wrong-brand answers are called out** by name in 18.1 and Section 16.
-- **No claim of a rate.** "2 of 5 engines" is fine; "40% of the time" is not.
-- **No internal paths, other client names or tooling references** in the client copy.
-- **`n/a` where a surface cannot answer** (Perplexity closed-book, every app closed-book).
+`assemble` writes `$RUN/brand-360-report.md`: frontmatter that passes the MarketingOS
+contract, the title, your header, the snapshot note, sections 1 to 17 unchanged, your
+Section 18, the reference list, and an appendix listing the exact prompts. It also adds
+frontmatter to the research draft. If it refuses, fix the file it names and run it again;
+never patch the report by hand.
 
 Hand over the report path, the funnel line, and the one stage where the brand drops out.
 
@@ -189,7 +189,8 @@ Hand over the report path, the funnel line, and the one stage where the brand dr
 | File | Read it when |
 |---|---|
 | `references/prompt-set.md` | Stage 1, every time |
-| `references/report-spec.md` | Stage 2 (research brief) and Stage 5 (header + Section 18) |
+| `references/report-spec.md` | Stage 2 (research brief) and Stage 5 (scoring rules) |
+| `references/report-template.md` | Stage 5, every time: the exact shape of `header.md` and `section-18.md` |
 | `references/providers.md` | Keys are missing, a phase errors, or the user asks about cost |
 | `config/engines.json` | A model is `GONE`, or an engine should be switched on or off |
 
