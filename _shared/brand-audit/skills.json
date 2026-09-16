@@ -7,7 +7,7 @@
       "category": "Brand Optimisation",
       "what_it_does": "360° brand intelligence report plus an AI Visibility Scorecard: does ChatGPT, Claude, Gemini, Perplexity, Google AI Mode and AI Overviews know, find, cite and recommend the brand.",
       "run": "/mos-geo-brand-360",
-      "output": "campaigns/geo/YYYY-MM/<brand>/brand-360-report.md",
+      "output": "campaigns/geo/YYYY-MM/brand-360-report.md (agency HQ: campaigns/geo/YYYY-MM/<brand>/)",
       "feeds_tab": "Brand Truth Review",
       "needs": "DataForSEO (OpenRouter, Bright Data optional)"
     },
@@ -16,7 +16,7 @@
       "category": "Content Strategy",
       "what_it_does": "Client-ready LLM share buttons package: brief, code reference and an in-brand demo of 'ask ChatGPT / Claude / Perplexity about this page' buttons.",
       "run": "/mos-geo-llm-buttons",
-      "output": "outputs/YYYY-MM-DD-<client>-llm-buttons/",
+      "output": "campaigns/geo/YYYY-MM/llm-buttons/ (see the skill)",
       "feeds_tab": "Initiatives",
       "needs": "Client website URL"
     }

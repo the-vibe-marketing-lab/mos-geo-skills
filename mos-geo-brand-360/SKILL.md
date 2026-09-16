@@ -58,13 +58,13 @@ user's project:
 RUN=$(python3 "$SKILL/scripts/brand360.py" path --brand "<brand>")
 ```
 
-- **Inside a MarketingOS brain** (any folder under one that holds `.mos/config.yaml`) it
-  returns `campaigns/geo/YYYY-MM/<brand-slug>/`: campaigns are filed by platform, then
-  month, and `geo` is the platform. For an agency, run it from inside the **client's**
-  brain, never the agency HQ repo.
+- **Inside an in-house or client MarketingOS brain** (any folder under one that holds
+  `.mos/config.yaml`) it returns `campaigns/geo/YYYY-MM/`. All GEO work lives under
+  `campaigns/geo/`, and a one-brand brain needs no brand folder: the brain *is* the brand.
+- **Inside an agency HQ brain** (`mode: agency`) it adds the brand: `campaigns/geo/YYYY-MM/<brand-slug>/`.
+  Prefer running from the client's own brain instead.
 - **Anywhere else** it returns `outputs/brand-360/YYYY-MM/<brand-slug>/`.
-- A second run for the same brand in the same month gets `-2`, `-3` and so on. Nothing is
-  overwritten.
+- A second run in the same month gets `-2`, `-3` and so on. Nothing is overwritten.
 
 Note: the current `mos validate` still expects dated `campaigns/YYYY/MM/...` folders,
 so it flags this layout until the engine adopts platform-first campaigns.
@@ -190,8 +190,12 @@ Hand over the report path, the funnel line, and the one stage where the brand dr
 
 Clients check facts faster than prose, so do not ask them to read the whole report. Write
 `$RUN/data/brand-truth-review.csv` with one row per checkable claim, ready to append to the
-**Brand Truth Review** tab of the pack's master workbook
-(`_shared/brand-audit/Brand Audit Template.xlsx`, File > Import > Append in Google Sheets).
+**Brand Truth Review** tab of the brain's audit workbook.
+
+That workbook is `<brain>/campaigns/geo/brand-audit-template.xlsx`. If it is not there yet,
+copy it from the pack: `cp "$SKILL/../_shared/brand-audit/brand-audit-template.xlsx"
+<brain>/campaigns/geo/`. The user uploads it to Google Sheets and appends the CSV
+(File > Import > Append to current sheet).
 
 Columns, in this order, with a header row:
 
@@ -211,8 +215,8 @@ Topic,What the research / AI says,Where it came from,Said by (AI surfaces)
 - Leave the verdict, correction and priority columns to the client and the agency; they
   are in the workbook, not the CSV.
 
-Tick the brand-360 row in the workbook's **Checklist** tab when the report and review rows
-are delivered.
+Tell the user to tick the brand-360 row in the workbook's **Checklist** tab once the
+report and review rows are delivered.
 
 ## Reference map
 

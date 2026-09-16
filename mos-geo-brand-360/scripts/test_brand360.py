@@ -138,14 +138,17 @@ class Brand360Test(unittest.TestCase):
     def test_run_dir_inside_and_outside_a_brain(self):
         brain = self.dir / "brain"
         (brain / ".mos").mkdir(parents=True)
-        (brain / ".mos" / "config.yaml").write_text("{}")
+        (brain / ".mos" / "config.yaml").write_text('{"mode": "in-house"}')
         (brain / "content").mkdir()
         inside = b.run_dir_for("The Vibe Marketing Lab", "2026-09-16", brain / "content")
-        self.assertEqual(inside, (brain / "campaigns/geo/2026-09/the-vibe-marketing-lab").resolve())
+        self.assertEqual(inside, (brain / "campaigns/geo/2026-09").resolve())
         inside.mkdir(parents=True)
         (inside / "brand-360-report.md").write_text("x")
         again = b.run_dir_for("The Vibe Marketing Lab", "2026-09-30", brain)
-        self.assertEqual(again.name, "the-vibe-marketing-lab-2")  # never overwrite a run
+        self.assertEqual(again.name, "2026-09-2")  # never overwrite a run
+        (brain / ".mos" / "config.yaml").write_text("mode: agency\n")
+        hq = b.run_dir_for("Acme & Co.", "2026-09-16", brain)
+        self.assertEqual(hq, (brain / "campaigns/geo/2026-09/acme-co").resolve())
         outside = b.run_dir_for("Acme & Co.", "2026-01-05", self.dir)
         self.assertEqual(outside, (self.dir / "outputs/brand-360/2026-01/acme-co").resolve())
         with self.assertRaises(SystemExit):

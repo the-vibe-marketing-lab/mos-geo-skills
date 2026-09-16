@@ -447,20 +447,32 @@ def plain(text: str) -> str:
     return " ".join(text.split()).replace("|", "\\|")
 
 
+def brain_mode(brain: Path) -> str:
+    """'in-house', 'client' or 'agency' from .mos/config.yaml (JSON or YAML)."""
+    text = (brain / ".mos" / "config.yaml").read_text(encoding="utf-8")
+    m = re.search(r'["\']?mode["\']?\s*:\s*["\']?([a-z-]+)', text)
+    return m.group(1) if m else "in-house"
+
+
 def run_dir_for(brand: str, day: str, start: Path) -> Path:
-    """Campaign layout is campaigns/{platform}/{YYYY-MM}/{brand-slug}/, with
-    `geo` as the platform. Outside a MarketingOS brain the same shape goes
-    under outputs/brand-360/. A second run for the same brand in the same
-    month gets a -2, -3 ... suffix so nothing is overwritten."""
+    """Inside a MarketingOS brain every GEO run lives under campaigns/geo/.
+    An in-house or client brain is one brand, so the month folder is enough:
+    campaigns/geo/YYYY-MM/. An agency HQ brain (or no brain at all) adds the
+    brand slug. A second run in the same month gets -2, -3 ... so nothing is
+    overwritten."""
     slug = re.sub(r"[^a-z0-9]+", "-", brand.lower()).strip("-")
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         sys.exit(f"--date must be YYYY-MM-DD, got {day}")
     brain = find_brain(start.resolve())
-    base = (brain / "campaigns" / "geo") if brain else (start.resolve() / "outputs" / "brand-360")
-    target = base / day[:7] / slug
-    n = 2
-    while target.exists() and any(target.iterdir()):
-        target = base / day[:7] / f"{slug}-{n}"
+    if brain and brain_mode(brain) != "agency":
+        base, leaf = brain / "campaigns" / "geo", day[:7]
+    elif brain:
+        base, leaf = brain / "campaigns" / "geo" / day[:7], slug
+    else:
+        base, leaf = start.resolve() / "outputs" / "brand-360" / day[:7], slug
+    target, n = base / leaf, 2
+    while target.exists() and any(p.name != "brand-audit-template.xlsx" for p in target.iterdir()):
+        target = base / f"{leaf}-{n}"
         n += 1
     return target
 

@@ -22,9 +22,9 @@ Cross-skill reference material. Not a skill, never linked into `~/.claude/skills
 - `brand-audit/` — the master audit workbook, its skill registry and the script that builds it.
 - `logo-policy.md` — per-provider trademark position on putting AI company logos on a button. Short version: wordmarks by default, logos opt-in.
 
-## The master workbook: `Brand Audit Template.xlsx`
+## The master workbook: `brand-audit-template.xlsx`
 
-`_shared/brand-audit/Brand Audit Template.xlsx` is the working sheet for a GEO brand audit. Make a copy per client (upload it to Google Sheets or open it in Excel).
+`_shared/brand-audit/brand-audit-template.xlsx` is the working sheet for a GEO brand audit. Every brain that runs a `mos-geo-*` skill gets a copy at `campaigns/geo/brand-audit-template.xlsx` (the skills copy it there on first use); upload that copy to Google Sheets or open it in Excel. All GEO work in a brain lives under `campaigns/geo/`.
 
 - **Checklist**: one row per `mos-geo-*` skill, with its GitHub link, how to run it, where its output is saved, a status dropdown and a Done tick box.
 - **Brand Truth Review**: one row per factual claim from the brand-360 report. The client marks each claim Accurate / Partly accurate / Inaccurate / Not sure / Out of date and writes the correct version. `mos-geo-brand-360` writes these rows to `data/brand-truth-review.csv` for you to append.

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Build "Brand Audit Template.xlsx", the master GEO brand audit workbook.
+"""Build brand-audit-template.xlsx, the master GEO brand audit workbook.
+
+A copy lives at campaigns/geo/brand-audit-template.xlsx in every brain that runs a
+mos-geo-* skill (the skills copy it there on first use).
 
 The workbook is generated, never hand-edited, so every mos-geo-* skill is
 added the same way: add an entry to skills.json, re-run this script, commit
@@ -26,7 +29,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 
 HERE = Path(__file__).resolve().parent
-OUT = HERE / "Brand Audit Template.xlsx"
+OUT = HERE / "brand-audit-template.xlsx"
 
 INK = "1F2937"
 PAPER = "FFFFFF"
@@ -85,7 +88,7 @@ def checklist(wb: Workbook, registry: dict) -> None:
     ws.title = "Checklist"
     base(ws, "GEO Brand Audit: Checklist", [
         "Client: [CLIENT]      Brand name (as customers say it): [BRAND]      Industry: [INDUSTRY]      Month: [YYYY-MM]",
-        "How to use: run each skill below in the client's MarketingOS brain, paste the output location, set Status, tick Done.",
+        "How to use: run each skill below in the MarketingOS brain, paste the output location, set Status, tick Done.",
         "Rows are generated from the mos-geo-skills pack. New skills appear here when the template is rebuilt.",
     ], {"B": 20, "C": 24, "D": 60, "E": 20, "F": 44, "G": 22, "H": 16, "I": 8, "J": 13, "K": 40})
     top = 7
