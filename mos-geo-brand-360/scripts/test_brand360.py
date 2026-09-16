@@ -133,9 +133,13 @@ class Brand360Test(unittest.TestCase):
         (brain / ".mos" / "config.yaml").write_text("{}")
         (brain / "content").mkdir()
         inside = b.run_dir_for("The Vibe Marketing Lab", "2026-09-16", brain / "content")
-        self.assertEqual(inside, (brain / "campaigns/2026/09/2026-09-16-the-vibe-marketing-lab-brand-360/geo").resolve())
+        self.assertEqual(inside, (brain / "campaigns/geo/2026-09/the-vibe-marketing-lab").resolve())
+        inside.mkdir(parents=True)
+        (inside / "brand-360-report.md").write_text("x")
+        again = b.run_dir_for("The Vibe Marketing Lab", "2026-09-30", brain)
+        self.assertEqual(again.name, "the-vibe-marketing-lab-2")  # never overwrite a run
         outside = b.run_dir_for("Acme & Co.", "2026-01-05", self.dir)
-        self.assertEqual(outside, (self.dir / "outputs/2026/01/2026-01-05-acme-co-brand-360").resolve())
+        self.assertEqual(outside, (self.dir / "outputs/brand-360/2026-01/acme-co").resolve())
         with self.assertRaises(SystemExit):
             b.run_dir_for("Acme", "16-09-2026", self.dir)
 

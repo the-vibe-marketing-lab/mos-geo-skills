@@ -413,17 +413,21 @@ def find_brain(start: Path) -> Path | None:
 
 
 def run_dir_for(brand: str, day: str, start: Path) -> Path:
-    """MarketingOS execution dirs must nest as YYYY/MM/YYYY-MM-DD-slug/ or
-    `mos validate` rejects them. Inside a brain the audit is a campaign with
-    `geo` as its platform folder; anywhere else it is a dated output."""
+    """Campaign layout is campaigns/{platform}/{YYYY-MM}/{brand-slug}/, with
+    `geo` as the platform. Outside a MarketingOS brain the same shape goes
+    under outputs/brand-360/. A second run for the same brand in the same
+    month gets a -2, -3 ... suffix so nothing is overwritten."""
     slug = re.sub(r"[^a-z0-9]+", "-", brand.lower()).strip("-")
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         sys.exit(f"--date must be YYYY-MM-DD, got {day}")
-    leaf = f"{day[:4]}/{day[5:7]}/{day}-{slug}-brand-360"
     brain = find_brain(start.resolve())
-    if brain:
-        return brain / "campaigns" / leaf / "geo"
-    return start.resolve() / "outputs" / leaf
+    base = (brain / "campaigns" / "geo") if brain else (start.resolve() / "outputs" / "brand-360")
+    target = base / day[:7] / slug
+    n = 2
+    while target.exists() and any(target.iterdir()):
+        target = base / day[:7] / f"{slug}-{n}"
+        n += 1
+    return target
 
 
 def cmd_path(args) -> int:

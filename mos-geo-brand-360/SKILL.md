@@ -58,10 +58,15 @@ RUN=$(python3 "$SKILL/scripts/brand360.py" path --brand "<brand>")
 ```
 
 - **Inside a MarketingOS brain** (any folder under one that holds `.mos/config.yaml`) it
-  returns `campaigns/YYYY/MM/YYYY-MM-DD-<brand-slug>-brand-360/geo/`. That is the brain's
-  campaign grammar with `geo` as the platform folder, so `mos validate` accepts it. For an
-  agency, run it from inside the **client's** brain, never the agency HQ repo.
-- **Anywhere else** it returns `outputs/YYYY/MM/YYYY-MM-DD-<brand-slug>-brand-360/`.
+  returns `campaigns/geo/YYYY-MM/<brand-slug>/`: campaigns are filed by platform, then
+  month, and `geo` is the platform. For an agency, run it from inside the **client's**
+  brain, never the agency HQ repo.
+- **Anywhere else** it returns `outputs/brand-360/YYYY-MM/<brand-slug>/`.
+- A second run for the same brand in the same month gets `-2`, `-3` and so on. Nothing is
+  overwritten.
+
+Note: the current `mos validate` still expects dated `campaigns/YYYY/MM/...` folders,
+so it flags this layout until the engine adopts platform-first campaigns.
 
 Never invent another location. Run folders can hold client data: never commit them into
 this pack. Everything the report needs sits in the run folder; `raw/` is bulky, so add it to
