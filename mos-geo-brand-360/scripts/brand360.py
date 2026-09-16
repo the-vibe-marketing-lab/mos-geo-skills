@@ -889,10 +889,22 @@ def cmd_summarise(args) -> int:
     L.append("")
 
     # 6. What the engines searched for
+    reporters = sorted({r["label"] for r in rows if r.get("fan_out")})
     L += ["## 6. Search queries the engines ran (fan-out)", "",
-          "What each engine actually typed into its search tool, and which prompt triggered it. "
-          "Queries that add a location or a different category show how the engine interpreted "
-          f"the brand. Up to {args.fan_out} queries per engine.", ""]
+          "**How to read this table.** *Prompt* is the question we asked, worded the way a "
+          "buyer would type it. An AI engine does not search that sentence as written. It "
+          "rewrites it into several shorter search queries (this is called query fan-out), "
+          "reads the results, then writes its answer and cites the pages it used. *Search "
+          "query* is what the engine actually searched.", "",
+          "**Why it matters.** The answer is built from the results of these searches, so "
+          "these are the queries the brand needs to rank for. Queries that add a location, "
+          "call the brand something it is not (an agency, a platform) or ask whether it is "
+          "legitimate show how the engine interpreted the brand, and point to the pages "
+          "worth publishing.", "",
+          f"**Notes.** Only some engines report their searches; in this run: "
+          f"{', '.join(reporters) or 'none'}. A query an engine repeated for later prompts is "
+          f"listed once, against the first prompt that triggered it. Up to {args.fan_out} "
+          "queries per engine.", ""]
     fan_rows = []
     for surface, eng, label in surfaces:
         seen = set()
