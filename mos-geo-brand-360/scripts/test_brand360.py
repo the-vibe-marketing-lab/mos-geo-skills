@@ -141,16 +141,16 @@ class Brand360Test(unittest.TestCase):
         (brain / ".mos" / "config.yaml").write_text('{"mode": "in-house"}')
         (brain / "content").mkdir()
         inside = b.run_dir_for("The Vibe Marketing Lab", "2026-09-16", brain / "content")
-        self.assertEqual(inside, (brain / "campaigns/geo/2026-09").resolve())
+        self.assertEqual(inside, (brain / "campaigns/geo/2026-09/brand-360-report").resolve())
         inside.mkdir(parents=True)
         (inside / "brand-360-report.md").write_text("x")
         again = b.run_dir_for("The Vibe Marketing Lab", "2026-09-30", brain)
-        self.assertEqual(again.name, "2026-09-2")  # never overwrite a run
+        self.assertEqual(again.name, "brand-360-report-2")  # never overwrite a run
         (brain / ".mos" / "config.yaml").write_text("mode: agency\n")
         hq = b.run_dir_for("Acme & Co.", "2026-09-16", brain)
-        self.assertEqual(hq, (brain / "campaigns/geo/2026-09/acme-co").resolve())
+        self.assertEqual(hq, (brain / "campaigns/geo/2026-09/acme-co/brand-360-report").resolve())
         outside = b.run_dir_for("Acme & Co.", "2026-01-05", self.dir)
-        self.assertEqual(outside, (self.dir / "outputs/brand-360/2026-01/acme-co").resolve())
+        self.assertEqual(outside, (self.dir / "outputs/geo/2026-01/acme-co/brand-360-report").resolve())
         with self.assertRaises(SystemExit):
             b.run_dir_for("Acme", "16-09-2026", self.dir)
 
@@ -196,7 +196,7 @@ class Brand360Test(unittest.TestCase):
     @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "openpyxl not installed")
     def test_workbook_fills_template(self):
         import openpyxl
-        run = self.dir / "run"
+        run = self.dir / "2026-09" / "brand-360-report"
         data = run / "data"
         data.mkdir(parents=True)
         (data / "run-meta.json").write_text(json.dumps({"brand": "Acme Widgets", "run_at": "2026-09-16 10:00:00"}))
@@ -205,7 +205,7 @@ class Brand360Test(unittest.TestCase):
         (data / "brand-truth-review.csv").write_text("Topic,What the research / AI says,Where it came from,Said by (AI surfaces)\nFounder,Run by X.,Section 1 [1],Research\n")
         with mock.patch("builtins.print"):
             b.cmd_workbook(Namespace(run_dir=str(run), brand=None))
-        wb = openpyxl.load_workbook(run / "brand-audit-template.xlsx")
+        wb = openpyxl.load_workbook(self.dir / "2026-09" / "brand-audit-master.xlsx")
         self.assertEqual(wb.sheetnames[:4], ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility"])
         ws = wb["Checklist"]
         row = next(r for r in range(1, 40) if ws.cell(row=r, column=3).value == "mos-geo-brand-360")

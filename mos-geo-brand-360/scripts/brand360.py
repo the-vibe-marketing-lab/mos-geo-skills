@@ -21,7 +21,7 @@ Subcommands
               (uv run --with openpyxl python brand360.py workbook ...).
 
 Run folder layout
-  brand-audit-template.xlsx  the audit workbook, filled by `workbook` (the deliverable)
+  ../brand-audit-master.xlsx  the month's audit workbook, filled by `workbook` (the deliverable)
   brand-360-report.md     the finished report (built by assemble; supplementary)
   visibility-report.md    the engine summary (written by summarise)
   data/                   prompts.json, results.jsonl, run-meta.json,
@@ -459,25 +459,33 @@ def brain_mode(brain: Path) -> str:
     return m.group(1) if m else "in-house"
 
 
+SKILL_FOLDER = "brand-360-report"
+
+
 def run_dir_for(brand: str, day: str, start: Path) -> Path:
-    """Inside a MarketingOS brain every GEO run lives under campaigns/geo/.
-    An in-house or client brain is one brand, so the month folder is enough:
-    campaigns/geo/YYYY-MM/. An agency HQ brain (or no brain at all) adds the
-    brand slug. A second run in the same month gets -2, -3 ... so nothing is
-    overwritten."""
+    """Every GEO run lives under campaigns/geo/YYYY-MM/, one subfolder per
+    skill, with the audit workbook at the month root:
+
+        campaigns/geo/2026-09/brand-audit-master.xlsx
+        campaigns/geo/2026-09/brand-360-report/
+        campaigns/geo/2026-09/llm-buttons/
+
+    An in-house or client brain is one brand. An agency HQ brain (or no brain
+    at all) adds a brand folder under the month. A second run in the same
+    month gets brand-360-report-2, -3 ... so nothing is overwritten."""
     slug = re.sub(r"[^a-z0-9]+", "-", brand.lower()).strip("-")
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         sys.exit(f"--date must be YYYY-MM-DD, got {day}")
     brain = find_brain(start.resolve())
     if brain and brain_mode(brain) != "agency":
-        base, leaf = brain / "campaigns" / "geo", day[:7]
+        month = brain / "campaigns" / "geo" / day[:7]
     elif brain:
-        base, leaf = brain / "campaigns" / "geo" / day[:7], slug
+        month = brain / "campaigns" / "geo" / day[:7] / slug
     else:
-        base, leaf = start.resolve() / "outputs" / "brand-360" / day[:7], slug
-    target, n = base / leaf, 2
+        month = start.resolve() / "outputs" / "geo" / day[:7] / slug
+    target, n = month / SKILL_FOLDER, 2
     while target.exists() and any(target.iterdir()):
-        target = base / f"{leaf}-{n}"
+        target = month / f"{SKILL_FOLDER}-{n}"
         n += 1
     return target
 
@@ -1058,8 +1066,8 @@ def cmd_assemble(args) -> int:
 
 # -------------------------------------------------------------- workbook --
 
-WORKBOOK = "brand-audit-template.xlsx"
-PACK_TEMPLATE = SKILL_DIR.parent / "_shared" / "brand-audit" / WORKBOOK
+WORKBOOK = "brand-audit-master.xlsx"  # one per audit month, at the month root
+PACK_TEMPLATE = SKILL_DIR.parent / "_shared" / "brand-audit" / "brand-audit-template.xlsx"
 
 
 def md_blocks(text: str):
@@ -1138,7 +1146,7 @@ def cmd_workbook(args) -> int:
     for f in (report, vis, data / "brand-truth-review.csv"):
         if not f.is_file():
             sys.exit(f"missing {f}")
-    book = run_dir / WORKBOOK
+    book = run_dir.resolve().parent / WORKBOOK  # the month folder, shared by every skill
     if not book.is_file():
         if not PACK_TEMPLATE.is_file():
             sys.exit(f"no workbook in the run folder and no pack template at {PACK_TEMPLATE}")
@@ -1158,7 +1166,7 @@ def cmd_workbook(args) -> int:
             ws.cell(row=r, column=8, value="Client review")
             ws.cell(row=r, column=9, value="☑")
             ws.cell(row=r, column=10, value=day)
-            ws.cell(row=r, column=11, value=f"See the 'Brand 360 Report' and 'AI Visibility' tabs; files in {run_dir.name}/")
+            ws.cell(row=r, column=11, value=f"See the 'Brand 360 Report' and 'AI Visibility' tabs; files in {run_dir.resolve().name}/")
             break
     else:
         sys.exit("Checklist has no mos-geo-brand-360 row; rebuild the template from the pack")

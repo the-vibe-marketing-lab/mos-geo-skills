@@ -49,7 +49,7 @@ researcher had prior context.
 | 3 | Summarise | `visibility-report.md` written |
 | 4 | Confirm the entity | User picked their real website (after the run) |
 | 5 | Write the report | `assemble` builds `brand-360-report.md` without refusing |
-| 6 | Fill the workbook | `workbook` ran; `brand-audit-template.xlsx` sits in the run folder |
+| 6 | Fill the workbook | `workbook` ran; `brand-audit-master.xlsx` sits at the month root |
 
 Set `SKILL=<this skill's folder>`, then get the run folder from the script, run from the
 user's project:
@@ -58,13 +58,23 @@ user's project:
 RUN=$(python3 "$SKILL/scripts/brand360.py" path --brand "<brand>")
 ```
 
-- **Inside an in-house or client MarketingOS brain** (any folder under one that holds
-  `.mos/config.yaml`) it returns `campaigns/geo/YYYY-MM/`. All GEO work lives under
-  `campaigns/geo/`, and a one-brand brain needs no brand folder: the brain *is* the brand.
-- **Inside an agency HQ brain** (`mode: agency`) it adds the brand: `campaigns/geo/YYYY-MM/<brand-slug>/`.
-  Prefer running from the client's own brain instead.
-- **Anywhere else** it returns `outputs/brand-360/YYYY-MM/<brand-slug>/`.
-- A second run in the same month gets `-2`, `-3` and so on. Nothing is overwritten.
+All GEO work in a MarketingOS brain lives under `campaigns/geo/YYYY-MM/`, one subfolder
+per skill, with the month's audit workbook at the month root:
+
+```
+campaigns/geo/2026-09/
+  brand-audit-master.xlsx   the client deliverable, filled by every mos-geo-* skill
+  brand-360-report/         this skill's run folder (`$RUN`)
+  llm-buttons/              mos-geo-llm-buttons, and so on
+```
+
+- **Inside an in-house or client brain** (any folder under one that holds `.mos/config.yaml`)
+  `path` returns `campaigns/geo/YYYY-MM/brand-360-report/`. A one-brand brain needs no
+  brand folder: the brain *is* the brand.
+- **Inside an agency HQ brain** (`mode: agency`) it adds the brand:
+  `campaigns/geo/YYYY-MM/<brand-slug>/brand-360-report/`. Prefer the client's own brain.
+- **Anywhere else** it returns `outputs/geo/YYYY-MM/<brand-slug>/brand-360-report/`.
+- A second run in the same month gets `brand-360-report-2`, and so on. Nothing is overwritten.
 
 Note: the current `mos validate` still expects dated `campaigns/YYYY/MM/...` folders,
 so it flags this layout until the engine adopts platform-first campaigns.
@@ -72,8 +82,7 @@ so it flags this layout until the engine adopts platform-first campaigns.
 Every run folder has the same shape:
 
 ```
-<run folder>/
-  brand-audit-template.xlsx  the client deliverable, filled by `workbook` in Stage 6
+<run folder>/                (campaigns/geo/YYYY-MM/brand-360-report/)
   brand-360-report.md      the finished report (built by `assemble`; supplementary)
   visibility-report.md     the engine summary (written by `summarise`)
   data/                    prompts.json, results.jsonl, run-meta.json, domains.csv,
@@ -189,8 +198,8 @@ Hand over the report path, the funnel line, and the one stage where the brand dr
 
 ## Stage 6: Fill the brand audit workbook (the deliverable)
 
-The client deliverable is the workbook, `$RUN/brand-audit-template.xlsx`; the two `.md` files
-are supplementary. Two steps.
+The client deliverable is the month's workbook, `brand-audit-master.xlsx`, one level above
+`$RUN`; the two `.md` files are supplementary. Two steps.
 
 **1. Write the Brand Truth Review rows.** Clients check facts faster than prose, so write
 `$RUN/data/brand-truth-review.csv` with one checkable claim per row and this header:
@@ -215,8 +224,8 @@ Topic,What the research / AI says,Where it came from,Said by (AI surfaces)
 uv run --with openpyxl python "$SKILL/scripts/brand360.py" workbook --run-dir "$RUN"
 ```
 
-It copies the pack's master template into the run folder if there is no workbook there yet
-(a re-run in the same month reuses the existing one, so other skills' rows survive), then:
+It creates `brand-audit-master.xlsx` in the month folder from the pack template if it is not
+there yet (other skills' rows in an existing one survive), then:
 ticks the `mos-geo-brand-360` row on **Checklist** (status, date, where the files are), fills
 **Brand Truth Review** from the CSV, and rebuilds two tabs, **Brand 360 Report** and
 **AI Visibility**, from the two markdown files with every table as a real sheet table.

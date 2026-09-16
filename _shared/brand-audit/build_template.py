@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build brand-audit-template.xlsx, the master GEO brand audit workbook.
 
-Each audit month gets a copy at campaigns/geo/YYYY-MM/brand-audit-template.xlsx; the
-skills copy it there on first use and fill it in.
+Each audit month gets a copy named brand-audit-master.xlsx at campaigns/geo/YYYY-MM/;
+the skills create it there on first use and fill it in (see tick_checklist.py).
 
 The workbook is generated, never hand-edited, so every mos-geo-* skill is
 added the same way: add an entry to skills.json, re-run this script, commit
