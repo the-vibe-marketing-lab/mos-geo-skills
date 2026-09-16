@@ -123,6 +123,7 @@ class Brand360Test(unittest.TestCase):
         self.assertIn("| acme.example | own |", md)
         self.assertIn("| reddit.com | platform |", md)  # platform beats competitor
         self.assertIn("## 6. Search queries", md)
+        self.assertIn("| ChatGPT (app) | br01 | acme widgets australia |", md)
         self.assertIn("| Engine | Mentions brand | Top cited domains | What it said |", md)
         self.assertIn("| ChatGPT (API) | **Yes** | acme.example |", md)
         self.assertIn("| Google AI Overviews | No | - |", md)

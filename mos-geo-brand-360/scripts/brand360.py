@@ -876,15 +876,22 @@ def cmd_summarise(args) -> int:
 
     # 6. What the engines searched for
     L += ["## 6. Search queries the engines ran (fan-out)", "",
-          "What each engine actually typed into its search tool. Queries that add a "
-          "location or a different category show how the engine interpreted the brand.", ""]
+          "What each engine actually typed into its search tool, and which prompt triggered it. "
+          "Queries that add a location or a different category show how the engine interpreted "
+          f"the brand. Up to {args.fan_out} queries per engine.", ""]
+    fan_rows = []
     for surface, eng, label in surfaces:
-        qs = []
-        for r in rows:
-            if r["engine"] == eng and r["surface"] == surface:
-                qs += [q for q in r.get("fan_out") or [] if q not in qs]
-        if qs:
-            L.append(f"- **{label}:** " + "; ".join(qs[:args.fan_out]))
+        seen = set()
+        for r in sorted((r for r in rows if r["engine"] == eng and r["surface"] == surface),
+                        key=lambda r: r["prompt_id"]):
+            for q in r.get("fan_out") or []:
+                if q not in seen and len(seen) < args.fan_out:
+                    seen.add(q)
+                    fan_rows.append(f"| {label} | {r['prompt_id']} | {plain(q)} |")
+    if fan_rows:
+        L += ["| Engine | Prompt | Search query |", "|---|---|---|"] + fan_rows
+    else:
+        L.append("No engine reported its search queries in this run.")
     failed = [r for r in rows if r["error"]]
     if failed:
         L += ["", "## 7. Failed calls", ""]
