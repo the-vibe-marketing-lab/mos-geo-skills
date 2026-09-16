@@ -420,23 +420,48 @@ def bd_ai_overview(cfg, env, prompt, country):
 
 # ------------------------------------------------------------------ path --
 
+def _main_checkout(git_file: Path) -> Path | None:
+    """The main checkout behind a linked worktree's `.git` file
+    ("gitdir: <main>/.git/worktrees/<name>"), including a Windows path read
+    from WSL."""
+    m = re.match(r"gitdir:\s*(.+)", git_file.read_text(encoding="utf-8").strip())
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    drive = re.match(r"^([A-Za-z]):[\\/](.*)$", raw)
+    if drive and os.name != "nt":
+        raw = f"/mnt/{drive.group(1).lower()}/{drive.group(2)}"
+    gitdir = Path(raw.replace("\\", "/"))
+    if not gitdir.is_absolute():
+        gitdir = (git_file.parent / gitdir).resolve()
+    for d in [gitdir, *gitdir.parents]:
+        if d.name == ".git":
+            return d.parent
+    return None
+
+
+def brain_config(root: Path) -> Path | None:
+    """The .mos/config.yaml that governs `root`, or None."""
+    own = root / ".mos" / "config.yaml"
+    if own.is_file():
+        return own
+    git = root / ".git"
+    if git.is_file():  # linked worktree: .mos/ is gitignored, so borrow the main checkout's
+        main = _main_checkout(git)
+        if main and (main / ".mos" / "config.yaml").is_file():
+            return main / ".mos" / "config.yaml"
+    return None
+
+
 def find_brain(start: Path) -> Path | None:
     """The MarketingOS brain root at or above `start`, without crossing a git
-    repository boundary. A linked git worktree has no .mos/ of its own
-    (.mos/ is gitignored), so it borrows its main checkout's config but the
-    worktree itself is returned as the root."""
+    repository boundary. A linked git worktree counts as a brain when its main
+    checkout is one; the worktree itself is returned as the root so paths stay
+    inside it."""
     for d in [start, *start.parents]:
-        if (d / ".mos" / "config.yaml").is_file():
+        if brain_config(d):
             return d
-        git = d / ".git"
-        if git.is_file():  # linked worktree: "gitdir: <main>/.git/worktrees/<name>"
-            m = re.match(r"gitdir:\s*(.+)", git.read_text(encoding="utf-8").strip())
-            main = Path(m.group(1)).parents[2] if m else None
-            if main and not main.exists() and re.match(r"^[A-Za-z]:[\\/]", m.group(1)):
-                drive, rest = m.group(1)[0].lower(), m.group(1)[2:].replace("\\", "/")
-                main = Path(f"/mnt/{drive}{rest}").parents[2]  # Windows path seen from WSL
-            return d if main and (main / ".mos" / "config.yaml").is_file() else None
-        if git.is_dir():
+        if (d / ".git").exists():
             return None
     return None
 
@@ -454,7 +479,10 @@ def plain(text: str) -> str:
 
 def brain_mode(brain: Path) -> str:
     """'in-house', 'client' or 'agency' from .mos/config.yaml (JSON or YAML)."""
-    text = (brain / ".mos" / "config.yaml").read_text(encoding="utf-8")
+    config = brain_config(brain)
+    if not config:
+        return "in-house"
+    text = config.read_text(encoding="utf-8")
     m = re.search(r'["\']?mode["\']?\s*:\s*["\']?([a-z-]+)', text)
     return m.group(1) if m else "in-house"
 
@@ -1176,6 +1204,13 @@ def cmd_workbook(args) -> int:
     with (data / "brand-truth-review.csv").open(encoding="utf-8", newline="") as fh:
         claims = list(csv.DictReader(fh))
     top = 8
+    # Keep what the client and agency already wrote (verdict, correction,
+    # priority, notes), matched on the claim text, so a re-run never wipes it.
+    kept = {}
+    for r in range(top, top + 60):
+        claim = ws.cell(row=r, column=4).value
+        if claim:
+            kept[str(claim).strip()] = [ws.cell(row=r, column=c).value for c in range(7, 11)]
     for r in range(top, top + 60):
         for col in range(3, 11):
             ws.cell(row=r, column=col).value = None
@@ -1183,10 +1218,13 @@ def cmd_workbook(args) -> int:
             ws.cell(row=r, column=col).fill = PatternFill()
     for i, row in enumerate(claims):
         r = top + i
+        claim = (row.get("What the research / AI says") or "").strip()
         ws.cell(row=r, column=3, value=row.get("Topic"))
-        ws.cell(row=r, column=4, value=row.get("What the research / AI says"))
+        ws.cell(row=r, column=4, value=claim)
         ws.cell(row=r, column=5, value=row.get("Where it came from"))
         ws.cell(row=r, column=6, value=row.get("Said by (AI surfaces)"))
+        for c, v in zip(range(7, 11), kept.get(claim, [None] * 4)):
+            ws.cell(row=r, column=c, value=v)
     # Report and visibility tabs, rebuilt from scratch each time.
     for title, path in (("Brand 360 Report", report), ("AI Visibility", vis)):
         if title in wb.sheetnames:

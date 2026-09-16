@@ -154,6 +154,23 @@ class Brand360Test(unittest.TestCase):
         with self.assertRaises(SystemExit):
             b.run_dir_for("Acme", "16-09-2026", self.dir)
 
+    def test_worktree_borrows_main_checkout_config(self):
+        main = self.dir / "main"
+        (main / ".mos").mkdir(parents=True)
+        (main / ".mos" / "config.yaml").write_text("mode: agency\n")
+        (main / ".git" / "worktrees" / "wt").mkdir(parents=True)
+        wt = main / ".claude" / "worktrees" / "wt"
+        (wt / "campaigns").mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {main}/.git/worktrees/wt\n")
+        self.assertEqual(b.find_brain(wt / "campaigns"), wt)
+        self.assertEqual(b.brain_mode(wt), "agency")
+        self.assertEqual(b.run_dir_for("Acme", "2026-09-16", wt),
+                         (wt / "campaigns/geo/2026-09/acme/brand-360-report").resolve())
+        (wt / ".git").write_text("gitdir: C:\\Users\\x\\brain\\.git\\worktrees\\wt\n")
+        if b.os.name != "nt":
+            self.assertEqual(b._main_checkout(wt / ".git"), Path("/mnt/c/Users/x/brain"))
+        self.assertIsNone(b.find_brain(wt / "campaigns"))  # that main checkout does not exist
+
     def test_plain_table_cell(self):
         self.assertEqual(b.plain("## Top **pick**: [Acme](https://acme.example) ([acme.example](https://acme.example))[1][2] a|b"),
                          "Top pick: Acme a\\|b")
@@ -212,6 +229,13 @@ class Brand360Test(unittest.TestCase):
         self.assertEqual((ws.cell(row=row, column=8).value, ws.cell(row=row, column=9).value), ("Client review", "☑"))
         self.assertEqual(wb["Brand Truth Review"].cell(row=8, column=3).value, "Founder")
         self.assertEqual(wb["AI Visibility"].cell(row=5, column=2).value, "ChatGPT (API)")
+        wb["Brand Truth Review"].cell(row=8, column=7, value="Inaccurate")
+        wb["Brand Truth Review"].cell(row=8, column=8, value="Run by Y.")
+        wb.save(self.dir / "2026-09" / "brand-audit-master.xlsx")
+        with mock.patch("builtins.print"):
+            b.cmd_workbook(Namespace(run_dir=str(run), brand=None))  # a re-run keeps the verdict
+        ws = openpyxl.load_workbook(self.dir / "2026-09" / "brand-audit-master.xlsx")["Brand Truth Review"]
+        self.assertEqual((ws.cell(row=8, column=7).value, ws.cell(row=8, column=8).value), ("Inaccurate", "Run by Y."))
 
     def test_prompt_limit(self):
         long = dict(PROMPTS, branded=[{"text": "x" * 501}])

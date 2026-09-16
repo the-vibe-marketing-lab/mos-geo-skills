@@ -14,11 +14,9 @@ description: >
   known by AI", "does ChatGPT know my brand", "can AI find my brand", "AI brand visibility",
   "LLM brand audit", "what do LLMs say about [brand]", "entity audit", "brand GEO audit",
   "360 brand report", "/mos-geo-brand-360", or hands over a brand name and asks how AI search
-  sees it. NOT FOR auditing whether AI crawlers can read a specific page (use
-  pm-geo-ai-crawl-page-simulator or pm-geo-ai-extraction-audit), multi-turn buyer-journey
-  simulations (use pm-geo-icp-journey-reporter), building LLM share buttons (use
-  mos-geo-llm-buttons), or bulk citation scraping for outreach (use
-  pm-geo-brand-citation-prompt-scrape).
+  sees it. NOT FOR auditing whether AI crawlers can read one specific page, simulating a
+  multi-turn buyer journey, bulk citation scraping for outreach lists, or building LLM share
+  buttons (use mos-geo-llm-buttons).
 ---
 
 # Brand 360
@@ -49,7 +47,7 @@ researcher had prior context.
 | 3 | Summarise | `visibility-report.md` written |
 | 4 | Confirm the entity | User picked their real website (after the run) |
 | 5 | Write the report | `assemble` builds `brand-360-report.md` without refusing |
-| 6 | Fill the workbook | `workbook` ran; `brand-audit-master.xlsx` sits at the month root |
+| 6 | Fill the workbook | `workbook` ran; `brand-audit-master.xlsx` sits one level above `$RUN` |
 
 Set `SKILL=<this skill's folder>`, then get the run folder from the script, run from the
 user's project:
@@ -198,8 +196,9 @@ Hand over the report path, the funnel line, and the one stage where the brand dr
 
 ## Stage 6: Fill the brand audit workbook (the deliverable)
 
-The client deliverable is the month's workbook, `brand-audit-master.xlsx`, one level above
-`$RUN`; the two `.md` files are supplementary. Two steps.
+The client deliverable is the workbook `brand-audit-master.xlsx`, one level above `$RUN`
+(the month root, or the brand folder in an agency brain); the two `.md` files are
+supplementary. Two steps.
 
 **1. Write the Brand Truth Review rows.** Clients check facts faster than prose, so write
 `$RUN/data/brand-truth-review.csv` with one checkable claim per row and this header:
@@ -225,7 +224,7 @@ uv run --with openpyxl python "$SKILL/scripts/brand360.py" workbook --run-dir "$
 ```
 
 It creates `brand-audit-master.xlsx` in the month folder from the pack template if it is not
-there yet (other skills' rows in an existing one survive), then:
+there yet (other skills' rows, and any verdicts the client already entered, survive a re-run), then:
 ticks the `mos-geo-brand-360` row on **Checklist** (status, date, where the files are), fills
 **Brand Truth Review** from the CSV, and rebuilds two tabs, **Brand 360 Report** and
 **AI Visibility**, from the two markdown files with every table as a real sheet table.

@@ -12,7 +12,7 @@ table column and the order. Australian English, no em dashes, no rates ("2 of 5"
 "40%").
 
 The reference output is the first TVML run:
-`campaigns/geo/2026-09/the-vibe-marketing-lab/brand-360-report.md` in the TVML brain.
+`campaigns/geo/2026-09/brand-360-report/brand-360-report.md` in the TVML brain.
 
 ---
 

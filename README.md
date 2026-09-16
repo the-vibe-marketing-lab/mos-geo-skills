@@ -27,7 +27,7 @@ Cross-skill reference material. Not a skill, never linked into `~/.claude/skills
 `_shared/brand-audit/brand-audit-template.xlsx` is the working sheet for a GEO brand audit. All GEO work in a brain lives under `campaigns/geo/YYYY-MM/`, one subfolder per skill (`brand-360-report/`, `llm-buttons/`), with the month's workbook at the root as `brand-audit-master.xlsx`. Skills create it there on first use and fill it in: `mos-geo-brand-360` ticks its Checklist row, fills Brand Truth Review and adds the report and visibility data as tabs; other skills tick their row with `_shared/brand-audit/tick_checklist.py`. Upload the master to Google Sheets or open it in Excel.
 
 - **Checklist**: one row per `mos-geo-*` skill, with its GitHub link, how to run it, where its output is saved, a status dropdown and a Done tick box.
-- **Brand Truth Review**: one row per factual claim from the brand-360 report. The client marks each claim Accurate / Partly accurate / Inaccurate / Not sure / Out of date and writes the correct version. `mos-geo-brand-360` writes these rows to `data/brand-truth-review.csv` for you to append.
+- **Brand Truth Review**: one row per factual claim from the brand-360 report. The client marks each claim Accurate / Partly accurate / Inaccurate / Not sure / Out of date and writes the correct version. `mos-geo-brand-360` writes these rows to `data/brand-truth-review.csv`, and its `workbook` step puts them into the tab (keeping any verdicts already entered).
 - **Initiatives**: ICE-scored fixes that come out of the audit.
 
 The workbook is generated, never hand-edited. When a skill is added to this pack, add it to `_shared/brand-audit/skills.json` and rebuild:

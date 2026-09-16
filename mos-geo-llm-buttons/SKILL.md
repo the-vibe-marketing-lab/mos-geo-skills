@@ -233,8 +233,10 @@ Replace every `{{PLACEHOLDER}}`. Then read the brief once as the client would an
 - **Every `[VERIFY]` flag survived.** Do not tidy them away before sending — they are the
   questions the client is meant to answer.
 
-Then tick the skill's row in the month's audit workbook (`brand-audit-master.xlsx` at the
-month root; created from the pack template if it is not there yet):
+Then tick the skill's row in the month's audit workbook. Set `SKILL=<this skill's folder>`
+first (the pack's `_shared/` folder sits beside it). The workbook is
+`brand-audit-master.xlsx` at the month root, created from the pack template if it is not
+there yet:
 
 ```bash
 uv run --with openpyxl python "$SKILL/../_shared/brand-audit/tick_checklist.py" \
