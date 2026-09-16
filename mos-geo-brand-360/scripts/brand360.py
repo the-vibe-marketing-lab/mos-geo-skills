@@ -887,9 +887,9 @@ def cmd_summarise(args) -> int:
             for q in r.get("fan_out") or []:
                 if q not in seen and len(seen) < args.fan_out:
                     seen.add(q)
-                    fan_rows.append(f"| {label} | {r['prompt_id']} | {plain(q)} |")
+                    fan_rows.append(f"| {label} | {r['prompt_id']} | {plain(r['prompt'])} | {plain(q)} |")
     if fan_rows:
-        L += ["| Engine | Prompt | Search query |", "|---|---|---|"] + fan_rows
+        L += ["| Engine | ID | Prompt | Search query |", "|---|---|---|---|"] + fan_rows
     else:
         L.append("No engine reported its search queries in this run.")
     failed = [r for r in rows if r["error"]]
