@@ -62,14 +62,12 @@ unavailable by Bright Data and is not configured.
 
 ## Cost of one run
 
-Measured on 2026-09-16 with 1 closed-book + 2 search prompts across the 8 default
-surfaces: **$0.38 on DataForSEO for 21 calls.** The model calls with web search cost the
-most (about $0.02 to $0.04 each, mostly search tokens). App calls cost $0.004 each, and AI
-Overviews $0.004 including the async overview fee.
+**Measured on 2026-09-16: $2.11 on DataForSEO for a full default run** (3 closed-book + 10
+search prompts, 8 surfaces, 89 calls, none failed, about 15 minutes). Most of the cost is
+the model calls with web search (about $0.02 to $0.04 each, mostly search tokens). App
+calls cost $0.004 each, and AI Overviews $0.004 including the async overview fee.
 
-Scaled to the default prompt set (3 closed-book, 10 search prompts): roughly **$1.50 to
-$2.50 per brand**. That is an extrapolation from the small run; replace it with the
-figure from `visibility.md` after the first full run.
+`visibility.md` prints the exact API cost of every run in its header.
 
 ## When a call fails
 

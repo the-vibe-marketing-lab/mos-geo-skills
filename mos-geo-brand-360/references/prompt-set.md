@@ -63,8 +63,8 @@ keyword stuffing.
 ## Size and cost
 
 3 closed-book + 10 search prompts is the default. With the default surfaces that is
-3 x 3 closed-book calls, 4 x 10 API search calls and 4 x 10 app calls: 89 calls, roughly
-$1.50 to $2.50 per brand on DataForSEO (see `providers.md`). Every prompt runs **once**. Do
+3 x 3 closed-book calls, 4 x 10 API search calls and 4 x 10 app calls: 89 calls, about $2.11
+per brand on DataForSEO (measured, see `providers.md`). Every prompt runs **once**. Do
 not add repeats. If the user wants a cheaper run, cut unbranded prompts before cutting
 surfaces.
 
