@@ -147,6 +147,9 @@ This answer labels rows. It never changes what the engines said.
 
 Assemble `$RUN/brand-360-report.md`:
 
+0. Frontmatter, so a MarketingOS brain's `mos validate` accepts it: `title`, `type: campaign`,
+   a one-line `description` with the headline, `date`, `status: active`, and `sources` listing
+   the run folder's `visibility.md` and `prompts.json` (paths relative to the brain root).
 1. The header, per `references/report-spec.md`.
 2. Sections 1 to 17 from the research agent, unchanged apart from fixing broken formatting.
 3. **Section 18, the AI Visibility Scorecard**, written from `visibility.md` exactly as the
