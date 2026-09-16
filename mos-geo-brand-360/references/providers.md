@@ -3,7 +3,7 @@
 **DataForSEO is the primary provider** for every surface. OpenRouter and Bright Data are
 fallbacks: the script tries providers in the order set in `config/engines.json`
 (`provider_order`) and moves to the next one when a provider has no credentials or a call
-fails. Each result records which provider served it (`Via` column in `visibility.md`).
+fails. Each result records which provider served it (`Via` column in `visibility-report.md`).
 
 | Surface | Primary (DataForSEO) | Fallback |
 |---|---|---|
@@ -67,7 +67,7 @@ search prompts, 8 surfaces, 89 calls, none failed, about 15 minutes). Most of th
 the model calls with web search (about $0.02 to $0.04 each, mostly search tokens). App
 calls cost $0.004 each, and AI Overviews $0.004 including the async overview fee.
 
-`visibility.md` prints the exact API cost of every run in its header.
+`visibility-report.md` prints the exact API cost of every run in its header.
 
 ## When a call fails
 
@@ -79,4 +79,4 @@ calls cost $0.004 each, and AI Overviews $0.004 including the async overview fee
 | `task 40101` | Google-side error | Already retried once; re-run with `--only <id>` |
 | `HTTP 429` | Rate limit | Re-run the failed surface with `--only <id> --workers 2` |
 | Bright Data `trigger failed` | Wrong dataset ID or no credits | Check the ID in Bright Data's scraper library |
-| Bright Data answers empty, no error | Undocumented output field | Open one record in `raw/app/brightdata-<id>.json` and add the field name to `answer_fields` |
+| Bright Data answers empty, no error | Undocumented output field | Open one record in `data/raw/app/brightdata-<id>.json` and add the field name to `answer_fields` |

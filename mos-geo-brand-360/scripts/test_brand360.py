@@ -88,7 +88,7 @@ class Brand360Test(unittest.TestCase):
         vars(args).update(kw)
         with mock.patch("builtins.print"):
             self.assertEqual(b.cmd_run(args), 0)
-        return [json.loads(l) for l in (self.dir / "run" / "results.jsonl").read_text().splitlines()]
+        return [json.loads(l) for l in (self.dir / "run" / "data" / "results.jsonl").read_text().splitlines()]
 
     def test_primary_and_fallbacks(self):
         rows = self.run_all()
@@ -117,7 +117,11 @@ class Brand360Test(unittest.TestCase):
                          excerpt=200, no_excerpts=False, top_domains=30, fan_out=12)
         with mock.patch("builtins.print"):
             b.cmd_summarise(args)
-        md = (self.dir / "run" / "visibility.md").read_text()
+        run = self.dir / "run"
+        md = (run / "visibility-report.md").read_text()
+        self.assertEqual(sorted(p.name for p in run.iterdir()), ["data", "visibility-report.md"])
+        self.assertEqual(sorted(p.name for p in (run / "data").iterdir()),
+                         ["domains.csv", "prompts.json", "raw", "results.jsonl", "run-meta.json"])
         self.assertIn("| Claude (API) | api | openrouter |", md)
         self.assertIn("| Google AI Mode | app | brightdata |", md)
         self.assertIn("| acme.example | own |", md)

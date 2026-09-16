@@ -45,10 +45,10 @@ researcher had prior context.
 |---|---|---|
 | 0 | Inputs + preflight | Brand name and industry collected; `preflight` passes |
 | 1 | Prompt set | User approved the 13 prompts |
-| 2 | Engine run + research (in parallel) | `results.jsonl` saved; sections 1 to 17 drafted |
-| 3 | Summarise | `visibility.md` written |
+| 2 | Engine run + research (in parallel) | `data/results.jsonl` saved; sections 1 to 17 drafted |
+| 3 | Summarise | `visibility-report.md` written |
 | 4 | Confirm the entity | User picked their real website (after the run) |
-| 5 | Write the report | Section 18 filled from `visibility.md`; every flag intact |
+| 5 | Write the report | Section 18 filled from `visibility-report.md`; every flag intact |
 
 Set `SKILL=<this skill's folder>`, then get the run folder from the script, run from the
 user's project:
@@ -68,9 +68,19 @@ RUN=$(python3 "$SKILL/scripts/brand360.py" path --brand "<brand>")
 Note: the current `mos validate` still expects dated `campaigns/YYYY/MM/...` folders,
 so it flags this layout until the engine adopts platform-first campaigns.
 
+Every run folder has the same shape:
+
+```
+<run folder>/
+  brand-360-report.md      the finished report (you write it in Stage 5)
+  visibility-report.md     the engine summary (written by `summarise`)
+  data/                    prompts.json, results.jsonl, run-meta.json, domains.csv,
+                           sections-1-17.md (research draft), raw/ (per-call API responses)
+```
+
 Never invent another location. Run folders can hold client data: never commit them into
-this pack. Everything the report needs sits in the run folder; `raw/` is bulky, so add it to
-the project's `.gitignore` (or delete it) before committing.
+this pack. `data/raw/` is bulky and nothing reads it after the run, so add it to the
+project's `.gitignore` (or delete it) before committing.
 
 ---
 
@@ -95,13 +105,13 @@ the user to **`references/providers.md`**.
 
 ## Stage 1: Prompt set
 
-Read **`references/prompt-set.md`** and write `$RUN/prompts.json`: 3 closed-book, 5 branded
+Read **`references/prompt-set.md`** and write `$RUN/data/prompts.json`: 3 closed-book, 5 branded
 and 5 unbranded prompts, built from the two inputs only. Show all 13 to the user and ask for
 approval with AskUserQuestion before spending anything. Then preview the plan:
 
 ```bash
 python3 "$SKILL/scripts/brand360.py" run --brand "<brand>" --industry "<industry>" \
-  --prompts "$RUN/prompts.json" --out "$RUN" --country AU --env-file <.env> --dry-run
+  --prompts "$RUN/data/prompts.json" --out "$RUN" --country AU --env-file <.env> --dry-run
 ```
 
 `--country` is the buyer's market (two letters, default AU).
@@ -113,11 +123,11 @@ seconds each and run six at a time; a Bright Data fallback batch can add several
 
 While it runs, spawn **one** research agent with the Research brief from
 **`references/report-spec.md`**, filled with the two inputs and nothing else. It writes
-sections 1 to 17 with numbered references. Save its output as `$RUN/sections-1-17.md`.
+sections 1 to 17 with numbered references. Save its output as `$RUN/data/sections-1-17.md`.
 
 The run ends with a count of failed calls. Retry only what failed, for example
 `--phases app --only google-aio`: the latest answer for each prompt wins, so a retry never
-pays for the surfaces that already worked. Section 7 of `visibility.md` lists anything that
+pays for the surfaces that already worked. Section 7 of `visibility-report.md` lists anything that
 still failed.
 
 ## Stage 3: Summarise
@@ -127,14 +137,16 @@ python3 "$SKILL/scripts/brand360.py" summarise --run-dir "$RUN" --alias "<short 
 ```
 
 Add `--alias` for common short forms or acronyms of the brand. Then read
-**`$RUN/visibility.md` only**. Never read `results.jsonl` or `raw/` into context: they are
-large, and the summary carries everything the report needs. Add `--no-excerpts` if there
+**`$RUN/visibility-report.md`** for the engine data. Never read `data/results.jsonl`,
+`data/domains.csv` or `data/raw/` into context: they are large, and the summary carries
+everything the report needs (the one exception is a single raw record when debugging a
+fallback, below). Add `--no-excerpts` if there
 are many engines and the file is long.
 
 ## Stage 4: Confirm the entity (after the run)
 
 Now, and only now, ask the user which website is theirs. Use AskUserQuestion with the
-non-platform domains from `visibility.md` section 3 as options (plus "none of these").
+non-platform domains from `visibility-report.md` section 3 as options (plus "none of these").
 Then re-run the summary with labels and link checks:
 
 ```bash
@@ -154,10 +166,10 @@ Assemble `$RUN/brand-360-report.md`:
 
 0. Frontmatter, so a MarketingOS brain's `mos validate` accepts it: `title`, `type: campaign`,
    a one-line `description` with the headline, `date`, `status: active`, and `sources` listing
-   the run folder's `visibility.md` and `prompts.json` (paths relative to the brain root).
+   the run folder's `visibility-report.md` and `data/prompts.json` (paths relative to the brain root).
 1. The header, per `references/report-spec.md`.
 2. Sections 1 to 17 from the research agent, unchanged apart from fixing broken formatting.
-3. **Section 18, the AI Visibility Scorecard**, written from `visibility.md` exactly as the
+3. **Section 18, the AI Visibility Scorecard**, written from `visibility-report.md` exactly as the
    spec lays out: the engine table, the funnel (Known → Found → Cited → Recommended), who
    gets recommended instead, trusted sources, and what the data does not tell you.
 4. The numbered reference list.
@@ -192,9 +204,9 @@ They can be switched on in the config and then run on OpenRouter (Grok) or Brigh
 
 **Bright Data's Gemini and Copilot output fields are undocumented.** If a Bright Data
 fallback returns empty answers with no error, open one record in
-`raw/app/brightdata-<id>.json` (just one) and add the real field name to `answer_fields`.
+`data/raw/app/brightdata-<id>.json` (just one) and add the real field name to `answer_fields`.
 
-**Note which provider served each answer.** The `Via` column in `visibility.md` shows it.
+**Note which provider served each answer.** The `Via` column in `visibility-report.md` shows it.
 If a fallback served part of a surface, say so in 18.5: the fallback is the API or a
 different scraper, so its answer can differ from the primary's.
 

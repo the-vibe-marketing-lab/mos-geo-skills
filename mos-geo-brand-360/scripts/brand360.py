@@ -11,8 +11,14 @@ Subcommands
               still exists at its provider.
   run         Send the prompt set to the engines and save raw + normalised
               results.
-  summarise   Turn results.jsonl into visibility.md + domains.csv - the only
-              files the skill reads back (keeps token use down).
+  summarise   Turn data/results.jsonl into visibility-report.md (+ data/domains.csv),
+              the only file the skill reads back (keeps token use down).
+
+Run folder layout
+  brand-360-report.md     the finished report (written by the skill)
+  visibility-report.md    the engine summary (written by summarise)
+  data/                   prompts.json, results.jsonl, run-meta.json,
+                          domains.csv, raw/ (per-call API responses)
 
 Providers (primary first; a failed or unconfigured primary falls back):
   models  DataForSEO LLM Responses  ->  OpenRouter
@@ -52,6 +58,8 @@ UA = "mos-geo-brand-360/1.0"
 ENV_KEYS = ("DATAFORSEO_LOGIN", "DATAFORSEO_PASSWORD", "OPENROUTER_API_KEY",
             "BRIGHTDATA_API_KEY", "BRIGHTDATA_SERP_ZONE")
 PHASES = ("closed-book", "api-search", "app")
+DATA_DIR = "data"
+VISIBILITY_REPORT = "visibility-report.md"
 NO_AIO = "(Google showed no AI Overview for this query.)"
 NO_AIMODE = "(Google AI Mode returned no answer for this query.)"
 DFS_PROMPT_LIMIT = 500
@@ -543,7 +551,7 @@ def load_prompts(path: str) -> dict:
 
 
 def save_raw(out: Path, phase: str, engine: str, prompt_id: str, provider: str, raw) -> None:
-    d = out / "raw" / phase / engine
+    d = out / DATA_DIR / "raw" / phase / engine
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{prompt_id}.{provider}.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
@@ -599,7 +607,11 @@ def cmd_run(args) -> int:
 
     if has_provider(env, "dataforseo"):
         dfs_location_code(cfg, env, args.country)  # fail fast on a bad country
-    out.mkdir(parents=True, exist_ok=True)
+    data = out / DATA_DIR
+    data.mkdir(parents=True, exist_ok=True)
+    kept = data / "prompts.json"  # the run folder keeps the exact prompts it asked
+    if Path(args.prompts).resolve() != kept.resolve():
+        kept.write_text(Path(args.prompts).read_text(encoding="utf-8"), encoding="utf-8")
     records = []
 
     def model_work(job):
@@ -645,7 +657,7 @@ def cmd_run(args) -> int:
                 print(f"  [FAILED    ] app {a['id']:<15} {p['id']}")
 
     if pending:
-        raw_dir = out / "raw" / "app"
+        raw_dir = out / DATA_DIR / "raw" / "app"
         raw_dir.mkdir(parents=True, exist_ok=True)
 
         def bd_work(item):
@@ -666,10 +678,10 @@ def cmd_run(args) -> int:
                 bad = sum(1 for _, p, _ in rows if res[p["id"]][2])
                 print(f"  [brightdata] app {rows[0][0]['id']:<15} {len(rows) - bad} ok, {bad} failed")
 
-    with (out / "results.jsonl").open("a", encoding="utf-8") as fh:
+    with (data / "results.jsonl").open("a", encoding="utf-8") as fh:
         for rec in records:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    meta_path = out / "run-meta.json"
+    meta_path = data / "run-meta.json"
     old = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
     meta = {"brand": args.brand, "industry": args.industry, "country": args.country.upper(),
             "run_at": time.strftime("%Y-%m-%d %H:%M:%S %z"),
@@ -678,7 +690,7 @@ def cmd_run(args) -> int:
     errors = sum(1 for r in records if r["error"])
     fallbacks = sum(1 for r in records if r["fallback_from"] and not r["error"])
     cost = sum(r["cost"] for r in records)
-    print(f"\nSaved {len(records)} results to {out / 'results.jsonl'}: {errors} failed, "
+    print(f"\nSaved {len(records)} results to {data / 'results.jsonl'}: {errors} failed, "
           f"{fallbacks} served by a fallback provider. DataForSEO/OpenRouter cost ${cost:.3f} "
           "(Bright Data is billed separately).")
     return 0 if records and errors < len(records) else 2
@@ -732,15 +744,17 @@ def cmd_summarise(args) -> int:
     run_dir = Path(args.run_dir)
     # A phase can be re-run into the same folder; the latest answer wins.
     latest = {}
-    for line in (run_dir / "results.jsonl").read_text(encoding="utf-8").splitlines():
+    data = run_dir / DATA_DIR
+    for line in (data / "results.jsonl").read_text(encoding="utf-8").splitlines():
         if line.strip():
             r = json.loads(line)
             latest[(r["phase"], r["engine"], r["prompt_id"])] = r
     rows = list(latest.values())
-    meta = json.loads((run_dir / "run-meta.json").read_text(encoding="utf-8")) if (run_dir / "run-meta.json").exists() else {}
+    meta_path = data / "run-meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
     brand = args.brand or meta.get("brand")
     if not brand:
-        sys.exit("--brand is required (no run-meta.json found)")
+        sys.exit("--brand is required (no data/run-meta.json found)")
     pats = brand_patterns(brand, args.alias or [])
     own = {domain_of(d) for d in (args.own_domain or [])}
     comps = {domain_of(d) for d in (args.competitor or [])}
@@ -871,7 +885,7 @@ def cmd_summarise(args) -> int:
         L.append(f"| {d} | {classify(d)} | {v['count']} | {len(v['engines'])} | "
                  f"{dead(d) if args.check_links else 'not checked'} |")
     L.append("")
-    L.append(f"Full list: `domains.csv` ({len(ranked)} domains).")
+    L.append(f"Full list: `data/domains.csv` ({len(ranked)} domains).")
     L.append("")
 
     # 6. What the engines searched for
@@ -909,18 +923,18 @@ def cmd_summarise(args) -> int:
              f"date: {meta.get('run_at', time.strftime('%Y-%m-%d'))[:10]}",
              "status: active",
              "sources:",
-             f"  - {rel}/prompts.json",
-             f"  - {rel}/results.jsonl",
+             f"  - {rel}/{DATA_DIR}/prompts.json",
+             f"  - {rel}/{DATA_DIR}/results.jsonl",
              "---", ""]
-    (run_dir / "visibility.md").write_text("\n".join(front + L) + "\n", encoding="utf-8")
-    with (run_dir / "domains.csv").open("w", newline="", encoding="utf-8") as fh:
+    (run_dir / VISIBILITY_REPORT).write_text("\n".join(front + L) + "\n", encoding="utf-8")
+    with (data / "domains.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["domain", "class", "citations", "engines", "url", "http_status"])
         for d in ranked:
             for u in sorted(dom_rows[d]["urls"]):
                 w.writerow([d, classify(d), dom_rows[d]["count"],
                             "; ".join(sorted(dom_rows[d]["engines"])), u, link_status.get(u, "")])
-    print(f"Wrote {run_dir / 'visibility.md'} and domains.csv")
+    print(f"Wrote {run_dir / VISIBILITY_REPORT} and {data / 'domains.csv'}")
     return 0
 
 
@@ -961,9 +975,9 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="print the plan, call nothing")
     p.set_defaults(fn=cmd_run)
 
-    p = sub.add_parser("summarise", help="build visibility.md + domains.csv")
+    p = sub.add_parser("summarise", help="build visibility-report.md + data/domains.csv")
     p.add_argument("--run-dir", required=True)
-    p.add_argument("--brand", help="defaults to the brand in run-meta.json")
+    p.add_argument("--brand", help="defaults to the brand in data/run-meta.json")
     p.add_argument("--alias", action="append", help="another name the brand goes by (repeatable)")
     p.add_argument("--own-domain", action="append",
                    help="the brand's real domain, supplied AFTER the run, for labelling only")

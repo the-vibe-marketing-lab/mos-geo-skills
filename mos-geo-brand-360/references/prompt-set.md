@@ -15,7 +15,8 @@ memory), do not "help" the prompts with that knowledge.
 
 ## Shape
 
-Write `prompts.json` into the run folder:
+Write `data/prompts.json` inside the run folder (the run also copies whatever `--prompts`
+file it is given there, so the folder always keeps the exact prompts it asked):
 
 ```json
 {

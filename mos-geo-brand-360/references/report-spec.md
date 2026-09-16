@@ -2,7 +2,7 @@
 
 This is the reconstructed Brand Brain prompt, extended with the AI visibility layer. The
 research agent in Stage 2 gets the **Research brief** below. You (the orchestrator) write
-Section 18 and the header from `visibility.md`.
+Section 18 and the header from `visibility-report.md`.
 
 ---
 
@@ -78,18 +78,18 @@ Section 18 and the header from `visibility.md`.
 - Brand, industry, research date.
 - **Entity found:** the organisation the research agent settled on, plus every name
   collision it found, each with a source.
-- **What the engines found:** one line from `visibility.md` section 3 (did the engines
+- **What the engines found:** one line from `visibility-report.md` section 3 (did the engines
   land on the same organisation the research agent did?).
 - A one-line note: "Every AI prompt was asked once. Treat single answers as a snapshot."
 
-## Section 18: AI Visibility Scorecard (you write it from `visibility.md`)
+## Section 18: AI Visibility Scorecard (you write it from `visibility-report.md`)
 
 ### 18.1 Engine by engine
 
 | Engine | Surface | Known (closed-book) | Found | Resolved to | Mixed up with | Cited sources | Recommended (unbranded) |
 |---|---|---|---|---|---|---|---|
 
-- **Known:** Yes / Partly / No. Judge from the closed-book answers in `visibility.md`
+- **Known:** Yes / Partly / No. Judge from the closed-book answers in `visibility-report.md`
   section 2, not from the literal-match column: an answer that says "I'm not familiar with
   {brand}" repeats the name and still scores No.
 - **Found:** Yes / No / Wrong brand, from the branded search answers.
@@ -110,13 +110,13 @@ stage where the brand drops out; that is the headline finding.
 
 ### 18.3 Who gets recommended instead
 
-From section 4 of `visibility.md`: the brands and domains the engines named for the
+From section 4 of `visibility-report.md`: the brands and domains the engines named for the
 unbranded prompts. These are the real competitors in AI answers, and they may differ from
 the competitors in Section 3.
 
 ### 18.4 Sources the engines trust
 
-The top cited domains from `visibility.md` section 5, grouped as own / platform /
+The top cited domains from `visibility-report.md` section 5, grouped as own / platform /
 competitor / third-party, with any dead links called out. Third-party domains cited often
 are the outreach list.
 
