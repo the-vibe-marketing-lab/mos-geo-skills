@@ -1,0 +1,255 @@
+"""Offline tests for brand360.py. No network, no keys.
+
+Run: python3 -m unittest scripts/test_brand360.py  (from the skill folder)
+"""
+
+import json
+import sys
+import tempfile
+import unittest
+from argparse import Namespace
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).parent))
+import brand360 as b  # noqa: E402
+
+ENV = {"DATAFORSEO_LOGIN": "l", "DATAFORSEO_PASSWORD": "p", "OPENROUTER_API_KEY": "o",
+       "BRIGHTDATA_API_KEY": "k", "BRIGHTDATA_SERP_ZONE": "z"}
+PROMPTS = {"closed_book": [{"id": "cb01", "text": "What is Acme Widgets?"}],
+           "branded": [{"id": "br01", "text": "Is Acme Widgets any good?"}],
+           "unbranded": [{"id": "un01", "text": "Best widget maker in Australia"}]}
+
+
+def dfs_ok(result, cost=0.01):
+    return 200, {"status_code": 20000, "tasks": [{"status_code": 20000, "cost": cost, "result": [result]}]}
+
+
+def fake_http(method, url, headers=None, body=None, timeout=0):
+    if "llm_scraper/locations" in url:
+        return dfs_ok({"location_code": 2036, "country_iso_code": "AU", "location_type": "Country"})
+    if "claude/llm_responses/live" in url:  # primary fails for Claude only
+        return 200, {"status_code": 20000, "tasks": [{"status_code": 40200, "status_message": "Payment required.", "cost": 0}]}
+    if "llm_responses/live" in url:
+        assert "system_message" not in body[0]
+        return dfs_ok({"items": [{"type": "reasoning", "sections": None},
+                                 {"type": "message", "sections": [
+                                     {"type": "text", "text": "Acme Widgets is ", "annotations": None},
+                                     {"type": "text", "text": "a widget maker.",
+                                      "annotations": [{"title": "acme.example", "url": "https://acme.example/"}]}]}],
+                       "fan_out_queries": ["Acme Widgets"]})
+    if "openrouter.ai" in url:
+        assert body["messages"][0]["role"] == "user" and len(body["messages"]) == 1
+        return 200, {"choices": [{"message": {"content": "Acme Widgets via OpenRouter.",
+                                              "annotations": [{"type": "url_citation", "url_citation": {"url": "https://acme.example/about"}}]}}],
+                     "usage": {"cost": 0.002}}
+    if "llm_scraper/live" in url:
+        return dfs_ok({"markdown": "Acme Widgets builds widgets.", "fan_out_queries": ["acme widgets australia"],
+                       "sources": [{"url": "https://acme.example/", "title": "Acme"}], "items": []})
+    if "ai_mode/live" in url:  # primary fails for AI Mode -> Bright Data batch
+        return 200, {"status_code": 20000, "tasks": [{"status_code": 40101, "status_message": "Internal SE Server Error.", "cost": 0}]}
+    if "organic/live" in url:
+        if "Best widget" in body[0]["keyword"]:
+            return dfs_ok({"items": [{"type": "organic"}]})  # no AI Overview shown
+        return dfs_ok({"items": [{"type": "ai_overview", "markdown": "Acme Widgets is a maker.",
+                                  "references": [{"url": "https://www.reddit.com/r/widgets", "domain": "reddit.com"}]}]})
+    if "datasets/v3/trigger" in url:
+        assert "gd_mcswdt6z2elth3zqr2" in url and "udm=50&q=" in body[0]["url"] and body[0]["country"] == "AU"
+        return 200, {"snapshot_id": "sd_1"}
+    if "datasets/v3/progress" in url:
+        return 200, {"status": "ready"}
+    if "datasets/v3/snapshot" in url:
+        return 200, [{"prompt": p["text"], "answer_text": f"Bright Data says: {p['text']} Acme Widgets",
+                      "citations": [{"url": "https://acme.example/faq"}]}
+                     for p in PROMPTS["branded"] + PROMPTS["unbranded"]]
+    raise AssertionError(f"unexpected call: {url}")
+
+
+class Brand360Test(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        (self.dir / "prompts.json").write_text(json.dumps(PROMPTS))
+        b._LOCATION_CACHE.clear()
+        patches = [mock.patch.object(b, "http_json", side_effect=fake_http),
+                   mock.patch.object(b, "load_env", return_value=dict(ENV)),
+                   mock.patch.object(b.time, "sleep"),
+                   mock.patch.object(b, "resolve_grounding_url", side_effect=lambda c: c)]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(self.tmp.cleanup)
+
+    def run_all(self, **kw):
+        args = Namespace(env_file=None, config=None, brand="Acme Widgets", industry="widgets",
+                         prompts=str(self.dir / "prompts.json"), out=str(self.dir / "run"),
+                         phases="closed-book,api-search,app", only=None, workers=4,
+                         country="AU", dry_run=False)
+        vars(args).update(kw)
+        with mock.patch("builtins.print"):
+            self.assertEqual(b.cmd_run(args), 0)
+        return [json.loads(l) for l in (self.dir / "run" / "data" / "results.jsonl").read_text().splitlines()]
+
+    def test_primary_and_fallbacks(self):
+        rows = self.run_all()
+        by = {(r["phase"], r["engine"], r["prompt_id"]): r for r in rows}
+        # 3 closed-book + 8 api-search + 8 app
+        self.assertEqual(len(rows), 19)
+        self.assertFalse([r for r in rows if r["error"]])
+        gpt = by[("api-search", "chatgpt", "br01")]
+        self.assertEqual((gpt["provider"], gpt["answer"]), ("dataforseo", "Acme Widgets is a widget maker."))
+        self.assertEqual(gpt["fan_out"], ["Acme Widgets"])
+        claude = by[("closed-book", "claude", "cb01")]
+        self.assertEqual(claude["provider"], "openrouter")
+        self.assertIn("40200", claude["fallback_from"][0])
+        aimode = by[("app", "aimode", "un01")]
+        self.assertEqual(aimode["provider"], "brightdata")
+        self.assertTrue(aimode["answer"].startswith("Bright Data says"))
+        self.assertEqual(by[("app", "google-aio", "un01")]["answer"], b.NO_AIO)
+        self.assertNotIn(("closed-book", "perplexity", "cb01"), by)
+
+    def test_only_and_summary(self):
+        self.run_all()
+        rows = self.run_all(phases="app", only="google-aio")  # a retry appends
+        self.assertEqual(len(rows), 21)
+        args = Namespace(run_dir=str(self.dir / "run"), brand=None, alias=["Acme"],
+                         own_domain=["acme.example"], competitor=["reddit.com"], check_links=False,
+                         excerpt=200, no_excerpts=False, top_domains=30, fan_out=12)
+        with mock.patch("builtins.print"):
+            b.cmd_summarise(args)
+        run = self.dir / "run"
+        md = (run / "visibility-report.md").read_text()
+        self.assertEqual(sorted(p.name for p in run.iterdir()), ["data", "visibility-report.md"])
+        self.assertEqual(sorted(p.name for p in (run / "data").iterdir()),
+                         ["domains.csv", "prompts.json", "raw", "results.jsonl", "run-meta.json"])
+        self.assertIn("| Claude (API) | api | openrouter |", md)
+        self.assertIn("| Google AI Mode | app | brightdata |", md)
+        self.assertIn("| acme.example | own |", md)
+        self.assertIn("| reddit.com | platform |", md)  # platform beats competitor
+        self.assertIn("## 6. Search queries", md)
+        self.assertIn("| ChatGPT (app) | br01 | Is Acme Widgets any good? | acme widgets australia |", md)
+        self.assertIn("| Engine | Mentions brand | Top cited domains | What it said |", md)
+        self.assertIn("| ChatGPT (API) | **Yes** | acme.example |", md)
+        self.assertIn("| Google AI Overviews | No | - |", md)
+        self.assertNotIn("## 7. Failed calls", md)
+        # the retry replaced, not duplicated, the AI Overview rows
+        self.assertIn("| Google AI Overviews | app | dataforseo | - | 1/1 | 1/1 | 0/1 | 0 |", md)
+
+    def test_run_dir_inside_and_outside_a_brain(self):
+        brain = self.dir / "brain"
+        (brain / ".mos").mkdir(parents=True)
+        (brain / ".mos" / "config.yaml").write_text('{"mode": "in-house"}')
+        (brain / "content").mkdir()
+        inside = b.run_dir_for("The Vibe Marketing Lab", "2026-09-16", brain / "content")
+        self.assertEqual(inside, (brain / "campaigns/geo/2026-09/brand-360-report").resolve())
+        inside.mkdir(parents=True)
+        (inside / "brand-360-report.md").write_text("x")
+        again = b.run_dir_for("The Vibe Marketing Lab", "2026-09-30", brain)
+        self.assertEqual(again.name, "brand-360-report-2")  # never overwrite a run
+        (brain / ".mos" / "config.yaml").write_text("mode: agency\n")
+        hq = b.run_dir_for("Acme & Co.", "2026-09-16", brain)
+        self.assertEqual(hq, (brain / "campaigns/geo/2026-09/acme-co/brand-360-report").resolve())
+        outside = b.run_dir_for("Acme & Co.", "2026-01-05", self.dir)
+        self.assertEqual(outside, (self.dir / "outputs/geo/2026-01/acme-co/brand-360-report").resolve())
+        with self.assertRaises(SystemExit):
+            b.run_dir_for("Acme", "16-09-2026", self.dir)
+
+    def test_worktree_borrows_main_checkout_config(self):
+        main = self.dir / "main"
+        (main / ".mos").mkdir(parents=True)
+        (main / ".mos" / "config.yaml").write_text("mode: agency\n")
+        (main / ".git" / "worktrees" / "wt").mkdir(parents=True)
+        wt = main / ".claude" / "worktrees" / "wt"
+        (wt / "campaigns").mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {main}/.git/worktrees/wt\n")
+        self.assertEqual(b.find_brain(wt / "campaigns"), wt)
+        self.assertEqual(b.brain_mode(wt), "agency")
+        self.assertEqual(b.run_dir_for("Acme", "2026-09-16", wt),
+                         (wt / "campaigns/geo/2026-09/acme/brand-360-report").resolve())
+        (wt / ".git").write_text("gitdir: C:\\Users\\x\\brain\\.git\\worktrees\\wt\n")
+        if b.os.name != "nt":
+            self.assertEqual(b._main_checkout(wt / ".git"), Path("/mnt/c/Users/x/brain"))
+        self.assertIsNone(b.find_brain(wt / "campaigns"))  # that main checkout does not exist
+
+    def test_plain_table_cell(self):
+        self.assertEqual(b.plain("## Top **pick**: [Acme](https://acme.example) ([acme.example](https://acme.example))[1][2] a|b"),
+                         "Top pick: Acme a\\|b")
+
+    def test_assemble_builds_and_refuses(self):
+        run = self.dir / "run"
+        data = run / "data"
+        data.mkdir(parents=True)
+        (data / "prompts.json").write_text(json.dumps(PROMPTS))
+        (data / "run-meta.json").write_text(json.dumps({"brand": "Acme Widgets", "run_at": "2026-09-16 10:00:00"}))
+        sections = "## Entity found\n\nAcme.\n\n" + "".join(f"## {n}. S{n}\n\nx [1]\n\n" for n in range(1, 18))
+        (data / "sections-1-17.md").write_text(sections + "## References\n\n1. https://acme.example/\n")
+        (data / "header.md").write_text("- **Brand:** Acme Widgets\n")
+        (data / "section-18.md").write_text("## 18. AI Visibility Scorecard\n\nBody.\n")
+        args = Namespace(run_dir=str(run), brand=None, description="Latest audit. Headline - x.")
+        with mock.patch("builtins.print"):
+            b.cmd_assemble(args)
+        report = (run / "brand-360-report.md").read_text()
+        self.assertTrue(report.startswith("---\ntitle: Acme Widgets - 360° Brand Intelligence Report\ntype: campaign\n"))
+        order = ["# Acme Widgets: 360° Brand Intelligence Report", "- **Brand:** Acme Widgets", b.SNAPSHOT_NOTE,
+                 "## Entity found", "## 17. S17", "## 18. AI Visibility Scorecard", "## References",
+                 "## Appendix: the prompt set (asked once each)", "- `un01` Best widget maker in Australia"]
+        positions = [report.index(x) for x in order]
+        self.assertEqual(positions, sorted(positions))
+        draft = (data / "sections-1-17.md").read_text()
+        self.assertTrue(draft.startswith("---\ntitle: Acme Widgets - brand-360 research draft (sections 1-17)"))
+        with mock.patch("builtins.print"):  # a second build is identical (draft frontmatter is stripped)
+            b.cmd_assemble(args)
+        self.assertEqual((run / "brand-360-report.md").read_text(), report)
+        (data / "sections-1-17.md").write_text(sections.replace("## 9. S9", "## Nine"))
+        with self.assertRaises(SystemExit) as cm:
+            b.cmd_assemble(args)
+        self.assertIn("missing section(s) [9]", str(cm.exception))
+
+    def test_md_blocks(self):
+        md = "---\ntitle: x\n---\n\n# T\n\n> note **bold**\n\n---\n\n| A | B |\n|---|---|\n| 1 | a\\|b |\n\n## S\n"
+        self.assertEqual(list(b.md_blocks(md)), [("h", 1, "T"), ("p", "note bold"),
+                                                 ("table", [["A", "B"], ["1", "a|b"]]), ("h", 2, "S")])
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "openpyxl not installed")
+    def test_workbook_fills_template(self):
+        import openpyxl
+        run = self.dir / "2026-09" / "brand-360-report"
+        data = run / "data"
+        data.mkdir(parents=True)
+        (data / "run-meta.json").write_text(json.dumps({"brand": "Acme Widgets", "run_at": "2026-09-16 10:00:00"}))
+        (run / "brand-360-report.md").write_text("# Acme\n\n## 18. AI Visibility Scorecard\n\n| A | B |\n|---|---|\n| 1 | 2 |\n")
+        (run / "visibility-report.md").write_text("# Vis\n\n| Engine | Surface |\n|---|---|\n| ChatGPT (API) | api |\n")
+        (data / "brand-truth-review.csv").write_text("Topic,What the research / AI says,Where it came from,Said by (AI surfaces)\nFounder,Run by X.,Section 1 [1],Research\n")
+        with mock.patch("builtins.print"):
+            b.cmd_workbook(Namespace(run_dir=str(run), brand=None))
+        wb = openpyxl.load_workbook(self.dir / "2026-09" / "brand-audit-master.xlsx")
+        self.assertEqual(wb.sheetnames[:4], ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility"])
+        ws = wb["Checklist"]
+        row = next(r for r in range(1, 40) if ws.cell(row=r, column=3).value == "mos-geo-brand-360")
+        self.assertEqual((ws.cell(row=row, column=8).value, ws.cell(row=row, column=9).value), ("Client review", "☑"))
+        self.assertEqual(wb["Brand Truth Review"].cell(row=8, column=3).value, "Founder")
+        self.assertEqual(wb["AI Visibility"].cell(row=5, column=2).value, "ChatGPT (API)")
+        wb["Brand Truth Review"].cell(row=8, column=7, value="Inaccurate")
+        wb["Brand Truth Review"].cell(row=8, column=8, value="Run by Y.")
+        wb.save(self.dir / "2026-09" / "brand-audit-master.xlsx")
+        with mock.patch("builtins.print"):
+            b.cmd_workbook(Namespace(run_dir=str(run), brand=None))  # a re-run keeps the verdict
+        ws = openpyxl.load_workbook(self.dir / "2026-09" / "brand-audit-master.xlsx")["Brand Truth Review"]
+        self.assertEqual((ws.cell(row=8, column=7).value, ws.cell(row=8, column=8).value), ("Inaccurate", "Run by Y."))
+
+    def test_prompt_limit(self):
+        long = dict(PROMPTS, branded=[{"text": "x" * 501}])
+        (self.dir / "prompts.json").write_text(json.dumps(long))
+        with self.assertRaises(SystemExit):
+            b.load_prompts(str(self.dir / "prompts.json"))
+
+    def test_grounding_title_fallback(self):
+        mock.patch.stopall()
+        with mock.patch.object(b.urllib.request, "build_opener") as bo:
+            bo.return_value.open.side_effect = OSError("offline")
+            out = b.resolve_grounding_url({"url": "https://vertexaisearch.cloud.google.com/x", "title": "acme.example"})
+        self.assertEqual(out["url"], "https://acme.example/")
+
+
+if __name__ == "__main__":
+    unittest.main()

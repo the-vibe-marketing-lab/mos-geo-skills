@@ -10,6 +10,10 @@ scratch/
 # not in the skill pack.
 outputs/
 
+# Python bytecode from the skill scripts
+__pycache__/
+*.pyc
+
 # OS / editor noise
 .DS_Store
 Thumbs.db

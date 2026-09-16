@@ -1,0 +1,147 @@
+{
+  "_comment": "Which AI surfaces mos-geo-brand-360 queries, and through which provider. DataForSEO is primary; OpenRouter (models) and Bright Data (apps) are fallbacks, tried in order when the primary has no credentials or a call fails. Model names go stale: `brand360.py preflight` checks them against each provider's live model list. Set enabled=false to skip a surface.",
+
+  "provider_order": {
+    "models": ["dataforseo", "openrouter"],
+    "apps": ["dataforseo", "brightdata"]
+  },
+
+  "models": [
+    {
+      "id": "chatgpt",
+      "label": "ChatGPT (API)",
+      "closed_book": true,
+      "api_search": true,
+      "enabled": true,
+      "dataforseo": {"se": "chat_gpt", "model": "gpt-5.5", "country_field": true},
+      "openrouter": {"model": "openai/gpt-chat-latest", "search": "native"}
+    },
+    {
+      "id": "claude",
+      "label": "Claude (API)",
+      "closed_book": true,
+      "api_search": true,
+      "enabled": true,
+      "dataforseo": {"se": "claude", "model": "claude-sonnet-5", "country_field": true},
+      "openrouter": {"model": "~anthropic/claude-sonnet-latest", "search": "native"}
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini (API)",
+      "closed_book": true,
+      "api_search": true,
+      "enabled": true,
+      "dataforseo": {"se": "gemini", "model": "gemini-3.8-flash", "country_field": false},
+      "openrouter": {"model": "~google/gemini-flash-latest", "search": "native"}
+    },
+    {
+      "id": "perplexity",
+      "label": "Perplexity (Sonar API)",
+      "closed_book": false,
+      "api_search": true,
+      "enabled": true,
+      "_note": "Sonar always searches, so it sits out the closed-book pass and takes no web_search field.",
+      "dataforseo": {"se": "perplexity", "model": "sonar", "country_field": true, "always_searches": true},
+      "openrouter": {"model": "perplexity/sonar", "search": "builtin"}
+    },
+    {
+      "id": "grok",
+      "label": "Grok (API)",
+      "closed_book": true,
+      "api_search": true,
+      "enabled": false,
+      "_note": "Optional extra. DataForSEO has no Grok endpoint, so this runs on OpenRouter only.",
+      "openrouter": {"model": "~x-ai/grok-latest", "search": "native"}
+    }
+  ],
+
+  "apps": [
+    {
+      "id": "chatgpt-app",
+      "label": "ChatGPT (app)",
+      "enabled": true,
+      "dataforseo": {"kind": "llm_scraper", "path": "ai_optimization/chat_gpt/llm_scraper/live/advanced"},
+      "brightdata": "chatgpt-app"
+    },
+    {
+      "id": "gemini-app",
+      "label": "Gemini (app)",
+      "enabled": true,
+      "dataforseo": {"kind": "llm_scraper", "path": "ai_optimization/gemini/llm_scraper/live/advanced"},
+      "brightdata": "gemini-app"
+    },
+    {
+      "id": "aimode",
+      "label": "Google AI Mode",
+      "enabled": true,
+      "dataforseo": {"kind": "serp", "path": "serp/google/ai_mode/live/advanced"},
+      "brightdata": "aimode-app"
+    },
+    {
+      "id": "google-aio",
+      "label": "Google AI Overviews",
+      "enabled": true,
+      "dataforseo": {"kind": "serp", "path": "serp/google/organic/live/advanced",
+                     "extra": {"load_async_ai_overview": true, "depth": 10}},
+      "brightdata": "serp-aio"
+    },
+    {
+      "id": "perplexity-app",
+      "label": "Perplexity (app)",
+      "enabled": false,
+      "_note": "Optional extra, Bright Data only. The Perplexity API answer is already covered under models.",
+      "brightdata": "perplexity-app"
+    },
+    {
+      "id": "copilot-app",
+      "label": "Copilot (app)",
+      "enabled": false,
+      "_note": "Optional extra, Bright Data only.",
+      "brightdata": "copilot-app"
+    }
+  ],
+
+  "providers": {
+    "dataforseo": {
+      "_comment": "Verified live 2026-09-16. HTTP Basic auth with DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD. user_prompt max 500 chars (LLM Responses); keyword max 2000 (LLM Scraper) and 700 (AI Mode).",
+      "base_url": "https://api.dataforseo.com/v3/",
+      "llm_responses_path": "ai_optimization/{se}/llm_responses/live",
+      "models_path": "ai_optimization/{se}/llm_responses/models",
+      "locations_path": "ai_optimization/chat_gpt/llm_scraper/locations",
+      "language_code": "en",
+      "max_output_tokens": 1200
+    },
+    "openrouter": {
+      "base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "models_url": "https://openrouter.ai/api/v1/models",
+      "max_tokens": 1200
+    },
+    "brightdata": {
+      "_comment": "Dataset IDs verified 2026-09-16 against docs.brightdata.com and Bright Data's own GitHub repos. Gemini/Copilot output fields are undocumented, so several candidates are listed; the first non-empty one wins. {q} is replaced with the URL-encoded prompt.",
+      "trigger_url": "https://api.brightdata.com/datasets/v3/trigger",
+      "progress_url": "https://api.brightdata.com/datasets/v3/progress/{snapshot_id}",
+      "snapshot_url": "https://api.brightdata.com/datasets/v3/snapshot/{snapshot_id}?format=json",
+      "poll_seconds": 15,
+      "timeout_seconds": 900,
+      "scrapers": {
+        "chatgpt-app": {"dataset_id": "gd_m7aof0k82r803d5bjm", "url": "https://chatgpt.com/",
+                        "input_extra": {"web_search": true}, "set_country": true},
+        "perplexity-app": {"dataset_id": "gd_m7dhdot1vw9a7gc1n", "url": "https://www.perplexity.ai",
+                           "set_country": true},
+        "gemini-app": {"dataset_id": "gd_mbz66arm2mf9cu856y", "url": "https://gemini.google.com/",
+                       "set_country": false},
+        "aimode-app": {"dataset_id": "gd_mcswdt6z2elth3zqr2",
+                       "url_template": "https://www.google.com/search?udm=50&q={q}", "set_country": true},
+        "copilot-app": {"dataset_id": "gd_m7di5jy6s9geokz8w", "url": "https://copilot.microsoft.com/chats",
+                        "set_country": false}
+      },
+      "answer_fields": ["answer_text_markdown", "answer_text", "answer", "answer_html"],
+      "citation_fields": ["citations", "sources", "search_sources"],
+      "serp": {
+        "_comment": "Google AI Overviews fallback. Needs a SERP API zone; put its name in BRIGHTDATA_SERP_ZONE.",
+        "request_url": "https://api.brightdata.com/request",
+        "search_url": "https://www.google.com/search?q={q}&hl=en&gl={country}&brd_json=1&brd_ai_overview=2"
+      }
+    }
+  }
+}

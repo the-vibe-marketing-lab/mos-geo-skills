@@ -209,7 +209,13 @@ is, and the member should present the pairing rather than discover it later.
 
 ## Stage 7 — Deliverables
 
-Write three files into `outputs/YYYY-MM-DD-<client-slug>-llm-buttons/`:
+All GEO work in a MarketingOS brain lives under `campaigns/geo/YYYY-MM/`, one subfolder per
+skill. Write the three files into `campaigns/geo/YYYY-MM/llm-buttons/` (an agency HQ brain
+adds the client: `campaigns/geo/YYYY-MM/<client-slug>/llm-buttons/`; outside a brain use
+`outputs/geo/YYYY-MM/<client-slug>/llm-buttons/`). A second build in the same month goes in
+`llm-buttons-2/`; never overwrite a delivered build.
+
+The three files:
 
 | File | Built from | What it is |
 | --- | --- | --- |
@@ -226,6 +232,17 @@ Replace every `{{PLACEHOLDER}}`. Then read the brief once as the client would an
   cautious dev say yes.
 - **Every `[VERIFY]` flag survived.** Do not tidy them away before sending — they are the
   questions the client is meant to answer.
+
+Then tick the skill's row in the month's audit workbook. Set `SKILL=<this skill's folder>`
+first (the pack's `_shared/` folder sits beside it). The workbook is
+`brand-audit-master.xlsx` at the month root, created from the pack template if it is not
+there yet:
+
+```bash
+uv run --with openpyxl python "$SKILL/../_shared/brand-audit/tick_checklist.py" \
+  --skill mos-geo-llm-buttons --run-dir <the llm-buttons folder> \
+  --note "brief, code reference and demo in llm-buttons/"
+```
 
 ## Reference map
 
