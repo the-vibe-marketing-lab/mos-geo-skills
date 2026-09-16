@@ -19,7 +19,22 @@ Cross-skill reference material. Not a skill, never linked into `~/.claude/skills
 
 - `platform-endpoints.json` — the verified deep-link contract for each AI assistant (endpoint, query param, whether it auto-submits, whether it needs a login). Every entry was tested live, not copied off a blog. Treat this as the single source of truth and re-verify before any client build.
 - `geo-evidence.md` — the honest evidence base for LLM share buttons. What the one controlled A/B test actually found, what the tactic does not do, and where the line sits between a UX feature and something Microsoft classifies as an attack. Read this before you pitch the tactic to anyone.
+- `brand-audit/` — the master audit workbook, its skill registry and the script that builds it.
 - `logo-policy.md` — per-provider trademark position on putting AI company logos on a button. Short version: wordmarks by default, logos opt-in.
+
+## The master workbook: `Brand Audit Template.xlsx`
+
+`_shared/brand-audit/Brand Audit Template.xlsx` is the working sheet for a GEO brand audit. Make a copy per client (upload it to Google Sheets or open it in Excel).
+
+- **Checklist**: one row per `mos-geo-*` skill, with its GitHub link, how to run it, where its output is saved, a status dropdown and a Done tick box.
+- **Brand Truth Review**: one row per factual claim from the brand-360 report. The client marks each claim Accurate / Partly accurate / Inaccurate / Not sure / Out of date and writes the correct version. `mos-geo-brand-360` writes these rows to `data/brand-truth-review.csv` for you to append.
+- **Initiatives**: ICE-scored fixes that come out of the audit.
+
+The workbook is generated, never hand-edited. When a skill is added to this pack, add it to `_shared/brand-audit/skills.json` and rebuild:
+
+```bash
+uv run --with openpyxl python _shared/brand-audit/build_template.py
+```
 
 ## Install
 
@@ -48,7 +63,8 @@ So `~/.claude/skills/mos-geo-llm-buttons/SKILL.md` is found. `~/.claude/skills/m
 1. Create a new top-level folder, `mos-geo-<thing>/`, with a `SKILL.md` inside it.
 2. If it makes a factual claim about what GEO tactics achieve, back it in `_shared/geo-evidence.md` with a source URL, or don't make the claim.
 3. Add a row to the table above.
-4. Run `bash setup.sh`.
+4. Add the skill to `_shared/brand-audit/skills.json` and rebuild the workbook (see above).
+5. Run `bash setup.sh`.
 
 ## A note on honesty
 

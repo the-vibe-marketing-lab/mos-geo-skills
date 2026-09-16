@@ -49,6 +49,7 @@ researcher had prior context.
 | 3 | Summarise | `visibility-report.md` written |
 | 4 | Confirm the entity | User picked their real website (after the run) |
 | 5 | Write the report | `assemble` builds `brand-360-report.md` without refusing |
+| 6 | Brand Truth Review rows | `data/brand-truth-review.csv` written; Checklist row ticked |
 
 Set `SKILL=<this skill's folder>`, then get the run folder from the script, run from the
 user's project:
@@ -76,7 +77,8 @@ Every run folder has the same shape:
   visibility-report.md     the engine summary (written by `summarise`)
   data/                    prompts.json, results.jsonl, run-meta.json, domains.csv,
                            sections-1-17.md (research draft), header.md and
-                           section-18.md (your report parts), raw/ (per-call API responses)
+                           section-18.md (your report parts), brand-truth-review.csv
+                           (client review rows), raw/ (per-call API responses)
 ```
 
 Never invent another location. Run folders can hold client data: never commit them into
@@ -183,6 +185,34 @@ frontmatter to the research draft. If it refuses, fix the file it names and run 
 never patch the report by hand.
 
 Hand over the report path, the funnel line, and the one stage where the brand drops out.
+
+## Stage 6: Brand Truth Review rows (for the client)
+
+Clients check facts faster than prose, so do not ask them to read the whole report. Write
+`$RUN/data/brand-truth-review.csv` with one row per checkable claim, ready to append to the
+**Brand Truth Review** tab of the pack's master workbook
+(`_shared/brand-audit/Brand Audit Template.xlsx`, File > Import > Append in Google Sheets).
+
+Columns, in this order, with a header row:
+
+```
+Topic,What the research / AI says,Where it came from,Said by (AI surfaces)
+```
+
+- **15 to 30 rows.** One fact per row, written as a plain statement the client can mark
+  true or false ("Run by Jane Smith in Brisbane", not "Leadership").
+- **Cover:** identity and founder, location, what is sold, price, audience, size or
+  membership, positioning, competitors named, anything an engine got wrong or blended in
+  from a name collision, and anything flagged stale or conflicting in Section 16.
+- **Where it came from:** the report section and reference number (`Section 2 [3]`), or
+  `Section 18 (visibility-report s3)` for engine answers.
+- **Said by:** the AI surfaces that stated it, from `visibility-report.md`, or `Research`
+  when only the research agent found it.
+- Leave the verdict, correction and priority columns to the client and the agency; they
+  are in the workbook, not the CSV.
+
+Tick the brand-360 row in the workbook's **Checklist** tab when the report and review rows
+are delivered.
 
 ## Reference map
 
