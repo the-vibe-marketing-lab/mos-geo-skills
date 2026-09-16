@@ -8,7 +8,7 @@ GEO is the messy new corner of search where the "engine" is an LLM rather than a
 
 | Skill | What it does |
 |---|---|
-| `mos-geo-brand-360/` | A 360° Brand Intelligence Report from just a brand name and industry, plus an AI Visibility Scorecard: whether ChatGPT, Gemini, Claude, Grok, Perplexity, Google AI Mode, AI Overviews and Copilot know the brand, find it, cite it and recommend it. Needs OpenRouter and Bright Data keys (`mos-geo-brand-360/references/providers.md`). |
+| `mos-geo-brand-360/` | A 360° Brand Intelligence Report from just a brand name and industry, plus an AI Visibility Scorecard: whether ChatGPT, Claude, Gemini, Perplexity, Google AI Mode and AI Overviews know the brand, find it, cite it and recommend it. Runs on DataForSEO, with OpenRouter and Bright Data as automatic fallbacks (`mos-geo-brand-360/references/providers.md`). |
 | `mos-geo-llm-buttons/` | Generates a row of "ask an AI about this page" share buttons for an article — ChatGPT, Claude, Perplexity, Grok, Google AI Mode — each opening with a pre-filled summarise-this-page prompt. |
 
 More skills get added as flat folders at the top level of this repo. One folder per skill, each with its own `SKILL.md`. Add the folder, re-run `setup.sh`, done.

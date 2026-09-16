@@ -5,10 +5,11 @@ description: >
   test whether AI engines actually know it, can find it, cite it and recommend it. Researches 17
   sections (company, products, competitors, sentiment, personas, content, AI relevance, socials,
   hiring, media, legal and security, community, go-to-market, comparison pages, late-stage buyer
-  questions, off-site truth consistency, summary), then asks ChatGPT, Gemini, Claude, Grok and
-  Perplexity with no search (closed-book), the same engines with their own web search via
-  OpenRouter, and the consumer apps (ChatGPT, Perplexity, Gemini, Google AI Mode, Copilot) plus
-  Google AI Overviews via Bright Data, once each, and scores it all in an AI Visibility Scorecard.
+  questions, off-site truth consistency, summary), then asks ChatGPT, Claude and Gemini with no
+  search (closed-book), the same engines plus Perplexity with web search, and what real users see
+  in the ChatGPT and Gemini apps, Google AI Mode and Google AI Overviews, once each, through
+  DataForSEO (OpenRouter and Bright Data as automatic fallbacks), and scores it all in an AI
+  Visibility Scorecard.
   USE WHEN the user says "brand 360", "brand intelligence report", "brand brain", "is my brand
   known by AI", "does ChatGPT know my brand", "can AI find my brand", "AI brand visibility",
   "LLM brand audit", "what do LLMs say about [brand]", "entity audit", "brand GEO audit",
@@ -65,12 +66,14 @@ Ask for both inputs in one message: the **brand name** as customers say it, and 
 python3 "$SKILL/scripts/brand360.py" preflight --env-file <path to .env>
 ```
 
-It checks the API keys and that every model in `config/engines.json` still exists on
-OpenRouter. On a `GONE` model, pick the current equivalent from the list the check loads
-and update the config. Missing keys: stop and point the user to
-**`references/providers.md`**. The script runs without Bright Data (it skips the app and AI
-Overview phases), but say so up front, because the report loses its "what real users see"
-half.
+It checks the credentials, that every model in `config/engines.json` still exists at
+DataForSEO (and at OpenRouter, the fallback), and prints which provider chain will serve
+each surface. On a `GONE` model, pick a current name from the list it prints and update the
+config.
+
+**DataForSEO is the primary provider and is enough on its own.** OpenRouter and Bright Data
+only step in when a DataForSEO call fails. If a surface shows `NO PROVIDER`, stop and point
+the user to **`references/providers.md`**.
 
 ## Stage 1: Prompt set
 
@@ -87,15 +90,17 @@ python3 "$SKILL/scripts/brand360.py" run --brand "<brand>" --industry "<industry
 
 ## Stage 2: Engine run and research, in parallel
 
-Start the engine run in the background (drop `--dry-run`). The app phase polls Bright Data
-and can take several minutes.
+Start the engine run in the background (drop `--dry-run`). DataForSEO calls take 5 to 60
+seconds each and run six at a time; a Bright Data fallback batch can add several minutes.
 
 While it runs, spawn **one** research agent with the Research brief from
 **`references/report-spec.md`**, filled with the two inputs and nothing else. It writes
 sections 1 to 17 with numbered references. Save its output as `$RUN/sections-1-17.md`.
 
-Phases can be re-run on their own with `--phases closed-book|api-search|app|aio`; the latest
-answer for each prompt wins, so a failed engine can be retried without paying for the rest.
+The run ends with a count of failed calls. Retry only what failed, for example
+`--phases app --only google-aio`: the latest answer for each prompt wins, so a retry never
+pays for the surfaces that already worked. Section 7 of `visibility.md` lists anything that
+still failed.
 
 ## Stage 3: Summarise
 
@@ -157,13 +162,20 @@ Hand over the report path, the funnel line, and the one stage where the brand dr
 
 ## Things that will bite you
 
-**Bright Data's Grok scraper is listed as unavailable.** It ships disabled. Grok is still
-covered on the API surface.
+**Google sometimes throws error 40101 through DataForSEO.** The script retries once. If a
+surface still fails, retry it alone with `--only`.
 
-**Gemini, Copilot and Grok app output fields are undocumented.** The config tries several
-field names. If an app phase returns answers that are empty but have no errors, open one
-record in `raw/app/<scraper>.json` (just one) and add the real field name to
-`answer_fields` or `citation_fields`.
+**Grok, the Perplexity app and Copilot are off by default.** DataForSEO does not offer them.
+They can be switched on in the config and then run on OpenRouter (Grok) or Bright Data
+(the two apps).
+
+**Bright Data's Gemini and Copilot output fields are undocumented.** If a Bright Data
+fallback returns empty answers with no error, open one record in
+`raw/app/brightdata-<id>.json` (just one) and add the real field name to `answer_fields`.
+
+**Note which provider served each answer.** The `Via` column in `visibility.md` shows it.
+If a fallback served part of a surface, say so in 18.5: the fallback is the API or a
+different scraper, so its answer can differ from the primary's.
 
 **No AI Overview is a result.** Google shows overviews for some queries only. The script
 records "(Google showed no AI Overview for this query.)" rather than an error.

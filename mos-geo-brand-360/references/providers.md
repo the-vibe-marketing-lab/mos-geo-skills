@@ -1,60 +1,84 @@
-# Providers: keys, setup and cost
+# Providers: keys, setup, fallback and cost
 
-Two accounts power the engine run. Both are pay-as-you-go, and neither needs a contract.
+**DataForSEO is the primary provider** for every surface. OpenRouter and Bright Data are
+fallbacks: the script tries providers in the order set in `config/engines.json`
+(`provider_order`) and moves to the next one when a provider has no credentials or a call
+fails. Each result records which provider served it (`Via` column in `visibility.md`).
 
-| Provider | What it covers | Key |
+| Surface | Primary (DataForSEO) | Fallback |
 |---|---|---|
-| **OpenRouter** | Closed-book pass (ChatGPT, Gemini, Claude, Grok) and API answers with each provider's own web search (plus Perplexity Sonar) | `OPENROUTER_API_KEY` |
-| **Bright Data** | What users see in the consumer apps: ChatGPT, Perplexity, Gemini, Google AI Mode, Copilot. Plus Google AI Overviews via the SERP API. | `BRIGHTDATA_API_KEY`, `BRIGHTDATA_SERP_ZONE` |
+| ChatGPT (API) | LLM Responses `chat_gpt` | OpenRouter `openai/gpt-chat-latest` |
+| Claude (API) | LLM Responses `claude` | OpenRouter `~anthropic/claude-sonnet-latest` |
+| Gemini (API) | LLM Responses `gemini` | OpenRouter `~google/gemini-flash-latest` |
+| Perplexity (Sonar API) | LLM Responses `perplexity` | OpenRouter `perplexity/sonar` |
+| ChatGPT (app) | LLM Scraper `chat_gpt` | Bright Data ChatGPT scraper |
+| Gemini (app) | LLM Scraper `gemini` | Bright Data Gemini scraper |
+| Google AI Mode | SERP API `google/ai_mode` | Bright Data AI Mode scraper |
+| Google AI Overviews | SERP API `google/organic` with `load_async_ai_overview` | Bright Data SERP API (needs a SERP zone) |
+| Grok (API), Perplexity (app), Copilot (app) | not offered | Optional extras, off by default. Switch on in the config. |
 
-Keys are read from environment variables, or from a `.env` file passed with `--env-file`.
-Copy `.env.example` somewhere outside this repo. Never commit a key.
+Credentials are read from environment variables, or from a `.env` file passed with
+`--env-file`. Copy `.env.example` somewhere outside this repo. Never commit a key.
 
-## OpenRouter setup
+## DataForSEO setup (primary)
 
-1. Create an account at openrouter.ai and add credit.
-2. Create a key at openrouter.ai/keys.
-3. Run `preflight`. It confirms the key and that every model in `config/engines.json` exists.
+1. Create an account at dataforseo.com and add funds.
+2. Copy the API login and password from API Access in the dashboard. These are not your
+   website login.
+3. Run `preflight`. It checks every configured model against DataForSEO's free model lists
+   and resolves `--country` to a location code.
 
-Web search uses `"engine": "native"`, so each model searches with its own provider's search,
-the closest API equivalent to the consumer product. Never switch it to Exa: that is a
-different index and skews the "can it find the brand" result. Perplexity Sonar always
-searches, so it gets no plugin and sits out the closed-book pass.
+Things verified live on 2026-09-16:
 
-## Bright Data setup
+- LLM Responses returns `items[type=message].sections[].text`; citations are in
+  `annotations[]`. Claude splits one answer into many small sections; the script joins
+  them.
+- Gemini cites `vertexaisearch.cloud.google.com` redirect links. The script follows one
+  redirect to the real URL, and falls back to the citation title (Gemini sets it to the
+  source domain).
+- `fan_out_queries` (the searches the engine ran) comes back for the API models and the
+  ChatGPT app. The summary lists them in section 6.
+- `user_prompt` is capped at 500 characters. The script refuses longer prompts.
+- Perplexity takes no `web_search` field; Sonar always searches.
+- Google occasionally returns error 40101 (Internal SE Server Error). The script retries
+  once; if it still fails, re-run just that surface with `--only google-aio --phases app`.
 
-1. Create an account at brightdata.com. New accounts get 5,000 free credits a month, shared
-   across the scraper and SERP APIs.
+## OpenRouter setup (fallback for models)
+
+Create a key at openrouter.ai/keys and add credit. Web search uses `"engine": "native"`,
+so each model searches with its own provider's search. Never switch it to Exa: that is a
+different index and skews the "can it find the brand" result.
+
+## Bright Data setup (fallback for apps)
+
+1. Create an account at brightdata.com (5,000 free credits a month).
 2. Copy the API key from Account settings.
-3. **For AI Overviews only:** add a SERP API zone in the dashboard and put its name in
-   `BRIGHTDATA_SERP_ZONE`. Without it the script skips the AI Overview phase and says so.
+3. For the AI Overviews fallback only: add a SERP API zone and put its name in
+   `BRIGHTDATA_SERP_ZONE`.
 
-The app scrapers are triggered as one batch per engine, then polled until the snapshot is
-ready. Dataset IDs live in `config/engines.json`, verified on 2026-09-16 against Bright
-Data's docs and its own GitHub repos. The Grok scraper is listed as unavailable and ships
-disabled.
+App scrapers are triggered as one batch per engine and polled until ready, which can take
+several minutes. Dataset IDs live in `config/engines.json`. The Grok scraper is listed as
+unavailable by Bright Data and is not configured.
 
-## Cost of one run (estimate, not measured)
+## Cost of one run
 
-Default prompt set: 3 closed-book, 10 search prompts.
+Measured on 2026-09-16 with 1 closed-book + 2 search prompts across the 8 default
+surfaces: **$0.38 on DataForSEO for 21 calls.** The model calls with web search cost the
+most (about $0.02 to $0.04 each, mostly search tokens). App calls cost $0.004 each, and AI
+Overviews $0.004 including the async overview fee.
 
-| Phase | Calls | Rough cost |
-|---|---|---|
-| Closed-book | 4 engines x 3 | a few cents in tokens |
-| API search | 5 engines x 10 | tokens plus about $0.005 to $0.014 per search call (OpenRouter's listed search prices on 2026-09-16) |
-| App | 5 scrapers x 10 = 50 records | about $0.08 at $1.50 per 1,000, or free inside the monthly credits |
-| AI Overviews | 10 searches | about $0.01, or free inside the monthly credits |
+Scaled to the default prompt set (3 closed-book, 10 search prompts): roughly **$1.50 to
+$2.50 per brand**. That is an extrapolation from the small run; replace it with the
+figure from `visibility.md` after the first full run.
 
-Expect well under $2 per brand. Check `preflight` output and the OpenRouter dashboard after
-the first real run, then replace this estimate with the measured figure.
-
-## When a phase fails
+## When a call fails
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `GONE` in preflight | OpenRouter retired a slug | Pick the current model from the loaded list and edit the config |
-| `HTTP 401` / `403` | Wrong or unfunded key | Re-copy the key; add credit |
-| `HTTP 429` | Rate limit | Re-run just that phase with `--workers 2` |
-| App phase: `trigger failed` | Wrong dataset ID or no credits | Check the ID in the Bright Data scraper library |
-| App answers empty, no error | Undocumented output field | Open one record in `raw/app/<id>.json` and add the field name to `answer_fields` |
-| Snapshot ended as `failed` | Bright Data could not reach the app | Re-run `--phases app` later |
+| `GONE` in preflight | The provider retired the model name | Pick a current name from the list preflight prints and edit the config |
+| `HTTP 401` | Wrong credentials | DataForSEO uses the API login/password, not the dashboard login |
+| `task 40200` / `40210` | DataForSEO balance too low | Add funds |
+| `task 40101` | Google-side error | Already retried once; re-run with `--only <id>` |
+| `HTTP 429` | Rate limit | Re-run the failed surface with `--only <id> --workers 2` |
+| Bright Data `trigger failed` | Wrong dataset ID or no credits | Check the ID in Bright Data's scraper library |
+| Bright Data answers empty, no error | Undocumented output field | Open one record in `raw/app/brightdata-<id>.json` and add the field name to `answer_fields` |

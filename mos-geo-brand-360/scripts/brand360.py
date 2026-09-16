@@ -6,17 +6,22 @@ so the skill can judge whether the brand is known, found, cited and
 recommended. Standard library only - no pip install needed.
 
 Subcommands
-  preflight   Check API keys and that every model slug in config/engines.json
-              still exists on OpenRouter.
+  preflight   Check credentials and that every model in config/engines.json
+              still exists at its provider.
   run         Send the prompt set to the engines and save raw + normalised
               results.
   summarise   Turn results.jsonl into visibility.md + domains.csv - the only
               files the skill reads back (keeps token use down).
 
-Keys come from the environment, or from --env-file:
-  OPENROUTER_API_KEY   closed-book pass + API answers with native web search
-  BRIGHTDATA_API_KEY   the answers real users see in the consumer apps
-  BRIGHTDATA_SERP_ZONE optional: a SERP API zone name, for Google AI Overviews
+Providers (primary first; a failed or unconfigured primary falls back):
+  models  DataForSEO LLM Responses  ->  OpenRouter
+  apps    DataForSEO LLM Scraper / SERP API  ->  Bright Data
+
+Credentials come from the environment, or from --env-file:
+  DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD
+  OPENROUTER_API_KEY
+  BRIGHTDATA_API_KEY, BRIGHTDATA_SERP_ZONE (zone only needed for the
+  AI Overviews fallback)
 
 Nothing in this script ever receives the brand's domain before the run.
 That is deliberate: the test is whether the engines can find the brand
@@ -26,6 +31,7 @@ from its name and industry alone.
 from __future__ import annotations
 
 import argparse
+import base64
 import concurrent.futures as cf
 import csv
 import json
@@ -42,6 +48,14 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = SKILL_DIR / "config" / "engines.json"
 UA = "mos-geo-brand-360/1.0"
+ENV_KEYS = ("DATAFORSEO_LOGIN", "DATAFORSEO_PASSWORD", "OPENROUTER_API_KEY",
+            "BRIGHTDATA_API_KEY", "BRIGHTDATA_SERP_ZONE")
+PHASES = ("closed-book", "api-search", "app")
+NO_AIO = "(Google showed no AI Overview for this query.)"
+NO_AIMODE = "(Google AI Mode returned no answer for this query.)"
+DFS_PROMPT_LIMIT = 500
+# Fallback when the locations endpoint is unreachable.
+COUNTRY_CODES = {"AU": 2036, "US": 2840, "GB": 2826, "NZ": 2554, "CA": 2124, "IE": 2372, "SG": 2702}
 
 # Platforms that host many brands. Citing them says little about which
 # entity an engine resolved the brand to, so they are listed separately.
@@ -68,10 +82,18 @@ def load_env(env_file: str | None) -> dict:
                 continue
             key, _, val = line.partition("=")
             env[key.strip().removeprefix("export ").strip()] = val.strip().strip("'\"")
-    for key in ("OPENROUTER_API_KEY", "BRIGHTDATA_API_KEY", "BRIGHTDATA_SERP_ZONE"):
+    for key in ENV_KEYS:
         if os.environ.get(key):
             env[key] = os.environ[key]
     return env
+
+
+def has_provider(env: dict, provider: str) -> bool:
+    return {
+        "dataforseo": bool(env.get("DATAFORSEO_LOGIN") and env.get("DATAFORSEO_PASSWORD")),
+        "openrouter": bool(env.get("OPENROUTER_API_KEY")),
+        "brightdata": bool(env.get("BRIGHTDATA_API_KEY")),
+    }.get(provider, False)
 
 
 def load_config(path: str | None) -> dict:
@@ -97,10 +119,12 @@ def http_json(method: str, url: str, headers: dict | None = None,
             return e.code, json.loads(raw)
         except ValueError:
             return e.code, {"error": raw[:500]}
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return 0, {"error": f"{type(e).__name__}: {e}"}
 
 
-def mask(key: str | None) -> str:
-    return f"set (…{key[-4:]})" if key else "MISSING"
+def mask(value: str | None) -> str:
+    return f"set (…{value[-4:]})" if value else "MISSING"
 
 
 def domain_of(url: str) -> str:
@@ -109,12 +133,272 @@ def domain_of(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
-def enabled_or_engines(cfg: dict) -> list[dict]:
-    return [e for e in cfg["openrouter"]["engines"] if e.get("enabled", True)]
+def enabled(items: list[dict]) -> list[dict]:
+    return [i for i in items if i.get("enabled", True)]
 
 
-def enabled_bd_scrapers(cfg: dict) -> list[dict]:
-    return [s for s in cfg["brightdata"].get("scrapers", []) if s.get("enabled", True)]
+def citation_list(items) -> list[dict]:
+    """Normalise any list of URLs or {url|link|href, title} dicts, deduped."""
+    out, seen = [], set()
+    for item in items or []:
+        if isinstance(item, str):
+            url, title = item, ""
+        elif isinstance(item, dict):
+            url = item.get("url") or item.get("link") or item.get("href") or ""
+            title = item.get("title") or item.get("name") or ""
+        else:
+            continue
+        if url and url not in seen:
+            seen.add(url)
+            out.append({"url": url, "title": title})
+    return out
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def resolve_grounding_url(cite: dict) -> dict:
+    """Gemini cites vertexaisearch redirect links. Follow one hop to the real
+    URL; if that fails, fall back to the title, which Gemini sets to the
+    source domain."""
+    url = cite["url"]
+    if "vertexaisearch.cloud.google.com" not in url:
+        return cite
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        opener.open(urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA}), timeout=15)
+    except urllib.error.HTTPError as e:
+        if e.headers.get("Location"):
+            return {"url": e.headers["Location"], "title": cite["title"]}
+    except Exception:
+        pass
+    title = (cite.get("title") or "").strip()
+    if re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", title, re.I):
+        return {"url": f"https://{title}/", "title": title}
+    return cite
+
+
+# ------------------------------------------------------------ DataForSEO --
+
+# DataForSEO task codes worth one more try: search-engine side errors and timeouts.
+DFS_RETRY_CODES = {40101, 40102, 50000, 50301}
+
+
+def dfs_request(cfg, env, method, path, body=None, timeout=180, retries=1):
+    """Returns (task, result, cost, error). Retries transient failures once."""
+    for attempt in range(retries + 1):
+        task, result, cost, err, code = _dfs_once(cfg, env, method, path, body, timeout)
+        if not err or code not in DFS_RETRY_CODES or attempt == retries:
+            return task, result, cost, err
+        time.sleep(5)
+
+
+def _dfs_once(cfg, env, method, path, body, timeout):
+    token = base64.b64encode(
+        f"{env['DATAFORSEO_LOGIN']}:{env['DATAFORSEO_PASSWORD']}".encode()).decode()
+    status, resp = http_json(method, cfg["providers"]["dataforseo"]["base_url"] + path,
+                             {"Authorization": f"Basic {token}"}, body, timeout)
+    resp = resp or {}
+    task = (resp.get("tasks") or [{}])[0] or {}
+    if status != 200 or resp.get("status_code") != 20000:
+        code = 50000 if status in (0, 500, 502, 503, 504) else resp.get("status_code")
+        return task, None, 0.0, f"HTTP {status} / {resp.get('status_code')}: {resp.get('status_message') or resp.get('error')}", code
+    cost = float(task.get("cost") or 0)
+    if task.get("status_code") != 20000:
+        return task, None, cost, f"task {task.get('status_code')}: {task.get('status_message')}", task.get("status_code")
+    return task, (task.get("result") or [None])[0], cost, None, 20000
+
+
+_LOCATION_CACHE: dict = {}
+
+
+def dfs_location_code(cfg, env, country: str) -> int:
+    country = (country or "AU").upper()
+    if not _LOCATION_CACHE:
+        task, _, _, err = dfs_request(cfg, env, "GET", cfg["providers"]["dataforseo"]["locations_path"], timeout=60)
+        for loc in (task.get("result") or []) if not err else []:
+            if loc.get("location_type") == "Country" and loc.get("country_iso_code"):
+                _LOCATION_CACHE[loc["country_iso_code"]] = loc["location_code"]
+        _LOCATION_CACHE.setdefault("_loaded", True)
+    code = _LOCATION_CACHE.get(country) or COUNTRY_CODES.get(country)
+    if not code:
+        sys.exit(f"Unknown --country {country} for DataForSEO")
+    return code
+
+
+def dfs_model_call(cfg, env, model, prompt, with_search, country):
+    spec = model["dataforseo"]
+    pcfg = cfg["providers"]["dataforseo"]
+    body = {"user_prompt": prompt["text"][:DFS_PROMPT_LIMIT],
+            "model_name": spec["model"],
+            "max_output_tokens": pcfg.get("max_output_tokens", 1200)}
+    if not spec.get("always_searches"):
+        body["web_search"] = bool(with_search)
+    if with_search and spec.get("country_field") and country:
+        body["web_search_country_iso_code"] = country.upper()
+    task, result, cost, err = dfs_request(
+        cfg, env, "POST", pcfg["llm_responses_path"].format(se=spec["se"]), [body], timeout=240)
+    if err:
+        return task, "", [], [], cost, err
+    text, cites = [], []
+    for item in result.get("items") or []:
+        if item.get("type") != "message":
+            continue
+        for sec in item.get("sections") or []:
+            if sec.get("type") == "text" and sec.get("text"):
+                text.append(sec["text"])
+            cites += sec.get("annotations") or []
+    cites = [resolve_grounding_url(c) for c in citation_list(cites)]
+    return task, "".join(text).strip(), cites, result.get("fan_out_queries") or [], cost, None
+
+
+def dfs_app_call(cfg, env, app, prompt, country):
+    spec = app["dataforseo"]
+    body = {"keyword": prompt["text"],
+            "location_code": dfs_location_code(cfg, env, country),
+            "language_code": cfg["providers"]["dataforseo"]["language_code"]}
+    body.update(spec.get("extra", {}))
+    task, result, cost, err = dfs_request(cfg, env, "POST", spec["path"], [body], timeout=240)
+    if err:
+        return task, "", [], [], cost, err
+    if spec["kind"] == "llm_scraper":
+        cites = list(result.get("sources") or [])
+        for item in result.get("items") or []:
+            cites += item.get("sources") or []
+        answer = result.get("markdown") or "\n\n".join(
+            i.get("markdown") or "" for i in result.get("items") or []).strip()
+        return task, answer, citation_list(cites), result.get("fan_out_queries") or [], cost, None
+    overview = next((i for i in result.get("items") or [] if i.get("type") == "ai_overview"), None)
+    if not overview:
+        return task, NO_AIO if app["id"] == "google-aio" else NO_AIMODE, [], [], cost, None
+    cites = list(overview.get("references") or [])
+    for el in overview.get("items") or []:
+        cites += el.get("references") or []
+    return task, overview.get("markdown") or "", citation_list(cites), [], cost, None
+
+
+# ------------------------------------------------------------ OpenRouter --
+
+def or_model_call(cfg, env, model, prompt, with_search, country):
+    spec = model["openrouter"]
+    pcfg = cfg["providers"]["openrouter"]
+    body = {
+        "model": spec["model"],
+        # No system prompt, ever. The answer must come from the model alone.
+        "messages": [{"role": "user", "content": prompt["text"]}],
+        "max_tokens": pcfg.get("max_tokens", 1200),
+    }
+    if with_search and spec.get("search") == "native":
+        body["plugins"] = [{"id": "web", "engine": "native"}]
+    status, resp = http_json(
+        "POST", pcfg["base_url"],
+        {"Authorization": f"Bearer {env['OPENROUTER_API_KEY']}", "X-Title": "mos-geo-brand-360"},
+        body, timeout=240)
+    resp = resp or {}
+    if status != 200 or not resp.get("choices"):
+        err = resp.get("error")
+        return resp, "", [], [], 0.0, f"HTTP {status}: {json.dumps(err)[:300] if err else 'no choices'}"
+    msg = resp["choices"][0].get("message") or {}
+    cites = [a.get("url_citation") or {} for a in msg.get("annotations") or []]
+    cites = citation_list(cites + list(resp.get("citations") or []))  # Perplexity adds a flat list
+    cost = float((resp.get("usage") or {}).get("cost") or 0)
+    return resp, msg.get("content") or "", [resolve_grounding_url(c) for c in cites], [], cost, None
+
+
+# ----------------------------------------------------------- Bright Data --
+
+def pick(record: dict, fields: list[str]):
+    for f in fields:
+        cur = record
+        for part in f.split("."):
+            cur = cur.get(part) if isinstance(cur, dict) else None
+        if cur:
+            return cur
+    return None
+
+
+def bd_batch(cfg, env, scraper_id, prompts, raw_dir, country):
+    """One trigger per scraper with every prompt; returns {prompt_id: (answer, cites, err)}."""
+    bd = cfg["providers"]["brightdata"]
+    scraper = bd["scrapers"][scraper_id]
+    inputs = []
+    for p in prompts:
+        url = scraper["url_template"].replace("{q}", urllib.parse.quote_plus(p["text"])) \
+            if scraper.get("url_template") else scraper["url"]
+        row = {"url": url, "prompt": p["text"]}
+        if scraper.get("set_country") and country:
+            row["country"] = country.upper()
+        row.update(scraper.get("input_extra", {}))
+        inputs.append(row)
+    fail = lambda msg: {p["id"]: ("", [], msg) for p in prompts}
+    headers = {"Authorization": f"Bearer {env['BRIGHTDATA_API_KEY']}"}
+    qs = urllib.parse.urlencode({"dataset_id": scraper["dataset_id"], "format": "json",
+                                 "include_errors": "true"})
+    status, resp = http_json("POST", f"{bd['trigger_url']}?{qs}", headers, inputs, timeout=120)
+    snap = (resp or {}).get("snapshot_id")
+    if status != 200 or not snap:
+        return fail(f"Bright Data trigger failed HTTP {status}: {json.dumps(resp)[:300]}")
+
+    deadline, state = time.time() + bd.get("timeout_seconds", 900), "running"
+    while time.time() < deadline:
+        time.sleep(bd.get("poll_seconds", 15))
+        _, prog = http_json("GET", bd["progress_url"].format(snapshot_id=snap), headers, timeout=60)
+        state = (prog or {}).get("status", "unknown")
+        if state in ("ready", "failed", "canceled"):
+            break
+    if state != "ready":
+        return fail(f"Bright Data snapshot {snap} ended as '{state}'")
+    records = None
+    for _ in range(20):  # the snapshot can say "building" briefly after "ready"
+        _, records = http_json("GET", bd["snapshot_url"].format(snapshot_id=snap), headers, timeout=300)
+        if isinstance(records, list):
+            break
+        time.sleep(10)
+    if not isinstance(records, list):
+        return fail(f"Bright Data snapshot {snap} never became downloadable")
+    (raw_dir / f"brightdata-{scraper_id}.json").write_text(json.dumps(records, indent=2), encoding="utf-8")
+
+    by_prompt = {}
+    for rec in records:
+        text = pick(rec, ["prompt", "input.prompt"])
+        if text:
+            by_prompt.setdefault(text.strip(), rec)
+    out = {}
+    for i, p in enumerate(prompts):
+        rec = by_prompt.get(p["text"].strip())
+        if rec is None and len(records) == len(prompts):
+            rec = records[i]  # fall back to input order
+        if rec is None:
+            out[p["id"]] = ("", [], "Bright Data returned no record for this prompt")
+            continue
+        answer = pick(rec, bd["answer_fields"]) or ""
+        answer = answer if isinstance(answer, str) else json.dumps(answer)
+        cites = citation_list(pick(rec, bd["citation_fields"]))
+        err = rec.get("error") or rec.get("error_code")
+        out[p["id"]] = (answer, cites, str(err) if err and not answer else None)
+    return out
+
+
+def bd_ai_overview(cfg, env, prompt, country):
+    serp = cfg["providers"]["brightdata"]["serp"]
+    search = serp["search_url"].replace("{q}", urllib.parse.quote_plus(prompt["text"])) \
+                               .replace("{country}", (country or "us").lower())
+    status, resp = http_json(
+        "POST", serp["request_url"], {"Authorization": f"Bearer {env['BRIGHTDATA_API_KEY']}"},
+        {"zone": env["BRIGHTDATA_SERP_ZONE"], "url": search, "format": "raw"}, timeout=120)
+    if status != 200 or not isinstance(resp, dict):
+        return "", [], f"Bright Data SERP HTTP {status}: {json.dumps(resp)[:300]}"
+    overview = resp.get("ai_overview") or {}
+    parts = []
+    for block in overview.get("texts") or []:
+        if block.get("snippet"):
+            parts.append(block["snippet"])
+        parts += ["- " + i["snippet"] for i in block.get("list") or []
+                  if isinstance(i, dict) and i.get("snippet")]
+    cites = citation_list(overview.get("references"))
+    return "\n".join(parts) or NO_AIO, cites, None
 
 
 # ------------------------------------------------------------- preflight --
@@ -122,50 +406,60 @@ def enabled_bd_scrapers(cfg: dict) -> list[dict]:
 def cmd_preflight(args) -> int:
     env = load_env(args.env_file)
     cfg = load_config(args.config)
+    models, apps = enabled(cfg["models"]), enabled(cfg["apps"])
     problems = 0
 
     print("mos-geo-brand-360 preflight")
     print("===========================")
-    print(f"OPENROUTER_API_KEY  {mask(env.get('OPENROUTER_API_KEY'))}")
-    print(f"BRIGHTDATA_API_KEY  {mask(env.get('BRIGHTDATA_API_KEY'))}")
-    zone = env.get("BRIGHTDATA_SERP_ZONE")
-    print(f"BRIGHTDATA_SERP_ZONE {zone or 'not set (AI Overviews will be skipped)'}")
-    if not env.get("OPENROUTER_API_KEY"):
-        problems += 1
-    if not env.get("BRIGHTDATA_API_KEY"):
-        print("  (no Bright Data key: the consumer-app phase will be skipped)")
+    for key in ENV_KEYS:
+        shown = env.get(key) if key == "BRIGHTDATA_SERP_ZONE" else mask(env.get(key))
+        print(f"{key:<21} {shown or 'MISSING'}")
 
-    status, body = http_json("GET", cfg["openrouter"]["models_url"], timeout=60)
-    live = {m["id"] for m in (body or {}).get("data", [])} if status == 200 else set()
-    print("\nOpenRouter models")
-    if not live:
-        print(f"  [WARN] could not load the model list (HTTP {status})")
-        problems += 1
-    for eng in enabled_or_engines(cfg):
-        ok = eng["model"] in live
-        problems += 0 if ok else 1
-        print(f"  [{'ok' if ok else 'GONE'}] {eng['id']:<11} {eng['model']}")
+    if has_provider(env, "dataforseo"):
+        print("\nDataForSEO models")
+        for m in models:
+            spec = m.get("dataforseo")
+            if not spec:
+                continue
+            path = cfg["providers"]["dataforseo"]["models_path"].format(se=spec["se"])
+            task, _, _, err = dfs_request(cfg, env, "GET", path, timeout=60)
+            if err:
+                print(f"  [FAIL] {m['id']:<11} {err}")
+                problems += 1
+                continue
+            live = {x["model_name"]: x for x in task.get("result") or []}
+            info = live.get(spec["model"])
+            ok = bool(info) and (info.get("web_search_supported") or not m.get("api_search"))
+            problems += 0 if ok else 1
+            print(f"  [{'ok' if ok else 'GONE'}] {m['id']:<11} {spec['model']}"
+                  + ("" if ok else f"  (available: {', '.join(list(live)[:8])} …)"))
+        code = dfs_location_code(cfg, env, args.country)
+        print(f"  [ok] country {args.country.upper()} -> location_code {code}")
 
-    if env.get("OPENROUTER_API_KEY"):
-        status, body = http_json(
-            "GET", "https://openrouter.ai/api/v1/key",
-            {"Authorization": f"Bearer {env['OPENROUTER_API_KEY']}"}, timeout=30)
-        if status == 200:
-            data = (body or {}).get("data", {})
-            print(f"  [ok] key accepted (limit remaining: {data.get('limit_remaining', 'n/a')})")
-        else:
-            print(f"  [FAIL] key rejected (HTTP {status})")
-            problems += 1
+    if has_provider(env, "openrouter"):
+        status, body = http_json("GET", cfg["providers"]["openrouter"]["models_url"], timeout=60)
+        live = {m["id"] for m in (body or {}).get("data", [])} if status == 200 else set()
+        print("\nOpenRouter models (fallback)")
+        for m in models:
+            if m.get("openrouter"):
+                ok = m["openrouter"]["model"] in live
+                problems += 0 if ok else 1
+                print(f"  [{'ok' if ok else 'GONE'}] {m['id']:<11} {m['openrouter']['model']}")
 
-    print("\nBright Data scrapers")
-    scrapers = enabled_bd_scrapers(cfg)
-    if not scrapers:
-        print("  [WARN] none configured in config/engines.json")
-    for s in scrapers:
-        print(f"  [cfg] {s['id']:<15} dataset {s['dataset_id']}")
-    for s in cfg["brightdata"].get("scrapers", []):
-        if not s.get("enabled", True):
-            print(f"  [off] {s['id']:<15} {s.get('_note', 'disabled')}")
+    print("\nCoverage")
+    for m in models:
+        chain = [p for p in cfg["provider_order"]["models"] if p in m and has_provider(env, p)]
+        problems += 0 if chain else 1
+        print(f"  {m['label']:<24} {' -> '.join(chain) or 'NO PROVIDER'}")
+    for a in apps:
+        chain = [p for p in cfg["provider_order"]["apps"] if p in a and has_provider(env, p)]
+        if a["id"] == "google-aio" and "brightdata" in chain and not env.get("BRIGHTDATA_SERP_ZONE"):
+            chain.remove("brightdata")
+        problems += 0 if chain else 1
+        print(f"  {a['label']:<24} {' -> '.join(chain) or 'NO PROVIDER'}")
+    off = [i["label"] for i in cfg["models"] + cfg["apps"] if not i.get("enabled", True)]
+    if off:
+        print(f"  (switched off: {', '.join(off)})")
 
     print(f"\n{'Ready.' if problems == 0 else f'{problems} problem(s) - fix before running.'}")
     return 0 if problems == 0 else 2
@@ -182,167 +476,23 @@ def load_prompts(path: str) -> dict:
         for i, item in enumerate(items):
             if not item.get("text"):
                 sys.exit(f"{group}[{i}] has no 'text'")
+            if len(item["text"]) > DFS_PROMPT_LIMIT:
+                sys.exit(f"{group}[{i}] is over {DFS_PROMPT_LIMIT} characters (DataForSEO limit)")
             item.setdefault("id", f"{group[:2]}{i + 1:02d}")
     return data
 
 
-def extract_or_citations(msg: dict, body: dict) -> list[dict]:
-    out, seen = [], set()
-    for ann in msg.get("annotations") or []:
-        uc = ann.get("url_citation") or {}
-        if uc.get("url") and uc["url"] not in seen:
-            seen.add(uc["url"])
-            out.append({"url": uc["url"], "title": uc.get("title", "")})
-    # Perplexity also returns a flat top-level list.
-    for url in body.get("citations") or []:
-        if isinstance(url, str) and url not in seen:
-            seen.add(url)
-            out.append({"url": url, "title": ""})
-    return out
+def save_raw(out: Path, phase: str, engine: str, prompt_id: str, provider: str, raw) -> None:
+    d = out / "raw" / phase / engine
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{prompt_id}.{provider}.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 
-def openrouter_call(cfg, key, eng, prompt, with_search):
-    body = {
-        "model": eng["model"],
-        # No system prompt, ever. The answer must come from the model alone.
-        "messages": [{"role": "user", "content": prompt["text"]}],
-        "max_tokens": cfg["openrouter"].get("max_tokens", 1200),
-    }
-    if with_search and eng.get("search") == "native":
-        body["plugins"] = [{"id": "web", "engine": "native"}]
-    status, resp = http_json(
-        "POST", cfg["openrouter"]["base_url"],
-        {"Authorization": f"Bearer {key}", "X-Title": "mos-geo-brand-360"},
-        body, timeout=240)
-    resp = resp or {}
-    if status != 200 or not resp.get("choices"):
-        err = resp.get("error")
-        return resp, "", [], f"HTTP {status}: {json.dumps(err)[:300] if err else 'no choices'}"
-    msg = resp["choices"][0].get("message") or {}
-    return resp, msg.get("content") or "", extract_or_citations(msg, resp), None
-
-
-def pick(record: dict, fields: list[str]):
-    for f in fields:
-        cur = record
-        for part in f.split("."):
-            cur = cur.get(part) if isinstance(cur, dict) else None
-        if cur:
-            return cur
-    return None
-
-
-def normalise_bd_citations(value) -> list[dict]:
-    out, seen = [], set()
-    for item in value or []:
-        if isinstance(item, str):
-            url, title = item, ""
-        elif isinstance(item, dict):
-            url = item.get("url") or item.get("link") or item.get("href") or ""
-            title = item.get("title") or item.get("name") or ""
-        else:
-            continue
-        if url and url not in seen:
-            seen.add(url)
-            out.append({"url": url, "title": title})
-    return out
-
-
-def brightdata_scraper(cfg, key, scraper, prompts, raw_dir, country):
-    """One batch per scraper: every prompt goes in a single trigger call."""
-    bd = cfg["brightdata"]
-    inputs = []
-    for p in prompts:
-        if scraper.get("url_template"):
-            url = scraper["url_template"].replace("{q}", urllib.parse.quote_plus(p["text"]))
-        else:
-            url = scraper["url"]
-        row = {"url": url, "prompt": p["text"]}
-        if scraper.get("set_country") and country:
-            row["country"] = country
-        row.update(scraper.get("input_extra", {}))
-        inputs.append(row)
-    qs = urllib.parse.urlencode({
-        "dataset_id": scraper["dataset_id"], "format": "json",
-        "include_errors": "true"})
-    headers = {"Authorization": f"Bearer {key}"}
-    status, resp = http_json("POST", f"{bd['trigger_url']}?{qs}", headers, inputs, timeout=120)
-    snap = (resp or {}).get("snapshot_id")
-    if status != 200 or not snap:
-        err = f"trigger failed HTTP {status}: {json.dumps(resp)[:300]}"
-        return {p["id"]: (None, "", [], err) for p in prompts}
-
-    deadline = time.time() + bd.get("timeout_seconds", 900)
-    state = "running"
-    while time.time() < deadline:
-        time.sleep(bd.get("poll_seconds", 15))
-        _, prog = http_json("GET", bd["progress_url"].format(snapshot_id=snap), headers, timeout=60)
-        state = (prog or {}).get("status", "unknown")
-        if state in ("ready", "failed", "canceled"):
-            break
-    if state != "ready":
-        err = f"snapshot {snap} ended as '{state}'"
-        return {p["id"]: (None, "", [], err) for p in prompts}
-
-    # The snapshot can still say "building" for a few seconds after "ready".
-    records = None
-    for _ in range(20):
-        _, records = http_json("GET", bd["snapshot_url"].format(snapshot_id=snap), headers, timeout=300)
-        if isinstance(records, list):
-            break
-        time.sleep(10)
-    if not isinstance(records, list):
-        err = f"snapshot {snap} never became downloadable: {json.dumps(records)[:200]}"
-        return {p["id"]: (None, "", [], err) for p in prompts}
-    (raw_dir / f"{scraper['id']}.json").write_text(json.dumps(records, indent=2), encoding="utf-8")
-
-    by_prompt = {}
-    for rec in records:
-        text = pick(rec, ["prompt", "input.prompt"])
-        if text:
-            by_prompt.setdefault(text.strip(), rec)
-    results = {}
-    for i, p in enumerate(prompts):
-        rec = by_prompt.get(p["text"].strip())
-        if rec is None and len(records) == len(prompts):
-            rec = records[i]  # fall back to input order
-        if rec is None:
-            results[p["id"]] = (None, "", [], "no record returned for this prompt")
-            continue
-        err = rec.get("error") or rec.get("error_code")
-        answer = pick(rec, scraper.get("answer_fields", ["answer_text"])) or ""
-        cites = normalise_bd_citations(pick(rec, scraper.get("citation_fields", ["citations"])))
-        results[p["id"]] = (rec, answer if isinstance(answer, str) else json.dumps(answer),
-                            cites, str(err) if err and not answer else None)
-    return results
-
-
-def ai_overview_call(cfg, key, zone, prompt, country):
-    """Google AI Overviews via the SERP API. An empty answer means Google
-    showed no overview for that query, which is a result, not an error."""
-    aio = cfg["brightdata"]["ai_overviews"]
-    search = aio["search_url"].replace("{q}", urllib.parse.quote_plus(prompt["text"])) \
-                              .replace("{country}", (country or "us").lower())
-    status, resp = http_json(
-        "POST", aio["request_url"], {"Authorization": f"Bearer {key}"},
-        {"zone": zone, "url": search, "format": "raw"}, timeout=120)
-    if status != 200 or not isinstance(resp, dict):
-        return resp, "", [], f"HTTP {status}: {json.dumps(resp)[:300]}"
-    overview = resp.get("ai_overview") or {}
-    parts = []
-    for block in overview.get("texts") or []:
-        if block.get("snippet"):
-            parts.append(block["snippet"])
-        for item in block.get("list") or []:
-            if isinstance(item, dict) and item.get("snippet"):
-                parts.append("- " + item["snippet"])
-    cites = normalise_bd_citations(
-        [{"url": r.get("href") or r.get("url"), "title": r.get("title", "")}
-         for r in overview.get("references") or []])
-    return resp, "\n".join(parts) or NO_AIO, cites, None
-
-
-NO_AIO = "(Google showed no AI Overview for this query.)"
+def record(phase, surface, item, provider, p, answer, cites, fan_out, cost, err, tried):
+    return {"phase": phase, "surface": surface, "engine": item["id"], "label": item["label"],
+            "provider": provider, "prompt_id": p["id"], "prompt_type": p["type"],
+            "prompt": p["text"], "answer": answer, "citations": cites, "fan_out": fan_out,
+            "cost": round(cost, 6), "error": err, "fallback_from": tried}
 
 
 def cmd_run(args) -> int:
@@ -350,116 +500,128 @@ def cmd_run(args) -> int:
     cfg = load_config(args.config)
     prompts = load_prompts(args.prompts)
     phases = {p.strip() for p in args.phases.split(",")}
+    if phases - set(PHASES):
+        sys.exit(f"unknown phase(s): {', '.join(phases - set(PHASES))}")
     out = Path(args.out)
     search_prompts = [dict(p, type="branded") for p in prompts["branded"]] + \
                      [dict(p, type="unbranded") for p in prompts["unbranded"]]
     closed = [dict(p, type="closed_book") for p in prompts["closed_book"]]
+    models, apps = enabled(cfg["models"]), enabled(cfg["apps"])
+    if args.only:
+        only = {x.strip() for x in args.only.split(",")}
+        unknown = only - {i["id"] for i in models + apps}
+        if unknown:
+            sys.exit(f"--only: unknown or disabled id(s): {', '.join(sorted(unknown))}")
+        models = [m for m in models if m["id"] in only]
+        apps = [a for a in apps if a["id"] in only]
 
-    or_engines = enabled_or_engines(cfg)
-    bd_scrapers = enabled_bd_scrapers(cfg)
-
-    jobs = []  # (phase, engine, prompt)
+    model_jobs = []
     if "closed-book" in phases:
-        jobs += [("closed-book", e, p) for e in or_engines if e.get("closed_book") for p in closed]
+        model_jobs += [("closed-book", m, p) for m in models if m.get("closed_book") for p in closed]
     if "api-search" in phases:
-        jobs += [("api-search", e, p) for e in or_engines for p in search_prompts]
-    app_calls = len(bd_scrapers) * len(search_prompts) if "app" in phases else 0
-    aio_on = "aio" in phases and cfg["brightdata"].get("ai_overviews", {}).get("enabled")
-    aio_calls = len(search_prompts) if aio_on else 0
+        model_jobs += [("api-search", m, p) for m in models if m.get("api_search") for p in search_prompts]
+    app_jobs = [(a, p) for a in apps for p in search_prompts] if "app" in phases else []
 
-    print(f"Plan: {len(jobs)} OpenRouter calls + {app_calls} Bright Data app records "
-          f"({len(bd_scrapers)} scrapers x {len(search_prompts)} prompts) + {aio_calls} AI Overview "
-          f"searches. Country {args.country}. One run each, no repeats.")
+    def chain(item, kind):
+        c = [pr for pr in cfg["provider_order"][kind] if pr in item and has_provider(env, pr)]
+        if item["id"] == "google-aio" and not env.get("BRIGHTDATA_SERP_ZONE") and "brightdata" in c:
+            c.remove("brightdata")
+        return c
+
+    print(f"Plan: {len(model_jobs)} model calls + {len(app_jobs)} app calls, country "
+          f"{args.country.upper()}. One run each, no repeats.")
+    for m in models:
+        print(f"  {m['label']:<24} {' -> '.join(chain(m, 'models')) or 'NO PROVIDER (skipped)'}")
+    for a in apps:
+        print(f"  {a['label']:<24} {' -> '.join(chain(a, 'apps')) or 'NO PROVIDER (skipped)'}")
     if args.dry_run:
-        for phase, eng, p in jobs[:5]:
-            print(f"  e.g. {phase:<12} {eng['id']:<11} {p['id']}: {p['text'][:70]}")
         return 0
 
+    if has_provider(env, "dataforseo"):
+        dfs_location_code(cfg, env, args.country)  # fail fast on a bad country
     out.mkdir(parents=True, exist_ok=True)
-    results_path = out / "results.jsonl"
     records = []
 
-    if jobs:
-        key = env.get("OPENROUTER_API_KEY")
-        if not key:
-            sys.exit("OPENROUTER_API_KEY missing - run preflight.")
+    def model_work(job):
+        phase, m, p = job
+        tried = []
+        for provider in chain(m, "models"):
+            fn = dfs_model_call if provider == "dataforseo" else or_model_call
+            raw, answer, cites, fan_out, cost, err = fn(cfg, env, m, p, phase == "api-search", args.country)
+            save_raw(out, phase, m["id"], p["id"], provider, raw)
+            if not err:
+                return record(phase, "api", m, provider, p, answer, cites, fan_out, cost, None, tried)
+            tried.append(f"{provider}: {err}")
+        return record(phase, "api", m, None, p, "", [], [], 0.0,
+                      "; ".join(tried) or "no provider configured", tried)
 
-        def work(job):
-            phase, eng, p = job
-            raw, answer, cites, err = openrouter_call(cfg, key, eng, p, phase == "api-search")
-            raw_dir = out / "raw" / phase / eng["id"]
-            raw_dir.mkdir(parents=True, exist_ok=True)
-            (raw_dir / f"{p['id']}.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
-            return {"phase": phase, "surface": "api", "engine": eng["id"],
-                    "label": eng["label"], "model": eng["model"],
-                    "prompt_id": p["id"], "prompt_type": p["type"], "prompt": p["text"],
-                    "answer": answer, "citations": cites, "error": err}
+    def app_work(job):
+        a, p = job
+        c = chain(a, "apps")
+        if c[:1] != ["dataforseo"]:
+            return a, p, None, [], c
+        raw, answer, cites, fan_out, cost, err = dfs_app_call(cfg, env, a, p, args.country)
+        save_raw(out, "app", a["id"], p["id"], "dataforseo", raw)
+        if not err:
+            return a, p, record("app", "app", a, "dataforseo", p, answer, cites, fan_out, cost, None, []), [], c
+        return a, p, None, [f"dataforseo: {err}"], c
 
-        with cf.ThreadPoolExecutor(max_workers=args.workers) as pool:
-            for i, rec in enumerate(pool.map(work, jobs), 1):
+    with cf.ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for i, rec in enumerate(pool.map(model_work, model_jobs), 1):
+            records.append(rec)
+            via = rec["provider"] or "FAILED"
+            print(f"  [{via:<10}] {i}/{len(model_jobs)} {rec['phase']:<12} {rec['engine']:<11} {rec['prompt_id']}")
+
+        pending = defaultdict(list)  # (app id) -> [(app, prompt, tried)]
+        for a, p, rec, tried, c in pool.map(app_work, app_jobs):
+            if rec:
                 records.append(rec)
-                flag = "ERR" if rec["error"] else "ok "
-                print(f"  [{flag}] {i}/{len(jobs)} {rec['phase']:<12} {rec['engine']:<11} {rec['prompt_id']}")
+                print(f"  [dataforseo] app {a['id']:<15} {p['id']}")
+            elif "brightdata" in c:
+                pending[a["id"]].append((a, p, tried))
+            else:
+                records.append(record("app", "app", a, None, p, "", [], [], 0.0,
+                                      "; ".join(tried) or "no provider configured", tried))
+                print(f"  [FAILED    ] app {a['id']:<15} {p['id']}")
 
-    if app_calls:
-        key = env.get("BRIGHTDATA_API_KEY")
-        if not key:
-            print("BRIGHTDATA_API_KEY missing - skipping the consumer-app phase.")
-        else:
-            raw_dir = out / "raw" / "app"
-            raw_dir.mkdir(parents=True, exist_ok=True)
+    if pending:
+        raw_dir = out / "raw" / "app"
+        raw_dir.mkdir(parents=True, exist_ok=True)
 
-            def bd_work(scraper):
-                return scraper, brightdata_scraper(cfg, key, scraper, search_prompts, raw_dir, args.country)
+        def bd_work(item):
+            app_id, rows = item
+            a = rows[0][0]
+            if app_id == "google-aio":
+                return rows, {p["id"]: bd_ai_overview(cfg, env, p, args.country) for _, p, _ in rows}
+            return rows, bd_batch(cfg, env, a["brightdata"], [p for _, p, _ in rows], raw_dir, args.country)
 
-            with cf.ThreadPoolExecutor(max_workers=max(1, len(bd_scrapers))) as pool:
-                for scraper, res in pool.map(bd_work, bd_scrapers):
-                    for p in search_prompts:
-                        _, answer, cites, err = res[p["id"]]
-                        records.append({
-                            "phase": "app", "surface": "app", "engine": scraper["id"],
-                            "label": scraper["label"], "model": "consumer app",
-                            "prompt_id": p["id"], "prompt_type": p["type"], "prompt": p["text"],
-                            "answer": answer, "citations": cites, "error": err})
-                    bad = sum(1 for p in search_prompts if res[p["id"]][3])
-                    print(f"  [app] {scraper['id']:<11} {len(search_prompts) - bad} ok, {bad} errors")
+        with cf.ThreadPoolExecutor(max_workers=len(pending)) as pool:
+            for rows, res in pool.map(bd_work, pending.items()):
+                for a, p, tried in rows:
+                    answer, cites, err = res[p["id"]]
+                    if err:
+                        tried = tried + [f"brightdata: {err}"]
+                    records.append(record("app", "app", a, None if err else "brightdata", p, answer,
+                                          cites, [], 0.0, "; ".join(tried) if err else None, tried))
+                bad = sum(1 for _, p, _ in rows if res[p["id"]][2])
+                print(f"  [brightdata] app {rows[0][0]['id']:<15} {len(rows) - bad} ok, {bad} failed")
 
-    if aio_calls:
-        key, zone = env.get("BRIGHTDATA_API_KEY"), env.get("BRIGHTDATA_SERP_ZONE")
-        if not (key and zone):
-            print("BRIGHTDATA_API_KEY or BRIGHTDATA_SERP_ZONE missing - skipping AI Overviews.")
-        else:
-            raw_dir = out / "raw" / "aio"
-            raw_dir.mkdir(parents=True, exist_ok=True)
-
-            def aio_work(p):
-                raw, answer, cites, err = ai_overview_call(cfg, key, zone, p, args.country)
-                (raw_dir / f"{p['id']}.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
-                return p, answer, cites, err
-
-            with cf.ThreadPoolExecutor(max_workers=args.workers) as pool:
-                shown = 0
-                for p, answer, cites, err in pool.map(aio_work, search_prompts):
-                    shown += int(answer not in ("", NO_AIO))
-                    records.append({
-                        "phase": "app", "surface": "app", "engine": "google-aio",
-                        "label": "Google AI Overviews", "model": "SERP",
-                        "prompt_id": p["id"], "prompt_type": p["type"], "prompt": p["text"],
-                        "answer": answer, "citations": cites, "error": err})
-            print(f"  [aio] overview shown for {shown}/{len(search_prompts)} queries")
-
-    with results_path.open("a", encoding="utf-8") as fh:
+    with (out / "results.jsonl").open("a", encoding="utf-8") as fh:
         for rec in records:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     meta_path = out / "run-meta.json"
     old = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
-    meta = {"brand": args.brand, "industry": args.industry,
-            "country": args.country, "run_at": time.strftime("%Y-%m-%d %H:%M:%S %z"),
+    meta = {"brand": args.brand, "industry": args.industry, "country": args.country.upper(),
+            "run_at": time.strftime("%Y-%m-%d %H:%M:%S %z"),
             "phases": sorted(phases | set(old.get("phases", [])))}
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     errors = sum(1 for r in records if r["error"])
-    print(f"\nSaved {len(records)} results to {results_path} ({errors} errors).")
-    return 0 if records else 2
+    fallbacks = sum(1 for r in records if r["fallback_from"] and not r["error"])
+    cost = sum(r["cost"] for r in records)
+    print(f"\nSaved {len(records)} results to {out / 'results.jsonl'}: {errors} failed, "
+          f"{fallbacks} served by a fallback provider. DataForSEO/OpenRouter cost ${cost:.3f} "
+          "(Bright Data is billed separately).")
+    return 0 if records and errors < len(records) else 2
 
 
 # ------------------------------------------------------------- summarise --
@@ -486,6 +648,8 @@ def mention_snippet(text: str, pats, width: int = 160) -> str:
     return ""
 
 
+# Query strings carry noise like utm_source=chatgpt.com; drop them before scanning.
+QUERY_STRING = re.compile(r"\?[^\s)\]]*")
 DOMAIN_IN_TEXT = re.compile(r"\b((?:[a-z0-9-]+\.)+(?:com|net|org|io|ai|co|au|uk|app|dev|lab))\b", re.I)
 
 
@@ -534,14 +698,17 @@ def cmd_summarise(args) -> int:
 
     surfaces = sorted({(r["surface"], r["engine"], r["label"]) for r in rows})
     L = [f"# Visibility data: {brand}", ""]
-    L.append(f"Industry: {meta.get('industry', 'n/a')} | Run: {meta.get('run_at', 'n/a')} | "
-             "Every prompt was asked **once**, so treat each cell as a snapshot, not a rate.")
+    total = sum(r.get("cost") or 0 for r in rows)
+    L.append(f"Industry: {meta.get('industry', 'n/a')} | Country: {meta.get('country', 'n/a')} | "
+             f"Run: {meta.get('run_at', 'n/a')} | API cost: ${total:.3f} (Bright Data billed separately)")
+    L.append("")
+    L.append("Every prompt was asked **once**, so treat each cell as a snapshot, not a rate.")
     L.append("")
 
     # 1. Coverage matrix
     L += ["## 1. Coverage matrix", "",
-          "| Engine | Surface | Closed-book mentions brand | Branded: mentions | Branded: cites ≥1 source | Unbranded: mentions | Errors |",
-          "|---|---|---|---|---|---|---|"]
+          "| Engine | Surface | Via | Closed-book mentions brand | Branded: mentions | Branded: cites ≥1 source | Unbranded: mentions | Errors |",
+          "|---|---|---|---|---|---|---|---|"]
     for surface, eng, label in surfaces:
         mine = [r for r in rows if r["engine"] == eng and r["surface"] == surface]
         def frac(sel, fn):
@@ -550,7 +717,8 @@ def cmd_summarise(args) -> int:
         cb = [r for r in mine if r["phase"] == "closed-book"]
         br = [r for r in mine if r["prompt_type"] == "branded" and r["phase"] != "closed-book"]
         ub = [r for r in mine if r["prompt_type"] == "unbranded"]
-        L.append(f"| {label} | {surface} | {frac(cb, lambda r: mentions(r['answer'], pats))} | "
+        via = ", ".join(sorted({r.get("provider") or "failed" for r in mine}))
+        L.append(f"| {label} | {surface} | {via} | {frac(cb, lambda r: mentions(r['answer'], pats))} | "
                  f"{frac(br, lambda r: mentions(r['answer'], pats))} | "
                  f"{frac(br, lambda r: bool(r['citations']))} | "
                  f"{frac(ub, lambda r: mentions(r['answer'], pats))} | "
@@ -581,7 +749,8 @@ def cmd_summarise(args) -> int:
         cited = Counter(domain_of(c["url"]) for r in br for c in r["citations"])
         brand_doms = [(d, n) for d, n in cited.most_common() if classify(d) != "platform"][:4]
         plat = [(d, n) for d, n in cited.most_common() if classify(d) == "platform"][:4]
-        named = Counter(m.lower().removeprefix("www.") for r in br for m in DOMAIN_IN_TEXT.findall(r["answer"] or ""))
+        named = Counter(m.lower().removeprefix("www.") for r in br
+                        for m in DOMAIN_IN_TEXT.findall(QUERY_STRING.sub("", r["answer"] or "")))
         fmt = lambda pairs: ", ".join(f"{d} ({n})" for d, n in pairs) or "-"
         L.append(f"| {label} | {surface} | {fmt(brand_doms)} | {fmt(plat)} | {fmt(named.most_common(4))} |")
     L.append("")
@@ -636,6 +805,23 @@ def cmd_summarise(args) -> int:
                  f"{dead(d) if args.check_links else 'not checked'} |")
     L.append("")
     L.append(f"Full list: `domains.csv` ({len(ranked)} domains).")
+    L.append("")
+
+    # 6. What the engines searched for
+    L += ["## 6. Search queries the engines ran (fan-out)", "",
+          "What each engine actually typed into its search tool. Queries that add a "
+          "location or a different category show how the engine interpreted the brand.", ""]
+    for surface, eng, label in surfaces:
+        qs = []
+        for r in rows:
+            if r["engine"] == eng and r["surface"] == surface:
+                qs += [q for q in r.get("fan_out") or [] if q not in qs]
+        if qs:
+            L.append(f"- **{label}:** " + "; ".join(qs[:args.fan_out]))
+    failed = [r for r in rows if r["error"]]
+    if failed:
+        L += ["", "## 7. Failed calls", ""]
+        L += [f"- {r['label']} / {r['prompt_id']}: {r['error'][:200]}" for r in failed]
 
     (run_dir / "visibility.md").write_text("\n".join(L) + "\n", encoding="utf-8")
     with (run_dir / "domains.csv").open("w", newline="", encoding="utf-8") as fh:
@@ -649,6 +835,7 @@ def cmd_summarise(args) -> int:
     return 0
 
 
+
 # ------------------------------------------------------------------ main --
 
 def main() -> int:
@@ -659,8 +846,9 @@ def main() -> int:
         p.add_argument("--config", help="engines config (default: config/engines.json)")
         p.add_argument("--env-file", help="a .env file holding the API keys")
 
-    p = sub.add_parser("preflight", help="check keys and model slugs")
+    p = sub.add_parser("preflight", help="check credentials and model names")
     common(p)
+    p.add_argument("--country", default="AU", help="2-letter market to check (default AU)")
     p.set_defaults(fn=cmd_preflight)
 
     p = sub.add_parser("run", help="query the engines once per prompt")
@@ -669,10 +857,11 @@ def main() -> int:
     p.add_argument("--industry", required=True)
     p.add_argument("--prompts", required=True, help="prompts JSON (see references/prompt-set.md)")
     p.add_argument("--out", required=True, help="run folder")
-    p.add_argument("--phases", default="closed-book,api-search,app,aio",
-                   help="comma list of closed-book, api-search, app, aio")
+    p.add_argument("--phases", default=",".join(PHASES),
+                   help="comma list of closed-book, api-search, app")
     p.add_argument("--country", default="AU",
                    help="2-letter market for the consumer apps and Google (default AU)")
+    p.add_argument("--only", help="comma list of engine ids to run (e.g. google-aio) - for retries")
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--dry-run", action="store_true", help="print the plan, call nothing")
     p.set_defaults(fn=cmd_run)
@@ -689,6 +878,7 @@ def main() -> int:
     p.add_argument("--excerpt", type=int, default=400, help="characters kept per answer excerpt")
     p.add_argument("--no-excerpts", action="store_true", help="drop non-mention excerpts to save tokens")
     p.add_argument("--top-domains", type=int, default=30)
+    p.add_argument("--fan-out", type=int, default=12, help="search queries listed per engine")
     p.set_defaults(fn=cmd_summarise)
 
     args = ap.parse_args()

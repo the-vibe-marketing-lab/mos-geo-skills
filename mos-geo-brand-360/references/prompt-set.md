@@ -62,11 +62,14 @@ keyword stuffing.
 
 ## Size and cost
 
-3 closed-book + 10 search prompts is the default. With the default engines that is
-4 x 3 closed-book calls, 5 x 10 API search calls and (per Bright Data scraper) 10 app
-records: roughly 60 OpenRouter calls and 60 Bright Data records per brand. Every prompt
-runs **once**. Do not add repeats. If the user wants a cheaper run, cut unbranded prompts
-before cutting engines.
+3 closed-book + 10 search prompts is the default. With the default surfaces that is
+3 x 3 closed-book calls, 4 x 10 API search calls and 4 x 10 app calls: 89 calls, roughly
+$1.50 to $2.50 per brand on DataForSEO (see `providers.md`). Every prompt runs **once**. Do
+not add repeats. If the user wants a cheaper run, cut unbranded prompts before cutting
+surfaces.
+
+Keep every prompt under 500 characters. DataForSEO rejects longer ones, and the script
+checks before spending anything.
 
 ## Confirm before spending
 

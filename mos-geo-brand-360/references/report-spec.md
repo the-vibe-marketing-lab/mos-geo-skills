@@ -1,7 +1,7 @@
 # Report spec: the 360° Brand Intelligence Report
 
 This is the reconstructed Brand Brain prompt, extended with the AI visibility layer. The
-research agent in Stage 4 gets the **Research brief** below. You (the orchestrator) write
+research agent in Stage 2 gets the **Research brief** below. You (the orchestrator) write
 Section 18 and the header from `visibility.md`.
 
 ---
@@ -98,9 +98,10 @@ Section 18 and the header from `visibility.md`.
 - **Cited sources:** how many branded answers cited at least one source.
 - **Recommended:** unbranded answers that named the brand, as `x/5`.
 
-The API surface has no *Known* entry for Perplexity (Sonar always searches) and the app
-surface has none for any engine (Bright Data only returns search-enabled answers). Write
-`n/a`, not No.
+The API surface has no *Known* entry for Perplexity (Sonar always searches), and the app
+surfaces (ChatGPT app, Gemini app, AI Mode, AI Overviews) have none at all: they only exist
+with search on. Write `n/a`, not No. For AI Overviews, "(Google showed no AI Overview for
+this query.)" means Google did not show one; score that as not found, and say so.
 
 ### 18.2 The funnel
 
@@ -126,3 +127,5 @@ are the outreach list.
   not score whether each statement is true.
 - The app surface reflects a logged-out user in one location. Signed-in users with
   history may see different answers.
+- Name any surface a fallback provider served (the `Via` column), since a fallback answer
+  can differ from the primary's.
