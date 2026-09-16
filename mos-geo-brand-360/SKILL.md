@@ -49,7 +49,7 @@ researcher had prior context.
 | 3 | Summarise | `visibility-report.md` written |
 | 4 | Confirm the entity | User picked their real website (after the run) |
 | 5 | Write the report | `assemble` builds `brand-360-report.md` without refusing |
-| 6 | Brand Truth Review rows | `data/brand-truth-review.csv` written; Checklist row ticked |
+| 6 | Fill the workbook | `workbook` ran; `brand-audit-template.xlsx` sits in the run folder |
 
 Set `SKILL=<this skill's folder>`, then get the run folder from the script, run from the
 user's project:
@@ -73,7 +73,8 @@ Every run folder has the same shape:
 
 ```
 <run folder>/
-  brand-360-report.md      the finished report (built by `assemble` in Stage 5)
+  brand-audit-template.xlsx  the client deliverable, filled by `workbook` in Stage 6
+  brand-360-report.md      the finished report (built by `assemble`; supplementary)
   visibility-report.md     the engine summary (written by `summarise`)
   data/                    prompts.json, results.jsonl, run-meta.json, domains.csv,
                            sections-1-17.md (research draft), header.md and
@@ -186,18 +187,13 @@ never patch the report by hand.
 
 Hand over the report path, the funnel line, and the one stage where the brand drops out.
 
-## Stage 6: Brand Truth Review rows (for the client)
+## Stage 6: Fill the brand audit workbook (the deliverable)
 
-Clients check facts faster than prose, so do not ask them to read the whole report. Write
-`$RUN/data/brand-truth-review.csv` with one row per checkable claim, ready to append to the
-**Brand Truth Review** tab of the brain's audit workbook.
+The client deliverable is the workbook, `$RUN/brand-audit-template.xlsx`; the two `.md` files
+are supplementary. Two steps.
 
-That workbook is `<brain>/campaigns/geo/brand-audit-template.xlsx`. If it is not there yet,
-copy it from the pack: `cp "$SKILL/../_shared/brand-audit/brand-audit-template.xlsx"
-<brain>/campaigns/geo/`. The user uploads it to Google Sheets and appends the CSV
-(File > Import > Append to current sheet).
-
-Columns, in this order, with a header row:
+**1. Write the Brand Truth Review rows.** Clients check facts faster than prose, so write
+`$RUN/data/brand-truth-review.csv` with one checkable claim per row and this header:
 
 ```
 Topic,What the research / AI says,Where it came from,Said by (AI surfaces)
@@ -212,11 +208,21 @@ Topic,What the research / AI says,Where it came from,Said by (AI surfaces)
   `Section 18 (visibility-report s3)` for engine answers.
 - **Said by:** the AI surfaces that stated it, from `visibility-report.md`, or `Research`
   when only the research agent found it.
-- Leave the verdict, correction and priority columns to the client and the agency; they
-  are in the workbook, not the CSV.
 
-Tell the user to tick the brand-360 row in the workbook's **Checklist** tab once the
-report and review rows are delivered.
+**2. Fill the workbook:**
+
+```bash
+uv run --with openpyxl python "$SKILL/scripts/brand360.py" workbook --run-dir "$RUN"
+```
+
+It copies the pack's master template into the run folder if there is no workbook there yet
+(a re-run in the same month reuses the existing one, so other skills' rows survive), then:
+ticks the `mos-geo-brand-360` row on **Checklist** (status, date, where the files are), fills
+**Brand Truth Review** from the CSV, and rebuilds two tabs, **Brand 360 Report** and
+**AI Visibility**, from the two markdown files with every table as a real sheet table.
+
+Tell the user to upload the workbook to Google Sheets and send the client the Brand Truth
+Review tab; every Inaccurate or Out of date verdict becomes an Initiative.
 
 ## Reference map
 

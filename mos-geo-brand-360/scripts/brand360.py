@@ -15,9 +15,14 @@ Subcommands
               the only file the skill reads back (keeps token use down).
   assemble    Build brand-360-report.md from data/header.md, data/sections-1-17.md
               and data/section-18.md, with frontmatter and the prompt appendix.
+  workbook    Put the run into the brand audit workbook next to the report:
+              tick the Checklist, fill Brand Truth Review, add the report and
+              the visibility data as sheet tabs. Needs openpyxl
+              (uv run --with openpyxl python brand360.py workbook ...).
 
 Run folder layout
-  brand-360-report.md     the finished report (built by assemble)
+  brand-audit-template.xlsx  the audit workbook, filled by `workbook` (the deliverable)
+  brand-360-report.md     the finished report (built by assemble; supplementary)
   visibility-report.md    the engine summary (written by summarise)
   data/                   prompts.json, results.jsonl, run-meta.json,
                           domains.csv, header.md, sections-1-17.md,
@@ -471,7 +476,7 @@ def run_dir_for(brand: str, day: str, start: Path) -> Path:
     else:
         base, leaf = start.resolve() / "outputs" / "brand-360" / day[:7], slug
     target, n = base / leaf, 2
-    while target.exists() and any(p.name != "brand-audit-template.xlsx" for p in target.iterdir()):
+    while target.exists() and any(target.iterdir()):
         target = base / f"{leaf}-{n}"
         n += 1
     return target
@@ -1051,6 +1056,141 @@ def cmd_assemble(args) -> int:
     return 0
 
 
+# -------------------------------------------------------------- workbook --
+
+WORKBOOK = "brand-audit-template.xlsx"
+PACK_TEMPLATE = SKILL_DIR.parent / "_shared" / "brand-audit" / WORKBOOK
+
+
+def md_blocks(text: str):
+    """Yield ('h', level, text) | ('p', text) | ('table', [rows]) from Markdown."""
+    lines = strip_frontmatter(text).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip()
+        if not line.strip() or re.fullmatch(r"\s*-{3,}\s*", line):
+            i += 1
+            continue
+        if line.startswith("#"):
+            level = len(line) - len(line.lstrip("#"))
+            yield "h", level, plain(line.lstrip("# "))
+            i += 1
+        elif line.lstrip().startswith("|"):
+            rows = []
+            while i < len(lines) and lines[i].lstrip().startswith("|"):
+                cells = [c.strip() for c in re.split(r"(?<!\\)\|", lines[i].strip().strip("|"))]
+                if not all(re.fullmatch(r":?-+:?", c) for c in cells):
+                    rows.append([plain(c.replace("\\|", "|")).replace("\\|", "|") for c in cells])
+                i += 1
+            yield "table", rows
+        else:
+            para = []
+            while i < len(lines) and lines[i].strip() and not lines[i].startswith("#") \
+                    and not lines[i].lstrip().startswith("|"):
+                para.append(lines[i].rstrip())
+                i += 1
+            yield "p", "\n".join(re.sub(r"[*_`]{1,3}", "", l.lstrip("> ")) for l in para)
+
+
+def md_to_sheet(ws, text: str, styles: dict) -> None:
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 2
+    for col in "BCDEFGHIJK":
+        ws.column_dimensions[col].width = 34
+    ws.column_dimensions["B"].width = 44
+    row = 2
+    for block in md_blocks(text):
+        if block[0] == "h":
+            _, level, txt = block
+            c = ws.cell(row=row, column=2, value=txt)
+            c.font = styles["h1"] if level == 1 else styles["h2"] if level == 2 else styles["h3"]
+            row += 1
+        elif block[0] == "p":
+            c = ws.cell(row=row, column=2, value=block[1])
+            c.alignment = styles["wrap"]
+            ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=8)
+            ws.row_dimensions[row].height = min(400, 15 * (block[1].count("\n") + 1 + len(block[1]) // 160))
+            row += 1
+        else:
+            rows = block[1]
+            for j, cells in enumerate(rows):
+                for k, val in enumerate(cells, start=2):
+                    c = ws.cell(row=row, column=k, value=val)
+                    c.alignment, c.border = styles["wrap"], styles["edge"]
+                    if j == 0:
+                        c.font, c.fill = styles["head"], styles["head_fill"]
+                row += 1
+        row += 1
+
+
+def cmd_workbook(args) -> int:
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    except ImportError:
+        sys.exit("openpyxl is needed: uv run --with openpyxl python brand360.py workbook ...")
+    run_dir = Path(args.run_dir)
+    data = run_dir / DATA_DIR
+    meta = json.loads((data / "run-meta.json").read_text(encoding="utf-8")) if (data / "run-meta.json").exists() else {}
+    brand = args.brand or meta.get("brand") or sys.exit("--brand is required")
+    day = (meta.get("run_at") or time.strftime("%Y-%m-%d"))[:10]
+    report, vis = run_dir / REPORT, run_dir / VISIBILITY_REPORT
+    for f in (report, vis, data / "brand-truth-review.csv"):
+        if not f.is_file():
+            sys.exit(f"missing {f}")
+    book = run_dir / WORKBOOK
+    if not book.is_file():
+        if not PACK_TEMPLATE.is_file():
+            sys.exit(f"no workbook in the run folder and no pack template at {PACK_TEMPLATE}")
+        book.write_bytes(PACK_TEMPLATE.read_bytes())
+    wb = openpyxl.load_workbook(book)
+
+    styles = {
+        "h1": Font(bold=True, size=16, color="1F2937"), "h2": Font(bold=True, size=13, color="1F2937"),
+        "h3": Font(bold=True, size=11, color="1F2937"), "wrap": Alignment(wrap_text=True, vertical="top"),
+        "head": Font(bold=True, color="FFFFFF"), "head_fill": PatternFill("solid", fgColor="1F2937"),
+        "edge": Border(*(Side(style="thin", color="D1D5DB"),) * 4),
+    }
+    # Checklist: tick the brand-360 row.
+    ws = wb["Checklist"]
+    for r in range(1, ws.max_row + 1):
+        if ws.cell(row=r, column=3).value == "mos-geo-brand-360":
+            ws.cell(row=r, column=8, value="Client review")
+            ws.cell(row=r, column=9, value="☑")
+            ws.cell(row=r, column=10, value=day)
+            ws.cell(row=r, column=11, value=f"See the 'Brand 360 Report' and 'AI Visibility' tabs; files in {run_dir.name}/")
+            break
+    else:
+        sys.exit("Checklist has no mos-geo-brand-360 row; rebuild the template from the pack")
+    # Brand Truth Review: one row per claim, replacing the example row.
+    ws = wb["Brand Truth Review"]
+    ws["B2"] = f"Brand Truth Review: is this what AI should say about {brand}?"
+    with (data / "brand-truth-review.csv").open(encoding="utf-8", newline="") as fh:
+        claims = list(csv.DictReader(fh))
+    top = 8
+    for r in range(top, top + 60):
+        for col in range(3, 11):
+            ws.cell(row=r, column=col).value = None
+            ws.cell(row=r, column=col).font = Font()
+            ws.cell(row=r, column=col).fill = PatternFill()
+    for i, row in enumerate(claims):
+        r = top + i
+        ws.cell(row=r, column=3, value=row.get("Topic"))
+        ws.cell(row=r, column=4, value=row.get("What the research / AI says"))
+        ws.cell(row=r, column=5, value=row.get("Where it came from"))
+        ws.cell(row=r, column=6, value=row.get("Said by (AI surfaces)"))
+    # Report and visibility tabs, rebuilt from scratch each time.
+    for title, path in (("Brand 360 Report", report), ("AI Visibility", vis)):
+        if title in wb.sheetnames:
+            del wb[title]
+        md_to_sheet(wb.create_sheet(title), path.read_text(encoding="utf-8"), styles)
+    order = ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility", "Initiatives"]
+    wb._sheets = [wb[n] for n in order if n in wb.sheetnames] + [s for s in wb._sheets if s.title not in order]
+    wb.save(book)
+    print(f"Wrote {book}: Checklist ticked, {len(claims)} truth-review rows, report + visibility tabs")
+    return 0
+
+
 # ------------------------------------------------------------------ main --
 
 def main() -> int:
@@ -1108,6 +1248,11 @@ def main() -> int:
     p.add_argument("--description", required=True,
                    help="one-line frontmatter description ending in the headline finding")
     p.set_defaults(fn=cmd_assemble)
+
+    p = sub.add_parser("workbook", help="fill the brand audit workbook from this run (needs openpyxl)")
+    p.add_argument("--run-dir", required=True)
+    p.add_argument("--brand", help="defaults to the brand in data/run-meta.json")
+    p.set_defaults(fn=cmd_workbook)
 
     args = ap.parse_args()
     return args.fn(args)

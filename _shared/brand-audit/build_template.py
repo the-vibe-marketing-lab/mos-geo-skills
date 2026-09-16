@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build brand-audit-template.xlsx, the master GEO brand audit workbook.
 
-A copy lives at campaigns/geo/brand-audit-template.xlsx in every brain that runs a
-mos-geo-* skill (the skills copy it there on first use).
+Each audit month gets a copy at campaigns/geo/YYYY-MM/brand-audit-template.xlsx; the
+skills copy it there on first use and fill it in.
 
 The workbook is generated, never hand-edited, so every mos-geo-* skill is
 added the same way: add an entry to skills.json, re-run this script, commit

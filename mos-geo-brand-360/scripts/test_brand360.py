@@ -188,6 +188,31 @@ class Brand360Test(unittest.TestCase):
             b.cmd_assemble(args)
         self.assertIn("missing section(s) [9]", str(cm.exception))
 
+    def test_md_blocks(self):
+        md = "---\ntitle: x\n---\n\n# T\n\n> note **bold**\n\n---\n\n| A | B |\n|---|---|\n| 1 | a\\|b |\n\n## S\n"
+        self.assertEqual(list(b.md_blocks(md)), [("h", 1, "T"), ("p", "note bold"),
+                                                 ("table", [["A", "B"], ["1", "a|b"]]), ("h", 2, "S")])
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "openpyxl not installed")
+    def test_workbook_fills_template(self):
+        import openpyxl
+        run = self.dir / "run"
+        data = run / "data"
+        data.mkdir(parents=True)
+        (data / "run-meta.json").write_text(json.dumps({"brand": "Acme Widgets", "run_at": "2026-09-16 10:00:00"}))
+        (run / "brand-360-report.md").write_text("# Acme\n\n## 18. AI Visibility Scorecard\n\n| A | B |\n|---|---|\n| 1 | 2 |\n")
+        (run / "visibility-report.md").write_text("# Vis\n\n| Engine | Surface |\n|---|---|\n| ChatGPT (API) | api |\n")
+        (data / "brand-truth-review.csv").write_text("Topic,What the research / AI says,Where it came from,Said by (AI surfaces)\nFounder,Run by X.,Section 1 [1],Research\n")
+        with mock.patch("builtins.print"):
+            b.cmd_workbook(Namespace(run_dir=str(run), brand=None))
+        wb = openpyxl.load_workbook(run / "brand-audit-template.xlsx")
+        self.assertEqual(wb.sheetnames[:4], ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility"])
+        ws = wb["Checklist"]
+        row = next(r for r in range(1, 40) if ws.cell(row=r, column=3).value == "mos-geo-brand-360")
+        self.assertEqual((ws.cell(row=row, column=8).value, ws.cell(row=row, column=9).value), ("Client review", "☑"))
+        self.assertEqual(wb["Brand Truth Review"].cell(row=8, column=3).value, "Founder")
+        self.assertEqual(wb["AI Visibility"].cell(row=5, column=2).value, "ChatGPT (API)")
+
     def test_prompt_limit(self):
         long = dict(PROMPTS, branded=[{"text": "x" * 501}])
         (self.dir / "prompts.json").write_text(json.dumps(long))
