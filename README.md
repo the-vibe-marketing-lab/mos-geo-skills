@@ -8,6 +8,7 @@ GEO is the messy new corner of search where the "engine" is an LLM rather than a
 
 | Skill | What it does |
 |---|---|
+| `mos-geo-brand-360/` | A 360° Brand Intelligence Report from just a brand name and industry, plus an AI Visibility Scorecard: whether ChatGPT, Gemini, Claude, Grok, Perplexity, Google AI Mode, AI Overviews and Copilot know the brand, find it, cite it and recommend it. Needs OpenRouter and Bright Data keys (`mos-geo-brand-360/references/providers.md`). |
 | `mos-geo-llm-buttons/` | Generates a row of "ask an AI about this page" share buttons for an article — ChatGPT, Claude, Perplexity, Grok, Google AI Mode — each opening with a pre-filled summarise-this-page prompt. |
 
 More skills get added as flat folders at the top level of this repo. One folder per skill, each with its own `SKILL.md`. Add the folder, re-run `setup.sh`, done.
@@ -50,5 +51,7 @@ So `~/.claude/skills/mos-geo-llm-buttons/SKILL.md` is found. `~/.claude/skills/m
 4. Run `bash setup.sh`.
 
 ## A note on honesty
+
+`mos-geo-brand-360` asks each engine every prompt once and says so in the report. AI answers change between runs, so a single answer is a snapshot, never a rate. The report shows what the engines said and leaves judging accuracy to the client.
 
 These skills touch client work. The evidence base is deliberately unflattering in places — buttons on their own measured a 17% drop in clicks in the only controlled test we have. That's in `_shared/geo-evidence.md` in plain sight, because getting caught overselling costs more than the tactic is worth.

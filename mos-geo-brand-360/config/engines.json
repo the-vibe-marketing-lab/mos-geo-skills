@@ -1,0 +1,186 @@
+{
+  "_comment": "Which AI engines mos-geo-brand-360 queries. Edit freely. Model slugs go stale: run `brand360.py preflight` and it checks every slug against OpenRouter's live model list. Set enabled=false to skip an engine without deleting it.",
+  "openrouter": {
+    "base_url": "https://openrouter.ai/api/v1/chat/completions",
+    "models_url": "https://openrouter.ai/api/v1/models",
+    "max_tokens": 1200,
+    "engines": [
+      {
+        "id": "chatgpt",
+        "label": "ChatGPT (API)",
+        "model": "openai/gpt-chat-latest",
+        "closed_book": true,
+        "search": "native",
+        "enabled": true
+      },
+      {
+        "id": "gemini",
+        "label": "Gemini (API)",
+        "model": "~google/gemini-flash-latest",
+        "closed_book": true,
+        "search": "native",
+        "enabled": true
+      },
+      {
+        "id": "claude",
+        "label": "Claude (API)",
+        "model": "~anthropic/claude-sonnet-latest",
+        "closed_book": true,
+        "search": "native",
+        "enabled": true
+      },
+      {
+        "id": "grok",
+        "label": "Grok (API)",
+        "model": "~x-ai/grok-latest",
+        "closed_book": true,
+        "search": "native",
+        "enabled": true
+      },
+      {
+        "id": "perplexity",
+        "label": "Perplexity (Sonar API)",
+        "model": "perplexity/sonar",
+        "closed_book": false,
+        "search": "builtin",
+        "enabled": true,
+        "_note": "Sonar always searches, so it cannot take part in the closed-book pass. search=builtin means no web plugin is attached."
+      }
+    ]
+  },
+  "brightdata": {
+    "trigger_url": "https://api.brightdata.com/datasets/v3/trigger",
+    "progress_url": "https://api.brightdata.com/datasets/v3/progress/{snapshot_id}",
+    "snapshot_url": "https://api.brightdata.com/datasets/v3/snapshot/{snapshot_id}?format=json",
+    "poll_seconds": 15,
+    "timeout_seconds": 900,
+    "scrapers": [
+      {
+        "id": "chatgpt-app",
+        "label": "ChatGPT (app)",
+        "dataset_id": "gd_m7aof0k82r803d5bjm",
+        "url": "https://chatgpt.com/",
+        "input_extra": {
+          "web_search": true
+        },
+        "set_country": true,
+        "answer_fields": [
+          "answer_text_markdown",
+          "answer_text",
+          "answer"
+        ],
+        "citation_fields": [
+          "citations",
+          "sources",
+          "search_sources"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "perplexity-app",
+        "label": "Perplexity (app)",
+        "dataset_id": "gd_m7dhdot1vw9a7gc1n",
+        "url": "https://www.perplexity.ai",
+        "input_extra": {},
+        "set_country": true,
+        "answer_fields": [
+          "answer_text_markdown",
+          "answer_text",
+          "answer",
+          "answer_html"
+        ],
+        "citation_fields": [
+          "citations",
+          "sources",
+          "search_sources"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "gemini-app",
+        "label": "Gemini (app)",
+        "dataset_id": "gd_mbz66arm2mf9cu856y",
+        "url": "https://gemini.google.com/",
+        "input_extra": {},
+        "set_country": false,
+        "answer_fields": [
+          "answer_text_markdown",
+          "answer_text",
+          "answer"
+        ],
+        "citation_fields": [
+          "citations",
+          "sources",
+          "search_sources"
+        ],
+        "enabled": true,
+        "_note": "Gemini decides for itself whether to search. European countries cannot be targeted."
+      },
+      {
+        "id": "aimode-app",
+        "label": "Google AI Mode",
+        "dataset_id": "gd_mcswdt6z2elth3zqr2",
+        "url_template": "https://www.google.com/search?udm=50&q={q}",
+        "input_extra": {},
+        "set_country": true,
+        "answer_fields": [
+          "answer",
+          "answer_text_markdown",
+          "answer_text"
+        ],
+        "citation_fields": [
+          "citations",
+          "sources",
+          "search_sources"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "copilot-app",
+        "label": "Copilot (app)",
+        "dataset_id": "gd_m7di5jy6s9geokz8w",
+        "url": "https://copilot.microsoft.com/chats",
+        "input_extra": {},
+        "set_country": false,
+        "answer_fields": [
+          "answer_text_markdown",
+          "answer_text",
+          "answer"
+        ],
+        "citation_fields": [
+          "citations",
+          "sources",
+          "search_sources"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "grok-app",
+        "label": "Grok (app)",
+        "dataset_id": "gd_m8ve0u141icu75ae74",
+        "url": "https://grok.com/",
+        "input_extra": {},
+        "set_country": false,
+        "answer_fields": [
+          "answer_text_markdown",
+          "answer_text",
+          "answer"
+        ],
+        "citation_fields": [
+          "citations",
+          "sources",
+          "search_sources"
+        ],
+        "enabled": false,
+        "_note": "Bright Data's docs list the Grok scraper as currently unavailable. Try enabling it; Grok is still covered on the API surface."
+      }
+    ],
+    "_comment": "Dataset IDs and fields verified 2026-09-16 against docs.brightdata.com and Bright Data's own GitHub repos (brightdata-mcp, sdk-python, brightdata-agent-showcase). Gemini/Copilot/Grok output fields are undocumented, so answer_fields and citation_fields list several candidates; the first non-empty one wins. url_template {q} is replaced with the URL-encoded prompt. set_country=true sends the run's --country.",
+    "ai_overviews": {
+      "_comment": "Google AI Overviews via the SERP API. Needs a SERP zone created in the Bright Data dashboard; put its name in BRIGHTDATA_SERP_ZONE. brd_ai_overview=2 makes an overview more likely (+5-10 s).",
+      "request_url": "https://api.brightdata.com/request",
+      "search_url": "https://www.google.com/search?q={q}&hl=en&gl={country}&brd_json=1&brd_ai_overview=2",
+      "enabled": true
+    }
+  }
+}
