@@ -127,6 +127,18 @@ class Brand360Test(unittest.TestCase):
         # the retry replaced, not duplicated, the AI Overview rows
         self.assertIn("| Google AI Overviews | app | dataforseo | - | 1/1 | 1/1 | 0/1 | 0 |", md)
 
+    def test_run_dir_inside_and_outside_a_brain(self):
+        brain = self.dir / "brain"
+        (brain / ".mos").mkdir(parents=True)
+        (brain / ".mos" / "config.yaml").write_text("{}")
+        (brain / "content").mkdir()
+        inside = b.run_dir_for("The Vibe Marketing Lab", "2026-09-16", brain / "content")
+        self.assertEqual(inside, (brain / "campaigns/2026/09/2026-09-16-the-vibe-marketing-lab-brand-360/geo").resolve())
+        outside = b.run_dir_for("Acme & Co.", "2026-01-05", self.dir)
+        self.assertEqual(outside, (self.dir / "outputs/2026/01/2026-01-05-acme-co-brand-360").resolve())
+        with self.assertRaises(SystemExit):
+            b.run_dir_for("Acme", "16-09-2026", self.dir)
+
     def test_prompt_limit(self):
         long = dict(PROMPTS, branded=[{"text": "x" * 501}])
         (self.dir / "prompts.json").write_text(json.dumps(long))

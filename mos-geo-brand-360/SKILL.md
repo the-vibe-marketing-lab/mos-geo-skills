@@ -50,9 +50,22 @@ researcher had prior context.
 | 4 | Confirm the entity | User picked their real website (after the run) |
 | 5 | Write the report | Section 18 filled from `visibility.md`; every flag intact |
 
-Set `RUN=outputs/brand-360/<YYYY-MM-DD>-<brand-slug>` in the user's current project and
-`SKILL=<this skill's folder>`. Run folders can hold client data: never commit them into this
-pack.
+Set `SKILL=<this skill's folder>`, then get the run folder from the script, run from the
+user's project:
+
+```bash
+RUN=$(python3 "$SKILL/scripts/brand360.py" path --brand "<brand>")
+```
+
+- **Inside a MarketingOS brain** (any folder under one that holds `.mos/config.yaml`) it
+  returns `campaigns/YYYY/MM/YYYY-MM-DD-<brand-slug>-brand-360/geo/`. That is the brain's
+  campaign grammar with `geo` as the platform folder, so `mos validate` accepts it. For an
+  agency, run it from inside the **client's** brain, never the agency HQ repo.
+- **Anywhere else** it returns `outputs/YYYY/MM/YYYY-MM-DD-<brand-slug>-brand-360/`.
+
+Never invent another location. Run folders can hold client data: never commit them into
+this pack. Everything the report needs sits in the run folder; `raw/` is bulky, so add it to
+the project's `.gitignore` (or delete it) before committing.
 
 ---
 

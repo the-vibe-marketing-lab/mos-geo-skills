@@ -6,6 +6,7 @@ so the skill can judge whether the brand is known, found, cited and
 recommended. Standard library only - no pip install needed.
 
 Subcommands
+  path        Print where this run's folder belongs (MarketingOS-aware).
   preflight   Check credentials and that every model in config/engines.json
               still exists at its provider.
   run         Send the prompt set to the engines and save raw + normalised
@@ -399,6 +400,37 @@ def bd_ai_overview(cfg, env, prompt, country):
                   if isinstance(i, dict) and i.get("snippet")]
     cites = citation_list(overview.get("references"))
     return "\n".join(parts) or NO_AIO, cites, None
+
+
+# ------------------------------------------------------------------ path --
+
+def find_brain(start: Path) -> Path | None:
+    """The nearest folder at or above `start` holding .mos/config.yaml."""
+    for d in [start, *start.parents]:
+        if (d / ".mos" / "config.yaml").is_file():
+            return d
+    return None
+
+
+def run_dir_for(brand: str, day: str, start: Path) -> Path:
+    """MarketingOS execution dirs must nest as YYYY/MM/YYYY-MM-DD-slug/ or
+    `mos validate` rejects them. Inside a brain the audit is a campaign with
+    `geo` as its platform folder; anywhere else it is a dated output."""
+    slug = re.sub(r"[^a-z0-9]+", "-", brand.lower()).strip("-")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        sys.exit(f"--date must be YYYY-MM-DD, got {day}")
+    leaf = f"{day[:4]}/{day[5:7]}/{day}-{slug}-brand-360"
+    brain = find_brain(start.resolve())
+    if brain:
+        return brain / "campaigns" / leaf / "geo"
+    return start.resolve() / "outputs" / leaf
+
+
+def cmd_path(args) -> int:
+    day = args.date or time.strftime("%Y-%m-%d")
+    target = run_dir_for(args.brand, day, Path(args.start or "."))
+    print(target)
+    return 0
 
 
 # ------------------------------------------------------------- preflight --
@@ -845,6 +877,12 @@ def main() -> int:
     def common(p):
         p.add_argument("--config", help="engines config (default: config/engines.json)")
         p.add_argument("--env-file", help="a .env file holding the API keys")
+
+    p = sub.add_parser("path", help="print the run folder for this brand (MarketingOS-aware)")
+    p.add_argument("--brand", required=True)
+    p.add_argument("--date", help="YYYY-MM-DD (default today)")
+    p.add_argument("--start", help="folder to resolve from (default: current folder)")
+    p.set_defaults(fn=cmd_path)
 
     p = sub.add_parser("preflight", help="check credentials and model names")
     common(p)
