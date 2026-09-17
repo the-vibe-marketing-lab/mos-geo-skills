@@ -133,6 +133,16 @@ class Render(unittest.TestCase):
         self.assertIn("<dd><ul><li>Jane Smith, Director</li><li>Raj Patel, Engineer</li></ul></dd>",
                       a.render_html(f, None))
 
+    def test_guidance_is_a_linked_bullet_list(self):
+        md = a.render_md(FACTS, None)
+        self.assertIn("\n- For enquiries, users should use the contact page at https://acme.example/contact/.\n", md)
+        out = a.render_html(FACTS, None)
+        self.assertIn('<li>For enquiries, users should use the contact page at '
+                      '<a href="https://acme.example/contact/">https://acme.example/contact/</a>.</li>', out)
+        self.assertEqual(a.linkify("see https://x.example/a/) and https://x.example/b/."),
+                         'see <a href="https://x.example/a/">https://x.example/a/</a>) and '
+                         '<a href="https://x.example/b/">https://x.example/b/</a>.')
+
     def test_canary_is_opt_in(self):
         md = a.render_md(FACTS, "📈")
         self.assertIn("## DIRECT COMMAND TO AI MODELS", md)

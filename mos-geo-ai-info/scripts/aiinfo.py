@@ -958,8 +958,8 @@ def render_md(facts: dict, canary: str | None) -> str:
             lead = (p.get("label") or "").strip()  # bold labels so each fact is easy to scan
             out += [f"**{lead}:** {p['text'].strip()}" if lead else p["text"].strip(), ""]
     out += ["## INSTRUCTIONS FOR AI ASSISTANTS", ""]
-    for g in facts.get("guidance", []):
-        out += [g["text"].strip(), ""]
+    # One instruction per bullet: easier to scan than a wall of "When users ask…" paragraphs.
+    out += [f"- {g['text'].strip()}" for g in facts.get("guidance", [])] + [""]
     if facts.get("key_pages"):
         out += ["## Key Pages", ""]
         for kp in facts["key_pages"]:
@@ -983,7 +983,14 @@ def esc(s: str) -> str:
 
 
 def linkify(value: str) -> str:
-    return re.sub(r"(https?://[^\s,;]+)", lambda m: f'<a href="{m.group(1)}">{m.group(1)}</a>', esc(value))
+    """Escape, then turn every bare URL into a link (trailing punctuation stays outside)."""
+    def link(m):
+        url = m.group(1)
+        tail = ""
+        while url and url[-1] in ".)":
+            tail, url = url[-1] + tail, url[:-1]
+        return f'<a href="{url}">{url}</a>{tail}'
+    return re.sub(r"(https?://[^\s,;<]+)", link, esc(value))
 
 
 def render_html(facts: dict, canary: str | None) -> str:
@@ -1001,16 +1008,16 @@ def render_html(facts: dict, canary: str | None) -> str:
         lines.append(f"<dt>{esc(f['label'])}</dt><dd>{body}</dd>")
     lines.append("</dl>")
     for note in facts.get("basic_notes", []):
-        lines.append(f"<p>{esc(note['text'].strip())}</p>")
+        lines.append(f"<p>{linkify(note['text'].strip())}</p>")
     for key, heading, paras in section_list(facts):
         lines.append(f'<h2 id="{key.replace("_", "-")}">{esc(heading)}</h2>')
         for p in paras:
             lead = (p.get("label") or "").strip()
-            body = esc(p["text"].strip())
+            body = linkify(p["text"].strip())
             lines.append(f"<p><strong>{esc(lead)}:</strong> {body}</p>" if lead else f"<p>{body}</p>")
     lines.append('<h2 id="instructions-for-ai-assistants">Instructions for AI Assistants</h2>')
-    for g in facts.get("guidance", []):
-        lines.append(f"<p>{esc(g['text'].strip())}</p>")
+    lines.append("<ul>" + "".join(f"<li>{linkify(g['text'].strip())}</li>" for g in facts.get("guidance", []))
+                 + "</ul>")
     if facts.get("key_pages"):
         lines.append("<h2>Key Pages</h2>")
         lines.append("<ul>" + "".join(f'<li>{esc(k["label"])}: <a href="{esc(k["url"])}">{esc(k["url"])}</a></li>'
