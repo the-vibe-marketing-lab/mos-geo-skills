@@ -44,8 +44,10 @@ source; don't keep collecting.
 - founder and leadership (LinkedIn, press)
 - awards (the organiser's own winner list). Before calling an award "not listed", search
   the fetched winners page text for the partner or client name as well as the brand
-  (entries are often "Brand & Client"), and use a rendering fetcher if the page is long or
-  script-built. A false "missing" is a discrepancy the client has to disprove.
+  (entries are often "Brand & Client"). Search the fetched text with a script, never by
+  eye: long winners pages are easy to misread. A false "missing" is a discrepancy the
+  client has to disprove, so every "not listed" claim needs that search result in the
+  hand-back.
 - press coverage, events the brand runs or speaks at
 - review platforms (name, rating, count, date seen)
 - namesakes: search the brand name on its own and with its category. List any other
