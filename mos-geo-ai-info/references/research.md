@@ -60,12 +60,21 @@ writing rules in references/page-template.md. Every basic field and paragraph ci
 source ids; every source has a URL you opened. Name clients only if the brand publishes
 them itself. Self-reported claims use "{brand} states that …".
 
+List every client, award, product, programme and event you name in "probe_terms", then run:
+  python3 {skill}/scripts/aiinfo.py probe --run-dir {run_dir}
+Read data/probe.md and the new data/pages/probe-*.md files. Add what those pages publish
+(older case studies especially). A term with no page on the site needs a third-party
+source or it comes out.
+
+Record every place where sources disagree in "discrepancies" (each value with its URL, the
+value you used, and the site fix). Pages missing from the XML sitemap go in too.
+
 Then run:  python3 {skill}/scripts/aiinfo.py build --run-dir {run_dir}
 and fix every [FAIL] until it builds. Leave [warn] lines you disagree with and say why.
 
 Hand back, in under 250 words:
 - facts you could not source (left out)
-- conflicts between sources and which one you used
+- the discrepancies you recorded, and any you could not settle (the user decides those)
 - statements that rest only on third-party sources
 - anything that looks sensitive (a named client, a person's details, pricing)
 ```

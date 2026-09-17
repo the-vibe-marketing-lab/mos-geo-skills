@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from argparse import Namespace
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 import aiinfo as a  # noqa: E402
@@ -253,6 +254,129 @@ class Paths(unittest.TestCase):
             self.assertEqual(a.run_dir_for("Acme", "2026-09-17", brain), brain / "campaigns/geo/2026-09/acme/ai-info")
 
 
+DISC = [{"topic": "Team size", "found": [{"value": "31", "url": "https://acme.example/about/"},
+                                        {"value": "16", "url": "https://acme.example/faq/"}],
+         "used": "more than 30", "decided_by": "client", "fix": "Update the FAQ to 'more than 30'."}]
+
+
+class Discrepancies(unittest.TestCase):
+    def test_lint_and_render(self):
+        self.assertTrue(any("no discrepancies list" in w for w in a.lint(FACTS)[1]))
+        f = dict(FACTS, discrepancies=DISC)
+        self.assertEqual(a.lint(f)[0], [])
+        self.assertFalse(any("discrepanc" in w for w in a.lint(f)[1]))
+        bad = dict(FACTS, discrepancies=[{"topic": "Office", "found": [{"value": "Pitt St", "url": ""}], "used": ""}])
+        errs = "\n".join(a.lint(bad)[0])
+        self.assertIn("needs topic and used", errs)
+        self.assertIn("at least two conflicting values", errs)
+        self.assertIn("needs value and url", errs)
+        md = a.render_discrepancies(f)
+        self.assertIn("## Team size", md)
+        self.assertIn('- "16" on https://acme.example/faq/', md)
+        self.assertIn("**Used:** more than 30 (client)", md)
+        self.assertIn("**Fix:** Update the FAQ", md)
+        self.assertIn("No discrepancies found.", a.render_discrepancies(dict(FACTS, discrepancies=[])))
+
+
+class Fallback(unittest.TestCase):
+    def fake_scrapling(self, status=200, body=b"<html><body><p>" + b"word " * 200 + b"</p></body></html>"):
+        import types
+        calls = []
+
+        class Resp:
+            def __init__(self, url):
+                self.status, self.body, self.url, self.headers = status, body, url, {"X": "1"}
+
+        class Fetcher:
+            @staticmethod
+            def get(url, **kw):
+                calls.append(("get", url))
+                return Resp(url)
+
+        class DynamicFetcher:
+            @staticmethod
+            def fetch(url, **kw):
+                calls.append(("browser", url))
+                return Resp(url)
+
+        pkg, mod = types.ModuleType("scrapling"), types.ModuleType("scrapling.fetchers")
+        mod.Fetcher, mod.DynamicFetcher = Fetcher, DynamicFetcher
+        return {"scrapling": pkg, "scrapling.fetchers": mod}, calls
+
+    def test_blocked_page_uses_scrapling(self):
+        mods, calls = self.fake_scrapling()
+        with mock.patch.dict(sys.modules, mods), mock.patch.object(a, "fetch", return_value=(403, {}, b"", "u")), \
+                mock.patch.object(a.time, "sleep"):
+            st, body, fu, via = a.fetch_page("https://acme.example/team/", 0)
+        self.assertEqual((st, via), (200, "scrapling"))
+        self.assertEqual(calls, [("get", "https://acme.example/team/")])
+        with mock.patch.object(a, "fetch", return_value=(403, {}, b"", "u")), mock.patch.object(a.time, "sleep"):
+            self.assertEqual(a.fetch_page("https://acme.example/team/", 0, "off")[0], 403)
+
+    def test_js_only_page_is_rendered(self):
+        shell = b"<html><body><div id=app></div>" + b"<script>x</script>" * 6 + b"</body></html>"
+        mods, calls = self.fake_scrapling()
+        with mock.patch.dict(sys.modules, mods), mock.patch.object(a, "fetch", return_value=(200, {}, shell, "u")), \
+                mock.patch.object(a.time, "sleep"):
+            st, body, fu, via = a.fetch_page("https://acme.example/", 0)
+        self.assertEqual(via, "scrapling-browser")
+        self.assertEqual(calls, [("browser", "https://acme.example/")])
+        self.assertTrue(a.js_only(shell))
+
+    def test_missing_scrapling_is_harmless(self):
+        with mock.patch.dict(sys.modules, {"scrapling": None, "scrapling.fetchers": None}):
+            self.assertIsNone(a.fetch_scrapling("https://acme.example/"))
+
+
+class Probe(unittest.TestCase):
+    def test_probe_finds_unlisted_pages(self):
+        study = b"<html><head><title>Beta Corp study</title></head><body><p>" + b"grew " * 120 + b"</p></body></html>"
+
+        def fake(url, timeout=30, method="GET"):
+            if "wp-json/wp/v2/search" in url and "Beta" in url:
+                return 200, {}, json.dumps([{"url": "https://acme.example/studies/beta-corp/"}]).encode(), url
+            if "wp-json/wp/v2/search" in url:
+                return 200, {}, b"[]", url
+            if url.endswith("/studies/beta-corp/"):
+                return 200, {}, study, url
+            return 404, {}, b"", url
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "data").mkdir()
+            (run / "data" / "crawl.json").write_text(json.dumps({"root": "https://acme.example/", "pages": []}))
+            (run / "data" / "sitemap-urls.txt").write_text("https://acme.example/\nhttps://acme.example/about/\n")
+            (run / "data" / "facts.json").write_text(json.dumps(dict(FACTS, probe_terms=["Gamma Ltd"])))
+            with mock.patch.object(a, "fetch", side_effect=fake), mock.patch.object(a.time, "sleep"):
+                rc = a.cmd_probe(Namespace(run_dir=tmp, term=["Beta Corp"], search_url=None, per_term=5,
+                                           max_pages=20, delay=0, scrapling="off"))
+            self.assertEqual(rc, 0)
+            crawl = json.loads((run / "data" / "crawl.json").read_text())
+            beta = crawl["probe"]["Beta Corp"]
+            self.assertEqual(beta["method"], "wp-rest")
+            self.assertFalse(beta["results"][0]["in_sitemap"])
+            self.assertTrue((run / beta["results"][0]["file"]).is_file())
+            self.assertEqual(crawl["probe"]["Gamma Ltd"]["results"], [])
+            report = (run / "data" / "probe.md").read_text()
+            self.assertIn("not in the XML sitemap", report)
+            self.assertIn("https://acme.example/studies/beta-corp/", report)
+            self.assertIn("- Gamma Ltd", report)
+
+    def test_search_fallback_matches_slug_or_label(self):
+        page = (b'<a href="/growth-studies/open-colleges/">Read</a><a href="/about/">About</a>'
+                b'<a href="/x/">Open Colleges results</a><a href="/?s=Open+Colleges">again</a>')
+
+        def fake(url, timeout=30, method="GET"):
+            if "wp-json" in url:
+                return 404, {}, b"", url
+            return 200, {}, page, url
+
+        with mock.patch.object(a, "fetch", side_effect=fake):
+            method, urls = a.site_search("https://acme.example/", "Open Colleges", None)
+        self.assertEqual(method, "wp-search")
+        self.assertEqual(urls, ["https://acme.example/growth-studies/open-colleges/", "https://acme.example/x/"])
+
+
 @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "needs openpyxl")
 class Workbook(unittest.TestCase):
     def test_workbook_tab_tick_and_initiative(self):
@@ -262,7 +386,7 @@ class Workbook(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "ai-info"
             (run / "data").mkdir(parents=True)
-            (run / "data" / "facts.json").write_text(json.dumps(FACTS), encoding="utf-8")
+            (run / "data" / "facts.json").write_text(json.dumps(dict(FACTS, discrepancies=DISC)), encoding="utf-8")
             a.cmd_build(Namespace(run_dir=str(run), canary=None))
             self.assertEqual(a.cmd_workbook(Namespace(run_dir=str(run), published=None)), 0)
             book = Path(tmp) / a.WORKBOOK
@@ -280,6 +404,9 @@ class Workbook(unittest.TestCase):
             tasks = [r for r in wb["Initiatives"].iter_rows(values_only=True)
                      if r[3] == "Publish the AI Info Page for Acme Widgets"]
             self.assertEqual(len(tasks), 1)
+            fixes = [r for r in wb["Initiatives"].iter_rows(values_only=True) if r[3] == "Make the site agree: Team size"]
+            self.assertEqual(len(fixes), 1)  # not duplicated by the re-run
+            self.assertIn("Update the FAQ", fixes[0][4])
             self.assertLess(wb.sheetnames.index("AI Info Page"), wb.sheetnames.index("Initiatives"))
 
 

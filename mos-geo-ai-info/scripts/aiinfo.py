@@ -4,12 +4,15 @@
 Subcommands
   path      print this month's run folder (MarketingOS-aware, same rules as brand-360)
   crawl     fetch the brand's own site: sitemap, key pages, JSON-LD, socials, contact
+  probe     search the site for named clients, awards and products the sitemap misses
   truths    print client corrections from the month's Brand Truth Review, if any
   build     render the page (md + html), its schema and the handover from data/facts.json, and lint it
   check     test a published page: status, indexable, AI crawlers allowed, linked
   workbook  tick the Checklist, add the 'AI Info Page' tab and an Initiative
 
-Standard library only, except `workbook` and `truths` (openpyxl, via uv).
+Standard library only, except `workbook` and `truths` (openpyxl, via uv). Scrapling is an
+optional fallback for pages that block plain requests or only render with JavaScript:
+    uv run --with "scrapling[fetchers]" python aiinfo.py crawl ...
 """
 
 from __future__ import annotations
@@ -152,6 +155,60 @@ def fetch(url: str, timeout: int = 30, method: str = "GET") -> tuple[int, dict, 
         return e.code, {k.lower(): v for k, v in (e.headers or {}).items()}, b"", url
     except Exception as e:  # noqa: BLE001 - network errors become a status the caller reports
         return 0, {"error": str(e)}, b"", url
+
+
+def fetch_scrapling(url: str, render: bool = False) -> tuple[int, dict, bytes, str] | None:
+    """Optional fallback. None when Scrapling is not installed or the fetch fails.
+    render=False: browser-like TLS and headers (gets past most bot blocks).
+    render=True: a real browser, for pages that only have content after JavaScript
+    (needs a one-off `scrapling install`)."""
+    try:
+        from scrapling.fetchers import DynamicFetcher, Fetcher
+    except ImportError:
+        return None
+    try:
+        r = DynamicFetcher.fetch(url, network_idle=True) if render else Fetcher.get(url, stealthy_headers=True)
+        body = r.body if isinstance(r.body, bytes) else str(r.body).encode("utf-8")
+        return r.status, {k.lower(): v for k, v in dict(r.headers or {}).items()}, body, str(r.url or url)
+    except Exception:  # noqa: BLE001 - a failed fallback leaves the original result in place
+        return None
+
+
+SCRAPLING_HINT = ('uv run --with "scrapling[fetchers]" python aiinfo.py ...  '
+                  "(and `uv run --with \"scrapling[fetchers]\" scrapling install` once for JavaScript pages)")
+
+
+def fetch_page(url: str, delay: float, mode: str = "auto") -> tuple[int, bytes, str, str]:
+    """(status, body, final_url, via) for crawling. Backs off once on 403/429/503, then
+    tries Scrapling (mode auto/always) when the page is blocked or looks JavaScript-only.
+    `check` never uses this: what a plain bot sees is the thing it tests."""
+    via = "urllib"
+    if mode == "always":
+        got = fetch_scrapling(url)
+        if got and got[0] == 200:
+            return got[0], got[2], got[3], "scrapling"
+    st, _, b, fu = fetch(url)
+    if st in (403, 429, 503):
+        time.sleep(max(5.0, delay * 8))
+        st, _, b, fu = fetch(url)
+    if mode != "off" and st in (0, 403, 429, 503):
+        got = fetch_scrapling(url)
+        if got and got[0] == 200:
+            st, _, b, fu = got
+            via = "scrapling"
+    if mode != "off" and st == 200 and b and js_only(b):
+        got = fetch_scrapling(url, render=True)
+        if got and got[0] == 200 and not js_only(got[2]):
+            st, _, b, fu = got
+            via = "scrapling-browser"
+    time.sleep(delay)
+    return st, b, fu, via
+
+
+def js_only(body: bytes) -> bool:
+    """A page whose server HTML carries almost no text but plenty of script."""
+    raw = text_of(body)
+    return len(parse_page("https://x/", body).text().split()) < 80 and raw.count("<script") >= 5
 
 
 def text_of(body: bytes) -> str:
@@ -375,11 +432,31 @@ def jsonld_entities(blocks: list[str]) -> list[dict]:
     return out
 
 
+def _has_scrapling() -> bool:
+    try:
+        import scrapling.fetchers  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def save_page(pages_dir: Path, name: str, url: str, body: bytes) -> tuple[PageParser, dict]:
+    """Write one page as text to data/pages/ and return its parse plus a crawl record."""
+    p = parse_page(url, body)
+    txt = p.text()
+    head = [f"# {html.unescape(p.title.strip())}", "", f"URL: {url}",
+            f"Meta description: {p.meta.get('description', '')}", ""]
+    (pages_dir / name).write_text("\n".join(head) + txt + "\n", encoding="utf-8")
+    return p, {"file": f"{DATA_DIR}/pages/{name}", "title": html.unescape(p.title.strip()),
+               "words": len(txt.split()), "h1": [h for t, h in p.headings if t == "h1"][:3]}
+
+
 def cmd_crawl(args) -> int:
     start = args.url if re.match(r"https?://", args.url) else "https://" + args.url
-    status, headers, body, final = fetch(start)
+    status, body, final, home_via = fetch_page(start, 0, args.scrapling)
     if status != 200:
-        sys.exit(f"homepage returned {status} {headers.get('error', '')}: {start}")
+        hint = "" if _has_scrapling() or args.scrapling == "off" else f"\nTry Scrapling: {SCRAPLING_HINT}"
+        sys.exit(f"homepage returned {status}: {start}{hint}")
     parsed = urllib.parse.urlparse(final)
     root = f"{parsed.scheme}://{parsed.netloc}/"
     host = parsed.netloc.lower().removeprefix("www.")
@@ -435,21 +512,18 @@ def cmd_crawl(args) -> int:
     followed = 0
     for i, url in enumerate(picked, start=1):
         if url in (final, root) and i == 1:
-            st, b, fu = 200, body, final
+            st, b, fu, via = 200, body, final, home_via
         else:
-            st, _, b, fu = fetch(url)
-            if st in (403, 429, 503):  # rate limited: back off once
-                time.sleep(max(5.0, args.delay * 8))
-                st, _, b, fu = fetch(url)
-            time.sleep(args.delay)
-        rec = {"n": i, "url": fu, "status": st, "score": score_url(url, root)}
+            st, b, fu, via = fetch_page(url, args.delay, args.scrapling)
+        rec = {"n": i, "url": fu, "status": st, "score": score_url(url, root), "via": via}
         if fu.rstrip("/") in fetched:  # two links that redirect to the same page
             continue
         fetched.add(fu.rstrip("/"))
         if st != 200 or not b:
             pages.append(rec)
             continue
-        p = parse_page(fu, b)
+        name = f"{i:02d}-{slugify(urllib.parse.urlparse(fu).path) or 'home'}"[:80] + ".md"
+        p, info = save_page(pages_dir, name, fu, b)
         raw = text_of(b)
         txt = p.text()
         socials |= {m.group(0).rstrip("/.,") for m in SOCIAL.finditer(raw) if not SOCIAL_NOISE.search(m.group(0))}
@@ -458,14 +532,9 @@ def cmd_crawl(args) -> int:
         abns |= {re.sub(r"\s", "", x) for x in ABN.findall(txt)}
         ents = jsonld_entities(p.jsonld)
         entities.extend({"page": fu, **e} for e in ents)
-        name = f"{i:02d}-{slugify(urllib.parse.urlparse(fu).path) or 'home'}"[:80] + ".md"
-        head = [f"# {html.unescape(p.title.strip())}", "", f"URL: {fu}",
-                f"Meta description: {p.meta.get('description', '')}", ""]
-        (pages_dir / name).write_text("\n".join(head) + txt + "\n", encoding="utf-8")
-        rec.update({"file": f"{DATA_DIR}/pages/{name}", "title": html.unescape(p.title.strip()),
-                    "words": len(txt.split()), "h1": [h for t, h in p.headings if t == "h1"][:3]})
+        rec.update(info)
         pages.append(rec)
-        print(f"  [{st}] {fu}  ({rec['words']} words)")
+        print(f"  [{st}] {fu}  ({rec['words']} words)" + ("" if via == "urllib" else f"  via {via}"))
         # Named clients and published results live on the individual case studies,
         # not on the index page, so follow the index's links (up to --follow pages).
         if url_group(fu)[1] == CASE_GROUP and followed < args.follow:
@@ -498,11 +567,118 @@ def cmd_crawl(args) -> int:
         "og_site_name": home.meta.get("og:site_name", ""),
     }
     (out / DATA_DIR / "crawl.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    (out / DATA_DIR / "sitemap-urls.txt").write_text("\n".join(smap) + "\n", encoding="utf-8")
     ok = sum(1 for p in pages if p.get("file"))
+    failed = [p for p in pages if not p.get("file")]
+    for p in failed:
+        print(f"  [FAILED {p['status']}] {p['url']}")
+    if failed and args.scrapling != "off" and not _has_scrapling():
+        print(f"  {len(failed)} page(s) failed. Retry with Scrapling installed: {SCRAPLING_HINT}")
     print(f"\nCrawled {ok}/{len(pages)} pages from {len(smap)} sitemap URLs -> {out / DATA_DIR / 'crawl.json'}")
     print(f"Socials: {len(socials)}  emails: {len(emails)}  phones: {len(phones)}  JSON-LD entities: {len(entities)}")
     if existing:
         print("Already published: " + ", ".join(f"{k} -> {v}" for k, v in existing.items()))
+    return 0
+
+
+# ----------------------------------------------------------------- probe --
+
+def term_pattern(term: str) -> re.Pattern:
+    """'Open Colleges' matches open-colleges, opencolleges, 'Open Colleges'."""
+    parts = [re.escape(x) for x in re.split(r"[\s\-_]+", term.strip()) if x]
+    return re.compile(r"[\s\-_]?".join(parts), re.I)
+
+
+def site_search(root: str, term: str, template: str | None) -> tuple[str, list[str]]:
+    """(method, same-site result URLs). WordPress REST search covers every public post
+    type, including ones left out of the sitemap; ?s= is the fallback."""
+    host = urllib.parse.urlparse(root).netloc.lower().removeprefix("www.")
+    q = urllib.parse.quote_plus(term)
+    if not template:
+        st, _, b, _ = fetch(urllib.parse.urljoin(root, f"/wp-json/wp/v2/search?search={q}&per_page=20"))
+        if st == 200:
+            try:
+                items = json.loads(text_of(b))
+                if isinstance(items, list):
+                    return "wp-rest", [i["url"] for i in items if isinstance(i, dict) and i.get("url")]
+            except (json.JSONDecodeError, TypeError):
+                pass
+    url = template.replace("{q}", q) if template else urllib.parse.urljoin(root, f"/?s={q}")
+    st, _, b, fu = fetch(url)
+    if st != 200:
+        return f"search {st}", []
+    pat = term_pattern(term)
+    urls = []
+    for link, label in parse_page(fu, b).links:
+        link = link.split("#")[0]
+        if not same_site(link, host) or SKIP_URL.search(link) or "?" in link:
+            continue
+        if pat.search(urllib.parse.unquote(urllib.parse.urlparse(link).path)) or pat.search(label):
+            urls.append(link)
+    return ("custom" if template else "wp-search"), list(dict.fromkeys(urls))
+
+
+def cmd_probe(args) -> int:
+    run_dir = Path(args.run_dir)
+    crawl_path = run_dir / DATA_DIR / "crawl.json"
+    if not crawl_path.is_file():
+        sys.exit("run crawl first: probe adds to data/crawl.json")
+    crawl = json.loads(crawl_path.read_text(encoding="utf-8"))
+    root = crawl["root"]
+    terms = list(dict.fromkeys((args.term or []) + (load_facts(run_dir).get("probe_terms", [])
+                                                     if (run_dir / DATA_DIR / "facts.json").is_file() else [])))
+    if not terms:
+        sys.exit("no terms: pass --term (repeatable) or list probe_terms in data/facts.json")
+    smap_file = run_dir / DATA_DIR / "sitemap-urls.txt"
+    in_sitemap = {u.rstrip("/") for u in smap_file.read_text(encoding="utf-8").split()} if smap_file.is_file() else set()
+    crawled = {p["url"].rstrip("/") for p in crawl.get("pages", []) if p.get("file")}
+    pages_dir = run_dir / DATA_DIR / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    report, fetched = {}, 0
+    for term in terms:
+        method, urls = site_search(root, term, args.search_url)
+        time.sleep(args.delay)
+        rows = []
+        for u in urls[: args.per_term]:
+            row = {"url": u, "in_sitemap": u.rstrip("/") in in_sitemap, "already_crawled": u.rstrip("/") in crawled}
+            if not row["already_crawled"] and fetched < args.max_pages:
+                st, b, fu, via = fetch_page(u, args.delay, args.scrapling)
+                row["status"] = st
+                if st == 200 and b:
+                    name = f"probe-{slugify(urllib.parse.urlparse(fu).path)}"[:80] + ".md"
+                    _, info = save_page(pages_dir, name, fu, b)
+                    row.update(file=info["file"], words=info["words"], via=via)
+                    crawled.add(fu.rstrip("/"))
+                    crawl.setdefault("pages", []).append({"n": f"probe:{term}", "url": fu, "status": st,
+                                                          "score": 0, "via": via, **info})
+                    fetched += 1
+            rows.append(row)
+        report[term] = {"method": method, "results": rows}
+        mark = ", ".join(("" if r["in_sitemap"] or not in_sitemap else "NOT IN SITEMAP ") + r["url"] for r in rows)
+        print(f"  {term!r} ({method}): {mark or 'no results'}")
+    crawl["probe"] = report
+    crawl_path.write_text(json.dumps(crawl, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    missing = sorted({r["url"] for v in report.values() for r in v["results"] if in_sitemap and not r["in_sitemap"]})
+    none = [t for t, v in report.items() if not v["results"]]
+    lines = [f"# Site search probe ({time.strftime('%Y-%m-%d')})", "",
+             f"{len(terms)} terms searched on {root}. {fetched} new page(s) saved to data/pages/ (probe-*.md).", ""]
+    if missing:
+        lines += ["## Pages that exist but are not in the XML sitemap", "",
+                  "Crawlers and AI search find these only by following links, so they are easy to miss. "
+                  "Record them in `discrepancies` with a fix (add to the sitemap, link from an index page).", ""]
+        lines += [f"- {u}" for u in missing] + [""]
+    if none:
+        lines += ["## Terms with no page on the site", "",
+                  "A client, award or product the research named that the site itself never mentions. "
+                  "Check the source before keeping it on the page.", ""]
+        lines += [f"- {t}" for t in none] + [""]
+    lines += ["## All results", ""]
+    for t, v in report.items():
+        lines.append(f"- **{t}** ({v['method']}): " + (", ".join(r["url"] for r in v["results"]) or "none"))
+    (run_dir / DATA_DIR / "probe.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"\nSaved {fetched} new page(s); {len(missing)} not in the sitemap; {len(none)} term(s) with no page. "
+          f"See {run_dir / DATA_DIR / 'probe.md'}")
     return 0
 
 
@@ -625,6 +801,19 @@ def lint(facts: dict) -> tuple[list[str], list[str]]:
         check_refs(f"guidance {i}", g.get("sources"), g.get("text", ""), required=False)
     if not re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", facts.get("last_updated", "")):
         errors.append("last_updated must be YYYY-MM or YYYY-MM-DD")
+    if "discrepancies" not in facts:
+        warnings.append("no discrepancies list: record where sources disagree, or add \"discrepancies\": [] "
+                        "if the site agrees with itself")
+    for i, d in enumerate(facts.get("discrepancies", []), 1):
+        if not d.get("topic") or not d.get("used"):
+            errors.append(f"discrepancy {i}: needs topic and used")
+        found = d.get("found") or []
+        if len(found) < 2 and not d.get("note"):
+            errors.append(f"discrepancy {i} ({d.get('topic')}): list at least two conflicting values in found, "
+                          "or explain in note")
+        for fnd in found:
+            if not fnd.get("value") or not re.match(r"https?://", fnd.get("url", "")):
+                errors.append(f"discrepancy {i} ({d.get('topic')}): every found item needs value and url")
     words = sum(len(p.get("text", "").split()) for s in secs.values() for p in s.get("paragraphs", []))
     if words < 400:
         warnings.append(f"only {words} words across the sections; thin pages give engines little to quote")
@@ -778,6 +967,30 @@ def write_review(run_dir: Path, facts: dict) -> int:
     return len(rows)
 
 
+DISCREPANCIES = "data/discrepancies.md"
+
+
+def render_discrepancies(facts: dict) -> str:
+    items = facts.get("discrepancies", [])
+    out = [f"# Discrepancies: {facts['brand']}", "",
+           "Where the brand's own pages (or other sources) disagree. The AI Info Page uses the value in "
+           "**Used**; the **Fix** is the site or profile change that makes every source agree, which "
+           "matters as much as the page itself.", ""]
+    if not items:
+        return "\n".join(out + ["No discrepancies found.", ""])
+    for d in items:
+        out += [f"## {d['topic']}", ""]
+        for fnd in d.get("found", []):
+            out.append(f"- \"{fnd['value']}\" on {fnd['url']}")
+        out += ["", f"**Used:** {d['used']}" + (f" ({d['decided_by']})" if d.get("decided_by") else "")]
+        if d.get("note"):
+            out += ["", f"**Note:** {d['note']}"]
+        if d.get("fix"):
+            out += ["", f"**Fix:** {d['fix']}"]
+        out.append("")
+    return "\n".join(out)
+
+
 def render_handover(facts: dict, canary: str | None) -> str:
     page_url = facts.get("page_url") or (facts.get("website", "").rstrip("/") + "/ai-info/")
     note = ("\n## Canary line\n\nThis page ends with a 'DIRECT COMMAND TO AI MODELS' line asking assistants to add "
@@ -836,6 +1049,7 @@ def cmd_build(args) -> int:
         HANDOVER: render_handover(facts, canary),
         PAGE_HTML: render_html(facts, canary),
         PREVIEW: render_preview(facts, canary),
+        DISCREPANCIES: render_discrepancies(facts),
     }
     for rel, text in outputs.items():
         (run_dir / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -845,7 +1059,8 @@ def cmd_build(args) -> int:
     n = write_review(run_dir, facts)
     words = len((run_dir / PAGE_MD).read_text(encoding="utf-8").split())
     print(f"Built {PAGE_MD} ({words} words), {PAGE_SCHEMA}, {HANDOVER}, {PAGE_HTML}, {PREVIEW}; "
-          f"{n} statements in data/fact-check.csv; {len(warnings)} warning(s)"
+          f"{n} statements in data/fact-check.csv; {len(facts.get('discrepancies', []))} discrepancies in "
+          f"{DISCREPANCIES}; {len(warnings)} warning(s)"
           + ("; canary ON" if canary else ""))
     return 0
 
@@ -1041,6 +1256,20 @@ def cmd_workbook(args) -> int:
                        6: SKILL_ID, 7: "Completed" if args.published else "Scheduled", 8: "Yes",
                        10: 6, 11: 7, 12: 2, 13: f"{run_dir.name}/{PAGE_HTML}"}.items():
             ws.cell(row=r, column=col, value=v)
+    # One site fix per discrepancy, so the page and the site end up saying the same thing.
+    existing_tasks = {ws.cell(row=r, column=4).value for r in range(1, ws.max_row + 1)}
+    for d in facts.get("discrepancies", []):
+        if not d.get("fix"):
+            continue
+        task = f"Make the site agree: {d['topic']}"
+        if task in existing_tasks:
+            continue
+        r = next(r for r in range(6, ws.max_row + 2) if not ws.cell(row=r, column=4).value)
+        for col, v in {3: "Brand Optimisation", 4: task, 5: f"{d['fix']} (AI Info Page uses: {d['used']})",
+                       6: SKILL_ID, 7: "Scheduled", 8: "No", 10: 5, 11: 8, 12: 2,
+                       13: f"{run_dir.name}/{DISCREPANCIES}"}.items():
+            ws.cell(row=r, column=col, value=v)
+        existing_tasks.add(task)
     order = ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility", title, "Initiatives"]
     wb._sheets = [wb[n] for n in order if n in wb.sheetnames] + [s for s in wb._sheets if s.title not in order]
     wb.save(book)
@@ -1068,7 +1297,19 @@ def main() -> int:
     p.add_argument("--follow", type=int, default=12,
                    help="extra pages to follow from case-study / results index pages")
     p.add_argument("--delay", type=float, default=0.6, help="seconds between requests (be polite, avoid 403s)")
+    p.add_argument("--scrapling", choices=["auto", "always", "off"], default="auto",
+                   help="auto: Scrapling only for blocked or JavaScript-only pages (when installed)")
     p.set_defaults(fn=cmd_crawl)
+
+    p = sub.add_parser("probe", help="search the site for named clients, awards and products")
+    p.add_argument("--run-dir", required=True)
+    p.add_argument("--term", action="append", help="a name to search for (repeatable); adds to facts.json probe_terms")
+    p.add_argument("--search-url", help="site search URL with {q}, for non-WordPress sites")
+    p.add_argument("--per-term", type=int, default=5)
+    p.add_argument("--max-pages", type=int, default=20, help="new pages to fetch in total")
+    p.add_argument("--delay", type=float, default=1.0)
+    p.add_argument("--scrapling", choices=["auto", "always", "off"], default="auto")
+    p.set_defaults(fn=cmd_probe)
 
     p = sub.add_parser("truths", help="print client verdicts from the month's Brand Truth Review")
     p.add_argument("--run-dir", required=True)

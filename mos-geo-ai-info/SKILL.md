@@ -44,7 +44,7 @@ defeats the whole point: engines repeat it with the brand's own authority behind
 |---|---|---|
 | 0 | Inputs | Website URL and brand name collected; run folder created |
 | 1 | Crawl + reuse | `data/crawl.json` saved; client corrections and brand-360 draft located |
-| 2 | Research → facts.json | `build` passes with no `[FAIL]` |
+| 2 | Research → probe → facts.json | `probe` ran on every named client, award and product; `build` passes with no `[FAIL]` |
 | 3 | Review with the user | Sensitive items and third-party-only facts cleared; canary decided |
 | 4 | Workbook | 'AI Info Page' tab filled, Checklist ticked, publish task on Initiatives |
 | 5 | After publishing | `check` passes; workbook re-run with `--published` |
@@ -72,7 +72,8 @@ The rules match the other mos-geo skills:
   implementation/implementation.md  developer handover
   implementation/ai-info-page.html  the same page as HTML, for a code block
   preview/ai-info-preview.html      standalone page to open in a browser
-  data/                             crawl.json, pages/, facts.json, fact-check.csv, check.md
+  data/                             facts.json, discrepancies.md, fact-check.csv, probe.md,
+                                    crawl.json, sitemap-urls.txt, pages/, check.md
 ```
 
 Never commit a run folder into this pack: it holds client data.
@@ -129,6 +130,29 @@ the shape set out in **`references/facts-schema.md`**, following the writing rul
 python3 "$SKILL/scripts/aiinfo.py" build --run-dir "$RUN"
 ```
 
+**Probe the site for what the crawl missed.** Sitemaps and index pages leave pages out (older
+case studies are the usual casualty). Once the first draft lists the brand's clients,
+awards, products and programmes in `probe_terms`, run:
+
+```bash
+python3 "$SKILL/scripts/aiinfo.py" probe --run-dir "$RUN"
+```
+
+It asks the site's own search (WordPress REST search first, then `?s=`; pass
+`--search-url 'https://site/search?q={q}'` for other platforms) for every term, saves any
+page not already crawled to `data/pages/probe-*.md`, and writes `data/probe.md`:
+
+- pages that exist but are **not in the XML sitemap** (a site fix, and a discrepancy)
+- terms with **no page on the site** (check that fact before keeping it)
+
+The research agent reads the new pages, adds what they publish, and runs `build` again.
+
+**Record every disagreement.** Wherever sources disagree (team size, titles, addresses,
+services offered, award results) the agent adds a `discrepancies` entry: each value with
+its URL, the value used, and the fix that makes the site agree. `build` writes them to
+`data/discrepancies.md`, and the workbook turns each fix into an Initiative. This is how
+the page ends up accurate and the site ends up consistent with it.
+
 The build refuses the following, and prints `[FAIL]` for each:
 
 - missing required fields
@@ -136,6 +160,7 @@ The build refuses the following, and prints `[FAIL]` for each:
 - placeholders
 - promise language
 - thin guidance
+- a discrepancy with fewer than two sourced values
 
 Fix `facts.json` and build again until it passes. Then spot-check five statements
 against their URLs yourself, starting with numbers, awards and client names.
@@ -146,6 +171,8 @@ Show the user, briefly:
 
 - the page's word count and section list
 - anything left out for lack of a source
+- each entry in `data/discrepancies.md`, with the value used; ask the user to settle any
+  that research could not (their answer wins, then set `decided_by: "client"`)
 - statements that rest only on third-party sources (`First-party?` = `mixed` in
   `data/fact-check.csv`)
 - anything sensitive: named clients, individuals, prices
@@ -200,15 +227,26 @@ Every check except llms.txt should pass. To measure the effect, re-run
 
 ## Things that will bite you
 
-**Hosts that 403 bots.** The script sends a full Chrome user agent and waits 0.6 seconds
-between requests. If the crawl still gets 403s, raise `--delay`. If that fails too, fetch
-the key pages another way (browser, Firecrawl), save them as text in `data/pages/`, and
-carry on. The same firewall may be blocking GPTBot and ClaudeBot. Put that in the handover,
+**Hosts that 403 bots.** The script sends a full Chrome user agent, waits 0.6 seconds
+between requests and backs off once. With Scrapling installed it then retries blocked pages
+with browser-grade TLS, and renders pages that only have content after JavaScript. Run the
+crawl and probe through uv to get it (the `scrapling install` step is only needed for the
+JavaScript rendering):
+
+```bash
+uv run --with "scrapling[fetchers]" python "$SKILL/scripts/aiinfo.py" crawl --url <site> --out "$RUN"
+uv run --with "scrapling[fetchers]" scrapling install
+```
+
+`crawl.json` records `via` per page (`urllib`, `scrapling`, `scrapling-browser`). If pages
+still fail, raise `--delay`, or fetch them another way and save them as text in
+`data/pages/`. The same firewall may be blocking GPTBot and ClaudeBot. Put that in the handover,
 because it matters more than the page itself.
 
-**JavaScript-only sites.** If `crawl.json` shows pages with almost no words, the site renders
-client-side. Engines that don't run JavaScript see the same empty page. Use a rendering
-fetcher for research, and tell the developer to serve the AI Info Page as static HTML.
+**JavaScript-only sites.** Pages fetched `via scrapling-browser` render client-side, so
+engines that don't run JavaScript see an empty page. Say so in the handover and tell the
+developer to serve the AI Info Page as static HTML. `check` deliberately never uses
+Scrapling: it tests what a plain crawler gets.
 
 **Two Organization schemas.** Most SEO plugins already output one. `implementation.md` tells
 the developer to merge rather than paste a second block. Say it again if the crawl found

@@ -69,6 +69,28 @@ outputs.
     "knowsAbout": ["Industrial widgets", "Widget repair"]
   },
 
+  "probe_terms": ["Mining Co", "Widget Week", "2025 Widget Awards"],
+
+  "discrepancies": [
+    {
+      "topic": "Team size",
+      "found": [
+        {"value": "about 40", "url": "https://acmewidgets.com.au/about/"},
+        {"value": "25 staff", "url": "https://acmewidgets.com.au/faq/"}
+      ],
+      "used": "about 40",
+      "decided_by": "client",
+      "fix": "Update the FAQ answer to 'about 40'."
+    },
+    {
+      "topic": "Case studies missing from the sitemap",
+      "found": [{"value": "not in sitemap", "url": "https://acmewidgets.com.au/case-studies/mining-co/"}],
+      "used": "included from the case study page",
+      "note": "Found by probe; the case study index does not link it either.",
+      "fix": "Add the case-study post type to the XML sitemap and link every study from the index."
+    }
+  ],
+
   "sources": [
     {"id": 1, "url": "https://acmewidgets.com.au/", "title": "Home", "first_party": true},
     {"id": 4, "url": "https://abr.business.gov.au/ABN/View?abn=…", "title": "ABN Lookup", "first_party": false}
@@ -102,6 +124,14 @@ outputs.
 - **`schema`**: only the properties the facts support. `name`, `url` and `@id` are
   filled in for you. The build writes it to `schema/ai-info-schema.json` as the business entity
   inside a `WebPage` graph (with `dateModified`). That file is the only schema output.
+- **`probe_terms`**: every client, award, product, programme and event the page names.
+  `aiinfo.py probe` searches the site for each one.
+- **`discrepancies`**: one entry per fact the sources disagree on. `found` lists each value
+  with the URL it appears on (at least two, or one plus a `note` for findings like a page
+  missing from the sitemap). `used` is what the page says, `decided_by` is `client` or
+  `research`, and `fix` is the change that makes every source agree. The build writes
+  `data/discrepancies.md`, and the workbook adds each fix as an Initiative. Use `[]` when
+  the sources agree.
 - **`last_updated`**: the month you ran the skill (`YYYY-MM`). It prints as
   "September 2026".
 - **`page_url`**: where the page will live. The default is `<website>/ai-info/`.
@@ -114,6 +144,8 @@ outputs.
 - Fewer than 4 guidance lines, or no "Do not …" line.
 - Promise language ("guaranteed", "will rank", "will double").
 - A `last_updated` that isn't `YYYY-MM`.
+- A discrepancy without `topic` and `used`, a `found` item without a value and URL, or
+  fewer than two values with no `note`.
 
 It **warns** about:
 
@@ -121,5 +153,6 @@ It **warns** about:
 - Em dashes.
 - No guidance line pointing to the contact page.
 - Pages under 400 or over 3,500 words.
+- No `discrepancies` list at all.
 
 Fix every warning, or tell the user why it stays.
