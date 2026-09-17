@@ -12,19 +12,22 @@ in the text.
 
 ## Files
 
+Paths are relative to the AI info folder.
+
 | File | Use |
 |---|---|
-| `ai-info-page.html` | The page body, ready to paste into an HTML/code block |
+| `implementation/ai-info-page.html` | The page body, ready to paste into an HTML/code block |
 | `ai-info-page.md` | The same copy as plain text, for page builders that take text only |
-| `ai-info-schema.json` | The page's structured data (JSON-LD): this page, and the business it describes |
+| `schema/ai-info-schema.json` | The page's structured data (JSON-LD): this page, and the business it describes |
+| `preview/ai-info-preview.html` | Open in a browser to see the approved page before building it |
 
 ## Steps
 
 1. Create a page at **{page_url}** using a plain template (header and footer are fine),
    titled "Official Information About {brand}".
-2. Paste `ai-info-page.html` into a Custom HTML / code block, or paste
+2. Paste `implementation/ai-info-page.html` into a Custom HTML / code block, or paste
    `ai-info-page.md` as text and keep its headings as H2s.
-3. Schema: add `ai-info-schema.json` to this page only, inside
+3. Schema: add `schema/ai-info-schema.json` to this page only, inside
    `<script type="application/ld+json"> … </script>` (a code block at the bottom of the page,
    or the SEO plugin's custom schema field). If the SEO plugin already outputs Organization
    or LocalBusiness schema site-wide, keep one business entity: copy `sameAs`, `founder`,

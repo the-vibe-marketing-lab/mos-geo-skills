@@ -34,9 +34,19 @@ SKILL_ID = "mos-geo-ai-info"
 SKILL_FOLDER = "ai-info"
 DATA_DIR = "data"
 WORKBOOK = "brand-audit-master.xlsx"
-# The deliverable: page copy twice (text and HTML) and ONE schema file.
-PAGE_MD, PAGE_HTML, PAGE_SCHEMA = "ai-info-page.md", "ai-info-page.html", "ai-info-schema.json"
-HANDOVER = "implementation.md"
+# The deliverable, one job per folder (paths relative to the run folder):
+#   ai-info-page.md                     the approved page copy
+#   schema/ai-info-schema.json          the ONE schema file
+#   implementation/implementation.md    developer handover
+#   implementation/ai-info-page.html    paste-ready page body
+#   preview/ai-info-preview.html        standalone page to open in a browser
+PAGE_MD = "ai-info-page.md"
+PAGE_SCHEMA = "schema/ai-info-schema.json"
+HANDOVER = "implementation/implementation.md"
+PAGE_HTML = "implementation/ai-info-page.html"
+PREVIEW = "preview/ai-info-preview.html"
+# Files earlier versions wrote to the run folder root.
+LEGACY = ["ai-info.json", "organization.jsonld", "ai-info-page.html", "ai-info-schema.json", "implementation.md"]
 
 # Some hosts (nginx rules, Cloudflare) 403 anything that does not look like a browser.
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -785,6 +795,33 @@ def render_handover(facts: dict, canary: str | None) -> str:
     return text
 
 
+PREVIEW_CSS = """
+body{margin:0;background:#f6f7f9;color:#1f2937;font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+.preview-note{background:#1f2937;color:#fff;padding:10px 16px;font-size:14px}
+.ai-info-page{max-width:820px;margin:24px auto;padding:32px 40px;background:#fff;border:1px solid #e5e7eb;border-radius:8px}
+.ai-info-page h1{font-size:28px;line-height:1.25;margin-top:0}
+.ai-info-page h2{font-size:20px;margin-top:32px;border-top:1px solid #e5e7eb;padding-top:20px}
+.ai-info-page dl{display:grid;grid-template-columns:200px 1fr;gap:6px 16px}
+.ai-info-page dt{font-weight:600}
+.ai-info-page dd{margin:0}
+.ai-info-page a{color:#1d4ed8;word-break:break-word}
+@media (max-width:640px){.ai-info-page{margin:0;padding:20px 16px;border-radius:0}.ai-info-page dl{grid-template-columns:1fr}.ai-info-page dd{margin-bottom:8px}}
+"""
+
+
+def render_preview(facts: dict, canary: str | None) -> str:
+    """A standalone page for the client to open in a browser before anything ships."""
+    return "\n".join([
+        "<!doctype html>", '<html lang="{}">'.format(esc(facts.get("language", "en"))), "<head>",
+        '<meta charset="utf-8">', '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        '<meta name="robots" content="noindex">',
+        f"<title>Preview: Official Information About {esc(facts['brand'])}</title>",
+        f"<style>{PREVIEW_CSS}</style>", "</head>", "<body>",
+        '<div class="preview-note">Preview only. The live page uses the site\'s own template; the schema is in '
+        "schema/ai-info-schema.json.</div>",
+        render_html(facts, canary).rstrip(), "</body>", "</html>", ""])
+
+
 def cmd_build(args) -> int:
     run_dir = Path(args.run_dir)
     facts = load_facts(run_dir)
@@ -797,16 +834,21 @@ def cmd_build(args) -> int:
         print(f"\n{len(errors)} problem(s) in data/facts.json. Fix them and run build again.")
         return 1
     canary = args.canary or None
-    (run_dir / PAGE_MD).write_text(render_md(facts, canary), encoding="utf-8")
-    (run_dir / PAGE_HTML).write_text(render_html(facts, canary), encoding="utf-8")
-    (run_dir / PAGE_SCHEMA).write_text(json.dumps(build_jsonld(facts), indent=2, ensure_ascii=False) + "\n",
-                                       encoding="utf-8")
-    for old in ("ai-info.json", "organization.jsonld"):  # outputs of earlier versions
+    outputs = {
+        PAGE_MD: render_md(facts, canary),
+        PAGE_SCHEMA: json.dumps(build_jsonld(facts), indent=2, ensure_ascii=False) + "\n",
+        HANDOVER: render_handover(facts, canary),
+        PAGE_HTML: render_html(facts, canary),
+        PREVIEW: render_preview(facts, canary),
+    }
+    for rel, text in outputs.items():
+        (run_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+        (run_dir / rel).write_text(text, encoding="utf-8")
+    for old in LEGACY:  # outputs of earlier versions, now in subfolders or retired
         (run_dir / old).unlink(missing_ok=True)
-    (run_dir / HANDOVER).write_text(render_handover(facts, canary), encoding="utf-8")
     n = write_review(run_dir, facts)
     words = len((run_dir / PAGE_MD).read_text(encoding="utf-8").split())
-    print(f"Built {PAGE_MD} ({words} words), {PAGE_HTML}, {PAGE_SCHEMA}, {HANDOVER}; "
+    print(f"Built {PAGE_MD} ({words} words), {PAGE_SCHEMA}, {HANDOVER}, {PAGE_HTML}, {PREVIEW}; "
           f"{n} statements in data/fact-check.csv; {len(warnings)} warning(s)"
           + ("; canary ON" if canary else ""))
     return 0
@@ -926,7 +968,8 @@ def cmd_workbook(args) -> int:
     review = run_dir / DATA_DIR / "fact-check.csv"
     if not review.is_file() or not (run_dir / PAGE_MD).is_file():
         sys.exit("run build first: the workbook is filled from its outputs")
-    book = run_dir.parent / WORKBOOK
+    # The month folder's workbook, unless this run folder already keeps its own.
+    book = run_dir / WORKBOOK if (run_dir / WORKBOOK).is_file() else run_dir.parent / WORKBOOK
     if not book.is_file():
         if not PACK_TEMPLATE.is_file():
             sys.exit(f"no {WORKBOOK} in {run_dir.parent} and no pack template at {PACK_TEMPLATE}")
@@ -967,8 +1010,8 @@ def cmd_workbook(args) -> int:
         ws.column_dimensions[col].width = width
     ws["B2"] = f"AI Info Page: approve every statement before {facts['brand']} publishes it"
     ws["B2"].font = Font(bold=True, size=16, color="1F2937")
-    ws["B3"] = (f"Page copy: {run_dir.name}/{PAGE_MD} (paste-ready) and {PAGE_HTML} (with schema). "
-                f"Schema: {PAGE_SCHEMA}. Developer handover: {HANDOVER}.")
+    ws["B3"] = (f"In {run_dir.name}/: page copy {PAGE_MD}; open {PREVIEW} in a browser; "
+                f"schema {PAGE_SCHEMA}; developer handover {HANDOVER}.")
     ws["B4"] = "Client: mark each row. Anything not Approved is fixed or cut before the page goes live."
     top = 6
     headers = ["Section", "Label", "Statement", "Source", "First-party?", "Client verdict", "Correct version / notes"]

@@ -100,7 +100,7 @@ outputs.
   for everything else. The client fact-check shows which statements rest on
   third-party sources.
 - **`schema`**: only the properties the facts support. `name`, `url` and `@id` are
-  filled in for you. The build writes it to `ai-info-schema.json` as the business entity
+  filled in for you. The build writes it to `schema/ai-info-schema.json` as the business entity
   inside a `WebPage` graph (with `dateModified`). That file is the only schema output.
 - **`last_updated`**: the month you ran the skill (`YYYY-MM`). It prints as
   "September 2026".

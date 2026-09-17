@@ -146,10 +146,14 @@ class Render(unittest.TestCase):
             self.assertEqual(a.cmd_build(Namespace(run_dir=tmp, canary=None)), 0)
             (run / "ai-info.json").write_text("{}")  # left over from an older version
             self.assertEqual(a.cmd_build(Namespace(run_dir=tmp, canary=None)), 0)
-            for name in (a.PAGE_MD, a.PAGE_HTML, a.PAGE_SCHEMA, a.HANDOVER, "data/fact-check.csv"):
+            for name in (a.PAGE_MD, a.PAGE_HTML, a.PAGE_SCHEMA, a.HANDOVER, a.PREVIEW, "data/fact-check.csv"):
                 self.assertTrue((run / name).is_file(), name)
             self.assertEqual(sorted(x.name for x in run.iterdir()),
-                             sorted(["data", a.PAGE_MD, a.PAGE_HTML, a.PAGE_SCHEMA, a.HANDOVER]))
+                             ["ai-info-page.md", "data", "implementation", "preview", "schema"])
+            preview = (run / a.PREVIEW).read_text(encoding="utf-8")
+            self.assertTrue(preview.startswith("<!doctype html>"))
+            self.assertIn('content="noindex"', preview)
+            self.assertNotIn("ld+json", preview)
             schema = json.loads((run / a.PAGE_SCHEMA).read_text(encoding="utf-8"))
             self.assertEqual([n["@type"] for n in schema["@graph"]], ["WebPage", "Organization"])
             handover = (run / a.HANDOVER).read_text(encoding="utf-8")

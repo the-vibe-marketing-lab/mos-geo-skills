@@ -5,8 +5,8 @@
 | Item | Recommendation | Why |
 |---|---|---|
 | URL | `/ai-info/` (`/llm-info/` and `/ai-instructions/` are also used) | Short and descriptive. Notebook Agency uses `/llm-info`. Pick one and never move it. |
-| Page copy | `ai-info-page.html` in a plain page template, or `ai-info-page.md` pasted into the editor | The text must be in the HTML the server sends. A page that only renders with JavaScript may never be read. |
-| Schema | `ai-info-schema.json`, on this page only | It describes the page (`WebPage`) and the business it is about. If an SEO plugin already outputs Organization schema, keep the plugin's entity, merge `sameAs`, `founder` and `foundingDate` into it, and add only the `WebPage` part here. Two conflicting business entities are worse than one. |
+| Page copy | `implementation/ai-info-page.html` in a plain page template, or `ai-info-page.md` pasted into the editor | The text must be in the HTML the server sends. A page that only renders with JavaScript may never be read. |
+| Schema | `schema/ai-info-schema.json`, on this page only | It describes the page (`WebPage`) and the business it is about. If an SEO plugin already outputs Organization schema, keep the plugin's entity, merge `sameAs`, `founder` and `foundingDate` into it, and add only the `WebPage` part here. Two conflicting business entities are worse than one. |
 | Indexing | Indexable. Self-canonical. In the XML sitemap. Not blocked for GPTBot, OAI-SearchBot, ClaudeBot, Claude-SearchBot, PerplexityBot or Bingbot | Search-backed answers (ChatGPT search, Perplexity, Copilot) can only cite pages they can crawl. |
 | Linking | A footer link ("AI Info" or "Company facts") on every page, plus a link from About | This is how crawlers find it and how it earns internal importance. |
 | llms.txt | Add a line if the site has one. Don't create one just for this. | Google says no AI system uses llms.txt, and an Ahrefs study (June 2026) found 97% of the files got no requests. |
