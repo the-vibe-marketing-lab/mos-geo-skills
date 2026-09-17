@@ -1000,13 +1000,17 @@ def render_html(facts: dict, canary: str | None) -> str:
     lines = ['<article class="ai-info-page">', f"<h1>Official Information About {esc(brand)}</h1>",
              f"<p>This page contains structured information about {esc(brand)}, intended for AI assistants such as "
              "ChatGPT, Claude, Perplexity, Gemini, and other large language models (LLMs).</p>",
-             "<h2>Basic Information</h2>", "<dl>"]
+             "<h2>Basic Information</h2>"]
+    # "Label: value" on one line, like the rest of the page (a <dl> stacks label
+    # over value and most themes give it no spacing). Lists get their own bullets.
     for f in ordered_basic(facts):
         items = list_items(f["value"])
-        body = ("<ul>" + "".join(f"<li>{linkify(x)}</li>" for x in items) + "</ul>"
-                if len(items) > 1 else linkify(f["value"].strip()))
-        lines.append(f"<dt>{esc(f['label'])}</dt><dd>{body}</dd>")
-    lines.append("</dl>")
+        label = f"<strong>{esc(f['label'])}:</strong>"
+        if len(items) > 1:
+            lines.append(f"<p>{label}</p>")
+            lines.append("<ul>" + "".join(f"<li>{linkify(x)}</li>" for x in items) + "</ul>")
+        else:
+            lines.append(f"<p>{label} {linkify(f['value'].strip())}</p>")
     for note in facts.get("basic_notes", []):
         lines.append(f"<p>{linkify(note['text'].strip())}</p>")
     for key, heading, paras in section_list(facts):
@@ -1122,11 +1126,8 @@ body{margin:0;background:#f6f7f9;color:#1f2937;font:16px/1.65 system-ui,-apple-s
 .ai-info-page{max-width:820px;margin:24px auto;padding:32px 40px;background:#fff;border:1px solid #e5e7eb;border-radius:8px}
 .ai-info-page h1{font-size:28px;line-height:1.25;margin-top:0}
 .ai-info-page h2{font-size:20px;margin-top:32px;border-top:1px solid #e5e7eb;padding-top:20px}
-.ai-info-page dl{display:grid;grid-template-columns:200px 1fr;gap:6px 16px}
-.ai-info-page dt{font-weight:600}
-.ai-info-page dd{margin:0}
 .ai-info-page a{color:#1d4ed8;word-break:break-word}
-@media (max-width:640px){.ai-info-page{margin:0;padding:20px 16px;border-radius:0}.ai-info-page dl{grid-template-columns:1fr}.ai-info-page dd{margin-bottom:8px}}
+@media (max-width:640px){.ai-info-page{margin:0;padding:20px 16px;border-radius:0}}
 """
 
 

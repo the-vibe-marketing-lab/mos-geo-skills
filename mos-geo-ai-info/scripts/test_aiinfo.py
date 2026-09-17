@@ -130,8 +130,11 @@ class Render(unittest.TestCase):
         md = a.render_md(f, None)
         self.assertIn("**Key Personnel:**\n\n- Jane Smith, Director\n- Raj Patel, Engineer\n", md)
         self.assertIn("**Name:** Acme Widgets", md)  # single values stay inline
-        self.assertIn("<dd><ul><li>Jane Smith, Director</li><li>Raj Patel, Engineer</li></ul></dd>",
-                      a.render_html(f, None))
+        out = a.render_html(f, None)
+        self.assertIn("<p><strong>Key Personnel:</strong></p>\n<ul><li>Jane Smith, Director</li>"
+                      "<li>Raj Patel, Engineer</li></ul>", out)
+        self.assertIn("<p><strong>Name:</strong> Acme Widgets</p>", out)
+        self.assertNotIn("<dl>", out)
 
     def test_guidance_is_a_linked_bullet_list(self):
         md = a.render_md(FACTS, None)
