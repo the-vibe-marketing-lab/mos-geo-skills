@@ -12,6 +12,15 @@
       "needs": "DataForSEO (OpenRouter, Bright Data optional)"
     },
     {
+      "skill": "mos-geo-ai-info",
+      "category": "Brand Optimisation",
+      "what_it_does": "AI Info Page: an official, sourced fact sheet for ChatGPT, Claude, Perplexity and Gemini (basic info, background, services, clients, methods, advantages, guidance for AI), with one schema file and a developer handover.",
+      "run": "/mos-geo-ai-info",
+      "output": "campaigns/geo/YYYY-MM/ai-info/",
+      "feeds_tab": "AI Info Page, Initiatives",
+      "needs": "Client website URL (uses Brand Truth Review corrections when present)"
+    },
+    {
       "skill": "mos-geo-llm-buttons",
       "category": "Content Strategy",
       "what_it_does": "Client-ready LLM share buttons package: brief, code reference and an in-brand demo of 'ask ChatGPT / Claude / Perplexity about this page' buttons.",

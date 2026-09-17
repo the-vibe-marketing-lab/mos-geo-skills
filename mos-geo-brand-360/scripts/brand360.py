@@ -1230,7 +1230,7 @@ def cmd_workbook(args) -> int:
         if title in wb.sheetnames:
             del wb[title]
         md_to_sheet(wb.create_sheet(title), path.read_text(encoding="utf-8"), styles)
-    order = ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility", "Initiatives"]
+    order = ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility", "AI Info Page", "Initiatives"]
     wb._sheets = [wb[n] for n in order if n in wb.sheetnames] + [s for s in wb._sheets if s.title not in order]
     wb.save(book)
     print(f"Wrote {book}: Checklist ticked, {len(claims)} truth-review rows, report + visibility tabs")
