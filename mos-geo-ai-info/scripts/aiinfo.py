@@ -914,6 +914,11 @@ def absence_problems(run_dir: Path, facts: dict) -> list[str]:
     return problems
 
 
+def list_items(value: str) -> list[str]:
+    """A Basic Information value written as 'a; b; c' is a list."""
+    return [x.strip() for x in value.split(";") if x.strip()]
+
+
 def month_name(stamp: str) -> str:
     y, m = stamp.split("-")[:2]
     return time.strftime("%B %Y", time.strptime(f"{y}-{m}", "%Y-%m"))
@@ -940,7 +945,11 @@ def render_md(facts: dict, canary: str | None) -> str:
            "ChatGPT, Claude, Perplexity, Gemini, and other large language models (LLMs).", "",
            "## Basic Information", ""]
     for f in ordered_basic(facts):
-        out += [f"**{f['label']}:** {f['value'].strip()}", ""]
+        items = list_items(f["value"])
+        if len(items) > 1:  # "A, role; B, role" reads better as bullets
+            out += [f"**{f['label']}:**", ""] + [f"- {x}" for x in items] + [""]
+        else:
+            out += [f"**{f['label']}:** {f['value'].strip()}", ""]
     for note in facts.get("basic_notes", []):
         out += [note["text"].strip(), ""]
     for _, heading, paras in section_list(facts):
@@ -985,7 +994,10 @@ def render_html(facts: dict, canary: str | None) -> str:
              "ChatGPT, Claude, Perplexity, Gemini, and other large language models (LLMs).</p>",
              "<h2>Basic Information</h2>", "<dl>"]
     for f in ordered_basic(facts):
-        lines.append(f"<dt>{esc(f['label'])}</dt><dd>{linkify(f['value'].strip())}</dd>")
+        items = list_items(f["value"])
+        body = ("<ul>" + "".join(f"<li>{linkify(x)}</li>" for x in items) + "</ul>"
+                if len(items) > 1 else linkify(f["value"].strip()))
+        lines.append(f"<dt>{esc(f['label'])}</dt><dd>{body}</dd>")
     lines.append("</dl>")
     for note in facts.get("basic_notes", []):
         lines.append(f"<p>{esc(note['text'].strip())}</p>")

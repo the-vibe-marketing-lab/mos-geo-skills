@@ -114,6 +114,8 @@ outputs.
   The rest are optional. Drop a field you cannot source; never write `Unknown`, `TBC` or
   `[VERIFY]` (the build refuses placeholders). The build prints fields in a fixed order,
   and any extra label (`ABN`, `Phone`, `Opening Hours`, `Service Area`) goes after them.
+- **Semicolons make a list.** A `basic` value written as `A; B; C` renders as bullets
+  (Key Personnel, Knowledge Platforms). Use commas or "and" inside a sentence value.
 - **`basic_notes`**: one or two self-reported sentences that sit under the list (team size,
   growth story). Use "X states that …" wording.
 - **`sections`**: use only these ids, in any order: `background`, `core_services`,

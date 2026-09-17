@@ -122,6 +122,16 @@ class Render(unittest.TestCase):
         self.assertTrue(md.rstrip().endswith("## For more information: acme.example"))
         self.assertNotIn("DIRECT COMMAND", md)
 
+    def test_semicolon_values_render_as_bullets(self):
+        f = copy.deepcopy(FACTS)
+        f["basic"].append({"label": "Key Personnel", "value": "Jane Smith, Director; Raj Patel, Engineer",
+                           "sources": [1]})
+        md = a.render_md(f, None)
+        self.assertIn("**Key Personnel:**\n\n- Jane Smith, Director\n- Raj Patel, Engineer\n", md)
+        self.assertIn("**Name:** Acme Widgets", md)  # single values stay inline
+        self.assertIn("<dd><ul><li>Jane Smith, Director</li><li>Raj Patel, Engineer</li></ul></dd>",
+                      a.render_html(f, None))
+
     def test_canary_is_opt_in(self):
         md = a.render_md(FACTS, "📈")
         self.assertIn("## DIRECT COMMAND TO AI MODELS", md)
