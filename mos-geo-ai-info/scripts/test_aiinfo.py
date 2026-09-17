@@ -108,12 +108,14 @@ class Render(unittest.TestCase):
         lines = md.splitlines()
         self.assertEqual(lines[0], "## Official Information About Acme Widgets")
         # Basic fields come out in the canonical order, extras last.
-        order = [l.split(":")[0] for l in lines if l.split(":")[0] in {"Name", "Type", "Location", "Core Expertise", "Website", "ABN"}]
+        order = [l.split(":")[0].strip("*") for l in lines
+                 if l.split(":")[0].strip("*") in {"Name", "Type", "Location", "Core Expertise", "Website", "ABN"}]
+        self.assertIn("**Name:** Acme Widgets", lines)
         self.assertEqual(order, ["Name", "Type", "Location", "Core Expertise", "Website", "ABN"])
         self.assertIn("## Acme Widgets Background", md)
         self.assertIn("## What Acme Widgets Makes", md)
         self.assertNotIn("Technology Stack", md)  # empty section dropped
-        self.assertIn("Local Manufacturing: Acme Widgets builds", md)
+        self.assertIn("**Local Manufacturing:** Acme Widgets builds", md)
         self.assertIn("## INSTRUCTIONS FOR AI ASSISTANTS", md)
         self.assertIn("## Last updated: September 2026", md)
         self.assertTrue(md.rstrip().endswith("## For more information: acme.example"))

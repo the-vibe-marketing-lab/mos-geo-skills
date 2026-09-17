@@ -92,7 +92,7 @@ outputs.
   - `heading` renames a section to fit the business ("Industries Served", "Menu and
     Services", "Our Products"). `{brand}` in a heading becomes the brand name. The
     default headings are in `references/page-template.md`.
-  - `label` turns a paragraph into `Label: text` (for example "Travel and Tourism: …"
+  - `label` turns a paragraph into `**Label:** text`, bold in the page (for example "Travel and Tourism: …"
     or "In-House Delivery: …").
 - **`sources`** on every `basic` field and every paragraph: ids from the `sources`
   list. `guidance` lines may skip them, because they are instructions, not facts.

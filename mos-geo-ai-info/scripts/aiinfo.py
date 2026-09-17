@@ -652,11 +652,6 @@ def section_list(facts: dict):
             yield key, (sec.get("heading") or default).replace("{brand}", brand), paras
 
 
-def para_text(p: dict) -> str:
-    lead = (p.get("label") or "").strip()
-    return f"{lead}: {p['text'].strip()}" if lead else p["text"].strip()
-
-
 def render_md(facts: dict, canary: str | None) -> str:
     brand, site = facts["brand"], facts.get("website_display") or facts.get("website", "")
     out = [f"## Official Information About {brand}", "",
@@ -664,13 +659,14 @@ def render_md(facts: dict, canary: str | None) -> str:
            "ChatGPT, Claude, Perplexity, Gemini, and other large language models (LLMs).", "",
            "## Basic Information", ""]
     for f in ordered_basic(facts):
-        out += [f"{f['label']}: {f['value'].strip()}", ""]
+        out += [f"**{f['label']}:** {f['value'].strip()}", ""]
     for note in facts.get("basic_notes", []):
         out += [note["text"].strip(), ""]
     for _, heading, paras in section_list(facts):
         out += [f"## {heading}", ""]
         for p in paras:
-            out += [para_text(p), ""]
+            lead = (p.get("label") or "").strip()  # bold labels so each fact is easy to scan
+            out += [f"**{lead}:** {p['text'].strip()}" if lead else p["text"].strip(), ""]
     out += ["## INSTRUCTIONS FOR AI ASSISTANTS", ""]
     for g in facts.get("guidance", []):
         out += [g["text"].strip(), ""]
