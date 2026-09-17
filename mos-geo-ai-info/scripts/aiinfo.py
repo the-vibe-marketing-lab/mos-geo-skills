@@ -1257,6 +1257,15 @@ def cmd_workbook(args) -> int:
                        10: 6, 11: 7, 12: 2, 13: f"{run_dir.name}/{PAGE_HTML}"}.items():
             ws.cell(row=r, column=col, value=v)
     # One site fix per discrepancy, so the page and the site end up saying the same thing.
+    # A fix whose discrepancy was dropped from facts.json (settled, or found to be wrong)
+    # is removed, but only rows this skill wrote and nobody has started.
+    wanted = {f"Make the site agree: {d['topic']}" for d in facts.get("discrepancies", []) if d.get("fix")}
+    for r in range(6, ws.max_row + 1):
+        task = ws.cell(row=r, column=4).value
+        if (isinstance(task, str) and task.startswith("Make the site agree: ") and task not in wanted
+                and ws.cell(row=r, column=6).value == SKILL_ID and ws.cell(row=r, column=7).value == "Scheduled"):
+            for col in range(3, 14):
+                ws.cell(row=r, column=col).value = None
     existing_tasks = {ws.cell(row=r, column=4).value for r in range(1, ws.max_row + 1)}
     for d in facts.get("discrepancies", []):
         if not d.get("fix"):

@@ -42,7 +42,10 @@ source; don't keep collecting.
 - legal name and registration (ABN Lookup / company register)
 - LinkedIn company page (URL, headcount band, locations)
 - founder and leadership (LinkedIn, press)
-- awards (the organiser's own winner list)
+- awards (the organiser's own winner list). Before calling an award "not listed", search
+  the fetched winners page text for the partner or client name as well as the brand
+  (entries are often "Brand & Client"), and use a rendering fetcher if the page is long or
+  script-built. A false "missing" is a discrepancy the client has to disprove.
 - press coverage, events the brand runs or speaks at
 - review platforms (name, rating, count, date seen)
 - namesakes: search the brand name on its own and with its category. List any other

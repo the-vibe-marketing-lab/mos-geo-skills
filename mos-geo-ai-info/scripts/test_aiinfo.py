@@ -407,6 +407,14 @@ class Workbook(unittest.TestCase):
             fixes = [r for r in wb["Initiatives"].iter_rows(values_only=True) if r[3] == "Make the site agree: Team size"]
             self.assertEqual(len(fixes), 1)  # not duplicated by the re-run
             self.assertIn("Update the FAQ", fixes[0][4])
+            # The discrepancy is dropped (it turned out to be wrong): its unstarted fix goes too.
+            (run / "data" / "facts.json").write_text(json.dumps(dict(FACTS, discrepancies=[])), encoding="utf-8")
+            a.cmd_build(Namespace(run_dir=str(run), canary=None))
+            a.cmd_workbook(Namespace(run_dir=str(run), published=None))
+            wb = openpyxl.load_workbook(book)
+            tasks = [r[3] for r in wb["Initiatives"].iter_rows(values_only=True) if r[3]]
+            self.assertNotIn("Make the site agree: Team size", tasks)
+            self.assertIn("Publish the AI Info Page for Acme Widgets", tasks)
             self.assertLess(wb.sheetnames.index("AI Info Page"), wb.sheetnames.index("Initiatives"))
 
 
