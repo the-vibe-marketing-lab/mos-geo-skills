@@ -264,7 +264,7 @@ def parse_page(url: str, body: bytes) -> PageParser:
 KEYWORDS = [
     (r"about|who-we-are|our-story|company|history", 10), (r"team|people|leadership|founder|staff", 9),
     (r"contact|locations?|offices?|find-us", 9), (r"services?|solutions|what-we-do|capabilit", 8),
-    (r"case-stud|results|success|our-work|portfolio|clients?", 8), (r"awards?|recognition|press|media|in-the-news", 7),
+    (r"case-stud|stud(?:y|ies)|results|success|our-work|portfolio|clients?", 8), (r"awards?|recognition|press|media|in-the-news", 7),
     (r"method|process|approach|framework|how-we-work|technology|tools|platform", 6),
     (r"pricing|plans|products?|shop|menu", 6), (r"reviews?|testimonials", 5), (r"careers|jobs", 4),
     (r"conference|events?|podcast|webinar|white-?paper|research|report|guides?|resources|academy", 5),
@@ -278,7 +278,8 @@ SOCIAL = re.compile(r"https?://(?:[a-z]{2,3}\.)?(linkedin\.com/(?:company|in|sch
                     r"youtube\.com/@[^/?#\s\"']+|github\.com/[^/?#\s\"']+|crunchbase\.com/organization/[^/?#\s\"']+|"
                     r"g\.page/[^?#\s\"']+|maps\.app\.goo\.gl/[^?#\s\"']+|clutch\.co/profile/[^?#\s\"']+|"
                     r"trustpilot\.com/review/[^?#\s\"']+|wikipedia\.org/wiki/[^?#\s\"']+|wikidata\.org/wiki/Q\d+)", re.I)
-SOCIAL_NOISE = re.compile(r"/(embed|tr|watch|share|sharer|intent|i|plugins|dialog|hashtag|search)(/|\?|$)|"
+CASE_GROUP = 4  # index of the case-study pattern in KEYWORDS
+SOCIAL_NOISE = re.compile(r"/(embed|tr|watch|share|sharer|intent|i|plugins|dialog|hashtag|search|privacy|policy|policies|legal|help|terms|about)(/|\?|$)|"
                           r"sharer\.php|/p/|/reel/|/status/", re.I)
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE = re.compile(r"(?:\+61\s?|\b0)[2-478](?:[\s-]?\d){8}\b|\b1[38]00[\s-]?\d{3}[\s-]?\d{3}\b|\+\d{1,3}[\s-]?\(?\d{1,4}\)?(?:[\s-]?\d){6,10}")
@@ -373,12 +374,16 @@ def cmd_crawl(args) -> int:
     host = parsed.netloc.lower().removeprefix("www.")
     out = Path(args.out)
     pages_dir = out / DATA_DIR / "pages"
+    if pages_dir.is_dir():  # a re-crawl must not leave stale pages behind
+        for old in pages_dir.glob("*.md"):
+            old.unlink()
     pages_dir.mkdir(parents=True, exist_ok=True)
 
     _, _, rb, _ = fetch(urllib.parse.urljoin(root, "/robots.txt"))
     robots = text_of(rb)
     home = parse_page(final, body)
-    candidates = {u.split("#")[0] for u, _ in home.links if same_site(u, host)}
+    nav = {u.split("#")[0] for u, _ in home.links if same_site(u, host)}
+    candidates = set(nav)
     posts: set[str] = set()
     smap = sitemap_urls(root, robots, posts=posts)
     candidates |= {u for u in smap if same_site(u, host)}
@@ -386,34 +391,45 @@ def cmd_crawl(args) -> int:
 
     def rank(u: str) -> int:
         score = url_group(u)[0]
+        depth = len([x for x in urllib.parse.urlparse(u).path.split("/") if x])
+        if not score and u in nav and depth == 1 and u not in posts:
+            score = 35  # a top-level page the homepage links to: usually a service or company page
         return score - 40 if u in posts else score
 
-    ranked = includes + sorted((u for u in candidates if not SKIP_URL.search(u) and rank(u) > 0),
+    # A small site (most one-page and brochure sites) is fetched whole; a big one
+    # only by its company-page keywords.
+    small = len(candidates) <= args.max_pages
+    ranked = includes + sorted((u for u in candidates if not SKIP_URL.search(u) and (small or rank(u) > 0)),
                                key=lambda u: (-rank(u), len(u)))
-    # No keyword group may take more than a third of the budget, so ten service
+    # No keyword group may take more than a fifth of the budget, so ten service
     # pages never crowd out the team, awards and contact pages.
-    cap = max(3, args.max_pages // 3)
+    cap = max(3, args.max_pages // 5)
     picked, seen_paths, per_group = [], set(), {}
     for u in ranked:
         key = urllib.parse.urlparse(u).path.rstrip("/") or "/"
         group = url_group(u)[1]
         if key in seen_paths or (u not in includes and group >= 0 and per_group.get(group, 0) >= cap):
             continue
-        seen_paths.add(key)
-        per_group[group] = per_group.get(group, 0) + 1
-        picked.append(u)
-        if len(picked) >= args.max_pages:
+        if u not in includes and len(picked) >= args.max_pages + len(includes):
             break
+        seen_paths.add(key)
+        if u not in includes:
+            per_group[group] = per_group.get(group, 0) + 1
+        picked.append(u)
     if root not in picked and final not in picked:
         picked.insert(0, final)
 
     socials, emails, phones, abns, entities, pages = set(), set(), set(), set(), [], []
     fetched: set[str] = set()
+    followed = 0
     for i, url in enumerate(picked, start=1):
         if url in (final, root) and i == 1:
             st, b, fu = 200, body, final
         else:
             st, _, b, fu = fetch(url)
+            if st in (403, 429, 503):  # rate limited: back off once
+                time.sleep(max(5.0, args.delay * 8))
+                st, _, b, fu = fetch(url)
             time.sleep(args.delay)
         rec = {"n": i, "url": fu, "status": st, "score": score_url(url, root)}
         if fu.rstrip("/") in fetched:  # two links that redirect to the same page
@@ -439,6 +455,20 @@ def cmd_crawl(args) -> int:
                     "words": len(txt.split()), "h1": [h for t, h in p.headings if t == "h1"][:3]})
         pages.append(rec)
         print(f"  [{st}] {fu}  ({rec['words']} words)")
+        # Named clients and published results live on the individual case studies,
+        # not on the index page, so follow the index's links (up to --follow pages).
+        if url_group(fu)[1] == CASE_GROUP and followed < args.follow:
+            here = urllib.parse.urlparse(fu).path.rstrip("/")
+            chrome = {urllib.parse.urlparse(n).path.rstrip("/") for n in nav}  # header and footer links
+            for link, label in p.links:
+                link = link.split("#")[0]
+                lpath = urllib.parse.urlparse(link).path.rstrip("/")
+                if (followed >= args.follow or not same_site(link, host) or SKIP_URL.search(link)
+                        or lpath in seen_paths or lpath in ("", here) or lpath in chrome):
+                    continue
+                seen_paths.add(lpath)
+                picked.append(link)
+                followed += 1
 
     existing = {}
     for probe in ("/llms.txt", "/ai-info/", "/ai-info", "/ai/", "/llm-info/", "/ai-info.json"):
@@ -547,7 +577,8 @@ def lint(facts: dict) -> tuple[list[str], list[str]]:
         if PROMISE.search(text):
             errors.append(f"{where}: promise language ({PROMISE.search(text).group(0)!r}) is never allowed")
         m = SUPERLATIVE.search(text)
-        if m and not re.search(r"\b(named|awarded|won|ranked|received|recogni[sz]ed|finalist|according to|states?|says|describes)\b",
+        if m and not re.search(r"\b(named|awarded|awards?|won|wins|ranked|received|recogni[sz]ed|finalist|shortlisted|according to|states?|says|"
+                               r"describes|reports?)\b",
                                text, re.I):
             warnings.append(f"{where}: unattributed superlative {m.group(0)!r}; attribute it or cut it")
         if "—" in text:
@@ -999,7 +1030,7 @@ def cmd_workbook(args) -> int:
         r = next(r for r in range(6, ws.max_row + 2) if not ws.cell(row=r, column=4).value)
         for col, v in {3: "Brand Optimisation", 4: task,
                        5: f"Client approves the 'AI Info Page' tab, then follow {run_dir.name}/{HANDOVER}: publish at "
-                          f"{facts.get('page_url') or '/ai-info/'}, link it in the footer, add to the sitemap and llms.txt, "
+                          f"{facts.get('page_url') or '/ai-info/'}, link it in the footer, add it to the sitemap (and to llms.txt only if the site has one), "
                           f"then run `aiinfo.py check`. Review every 6 months.",
                        6: SKILL_ID, 7: "Completed" if args.published else "Scheduled", 8: "Yes",
                        10: 6, 11: 7, 12: 2, 13: f"{run_dir.name}/{PAGE_HTML}"}.items():
@@ -1028,6 +1059,8 @@ def main() -> int:
     p.add_argument("--out", required=True, help="the run folder")
     p.add_argument("--max-pages", type=int, default=30)
     p.add_argument("--include", action="append", help="extra path to fetch, e.g. /our-team/ (repeatable)")
+    p.add_argument("--follow", type=int, default=12,
+                   help="extra pages to follow from case-study / results index pages")
     p.add_argument("--delay", type=float, default=0.6, help="seconds between requests (be polite, avoid 403s)")
     p.set_defaults(fn=cmd_crawl)
 

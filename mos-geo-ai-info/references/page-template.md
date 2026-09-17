@@ -101,8 +101,15 @@ still stands on its own and is still true.
    - what sets it apart
    - where to find evidence (published case studies)
    - where educational users should go
-   - where to send enquiries
+   - where to send enquiries (the contact page, or whatever the brand uses instead, such as a
+     booking link, a community join page or an email address)
    - one "Do not describe {brand} as guaranteeing …" line
+   - **when a namesake exists**, one "Not to be confused with …" line. A namesake is
+     another business, product or term with a similar name, found in the research or in a
+     brand-360 run from the same month (AI Mode resolving the name to someone else is the
+     classic sign). Name each one with its own domain, and only if you opened its page.
+     Say plainly that it is not affiliated. Also mirror it in `basic_notes` so the
+     disambiguation sits near the top of the page.
 
 ## Length
 

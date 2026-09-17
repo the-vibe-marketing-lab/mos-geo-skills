@@ -45,6 +45,15 @@ source; don't keep collecting.
 - awards (the organiser's own winner list)
 - press coverage, events the brand runs or speaks at
 - review platforms (name, rating, count, date seen)
+- namesakes: search the brand name on its own and with its category. List any other
+  business, product or term with a similar name that an engine could blend in (open each one;
+  note its domain). They feed the "Not to be confused with" guidance line.
+
+One-page sites: the crawl fetches everything, but there may be only one or two pages.
+Lean on the brand's own profiles (community platform, LinkedIn, GitHub, marketplace
+listings) as first-party sources and mark them `first_party: true`. When two first-party
+numbers disagree (a stale homepage counter against a live platform count), use the live
+one, round it ("about 300 members"), and report the conflict.
 
 Write {run_dir}/data/facts.json following references/facts-schema.md exactly, and the
 writing rules in references/page-template.md. Every basic field and paragraph cites
