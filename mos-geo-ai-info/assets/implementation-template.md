@@ -14,10 +14,9 @@ in the text.
 
 | File | Use |
 |---|---|
-| `ai-info-page.html` | Page body plus the JSON-LD schema block, ready to paste into an HTML/code block |
+| `ai-info-page.html` | The page body, ready to paste into an HTML/code block |
 | `ai-info-page.md` | The same copy as plain text, for page builders that take text only |
-| `ai-info.json` | Optional machine-readable copy, to upload at `{json_url}` |
-| `organization.jsonld` | The schema on its own, if it goes in through an SEO plugin or tag manager |
+| `ai-info-schema.json` | The page's structured data (JSON-LD): this page, and the business it describes |
 
 ## Steps
 
@@ -25,10 +24,12 @@ in the text.
    titled "Official Information About {brand}".
 2. Paste `ai-info-page.html` into a Custom HTML / code block, or paste
    `ai-info-page.md` as text and keep its headings as H2s.
-3. Schema: if an SEO plugin already outputs Organization or LocalBusiness schema, don't
-   paste a second one. Merge `sameAs`, `founder`, `foundingDate` and `address` from
-   `organization.jsonld` into the plugin's settings, and delete the `<script
-   type="application/ld+json">` block from the pasted HTML.
+3. Schema: add `ai-info-schema.json` to this page only, inside
+   `<script type="application/ld+json"> … </script>` (a code block at the bottom of the page,
+   or the SEO plugin's custom schema field). If the SEO plugin already outputs Organization
+   or LocalBusiness schema site-wide, keep one business entity: copy `sameAs`, `founder`,
+   `foundingDate` and `address` from the file into the plugin's settings, and use only the
+   `WebPage` part of the file on this page.
 4. Page settings:
    - **Indexing:** index, follow.
    - **Canonical:** the page itself.
@@ -38,12 +39,10 @@ in the text.
      services, people, locations and history."
 5. Add a footer link on every page (label "AI Info" or "Company Facts") and a link from
    the About page.
-6. Optional: upload `ai-info.json` to `{json_url}` and link it at the bottom of the
-   page ("Machine-readable version").
-7. If the site has an `/llms.txt`, add: `- [Official information about {brand}]({page_url})`
-8. Clear any page or CDN cache, then open the page in a private window and check that
+6. If the site has an `/llms.txt`, add: `- [Official information about {brand}]({page_url})`
+7. Clear any page or CDN cache, then open the page in a private window and check that
    the text is visible with JavaScript turned off.
-9. Check that robots.txt does not block GPTBot, OAI-SearchBot, ClaudeBot,
+8. Check that robots.txt does not block GPTBot, OAI-SearchBot, ClaudeBot,
    Claude-SearchBot, PerplexityBot or Bingbot. Also check that no security plugin, CDN
    rule or firewall blocks them: some hosts return 403 to anything that isn't a browser.
 

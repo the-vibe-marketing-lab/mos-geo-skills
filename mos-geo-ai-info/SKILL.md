@@ -6,8 +6,8 @@ description: >
   secondary services, clients, methodologies, tech stack, educational content, competitive
   advantages and instructions for AI assistants. It crawls the brand's own site, researches
   registers and third-party sources, and writes every statement with a source. It renders a
-  paste-ready page (Markdown and HTML with Organization schema), a machine-readable
-  ai-info.json and a developer handover, then adds a statement-by-statement approval tab to the
+  paste-ready page (Markdown and HTML), one schema file (ai-info-schema.json) and a
+  developer handover, then adds a statement-by-statement approval tab to the
   GEO brand audit workbook. After launch it checks the live page (indexable, AI crawlers allowed,
   sitemap, footer link).
   USE WHEN the user says "AI info page", "AI information page", "LLM info page", "llm-info",
@@ -68,9 +68,8 @@ The rules match the other mos-geo skills:
 ```
 <run folder>/
   ai-info-page.md        paste-ready page copy
-  ai-info-page.html      page body + JSON-LD, for a code block
-  ai-info.json           machine-readable copy (optional upload)
-  organization.jsonld    the schema on its own
+  ai-info-page.html      the same page as HTML, for a code block
+  ai-info-schema.json    the one schema file (JSON-LD: WebPage about the business)
   implementation.md      developer handover
   data/                  crawl.json, pages/, facts.json, fact-check.csv, check.md
 ```

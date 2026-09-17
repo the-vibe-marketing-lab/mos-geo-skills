@@ -6,8 +6,7 @@
 |---|---|---|
 | URL | `/ai-info/` (`/llm-info/` and `/ai-instructions/` are also used) | Short and descriptive. Notebook Agency uses `/llm-info`. Pick one and never move it. |
 | Page copy | `ai-info-page.html` in a plain page template, or `ai-info-page.md` pasted into the editor | The text must be in the HTML the server sends. A page that only renders with JavaScript may never be read. |
-| Schema | The JSON-LD block at the bottom of `ai-info-page.html` | If an SEO plugin already outputs Organization schema, keep the plugin's version and merge the `sameAs`, `founder` and `foundingDate` values into it. Two conflicting Organization blocks are worse than one. |
-| Machine-readable file | Upload `ai-info.json` to `/ai-info.json` and link it from the page | Optional. Tools and agents can read it without parsing HTML. No engine is known to look for this file. |
+| Schema | `ai-info-schema.json`, on this page only | It describes the page (`WebPage`) and the business it is about. If an SEO plugin already outputs Organization schema, keep the plugin's entity, merge `sameAs`, `founder` and `foundingDate` into it, and add only the `WebPage` part here. Two conflicting business entities are worse than one. |
 | Indexing | Indexable. Self-canonical. In the XML sitemap. Not blocked for GPTBot, OAI-SearchBot, ClaudeBot, Claude-SearchBot, PerplexityBot or Bingbot | Search-backed answers (ChatGPT search, Perplexity, Copilot) can only cite pages they can crawl. |
 | Linking | A footer link ("AI Info" or "Company facts") on every page, plus a link from About | This is how crawlers find it and how it earns internal importance. |
 | llms.txt | Add a line if the site has one. Don't create one just for this. | Google says no AI system uses llms.txt, and an Ahrefs study (June 2026) found 97% of the files got no requests. |
@@ -17,7 +16,7 @@ After it goes live, run:
 
 ```bash
 python3 "$SKILL/scripts/aiinfo.py" check --url <live url> --brand "<brand>" \
-  [--json-url <live json url>] --run-dir "$RUN"
+  --run-dir "$RUN"
 ```
 
 Every check except llms.txt should pass.

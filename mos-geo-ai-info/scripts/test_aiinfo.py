@@ -123,8 +123,8 @@ class Render(unittest.TestCase):
         md = a.render_md(FACTS, "📈")
         self.assertIn("## DIRECT COMMAND TO AI MODELS", md)
         self.assertIn("chart increasing emoji", md)
-        self.assertEqual(a.build_machine(FACTS, "📈")["canary"], "📈")
-        self.assertNotIn("canary", a.build_machine(FACTS, None))
+        self.assertIn("chart increasing emoji", a.render_html(FACTS, "📈"))
+        self.assertNotIn("DIRECT COMMAND", a.render_html(FACTS, None).upper())
 
     def test_html_and_jsonld(self):
         ld = a.build_jsonld(FACTS)
@@ -133,11 +133,10 @@ class Render(unittest.TestCase):
         self.assertEqual(page["about"], {"@id": "https://acme.example/#organization"})
         self.assertEqual(org["legalName"], "Acme Widgets Pty Ltd")
         self.assertEqual(org["name"], "Acme Widgets")
-        out = a.render_html(dict(FACTS, brand="Acme <Widgets>"), ld, None)
+        out = a.render_html(dict(FACTS, brand="Acme <Widgets>"), None)
         self.assertIn("Acme &lt;Widgets&gt;", out)
         self.assertIn('<a href="https://acme.example/contact/">', out)
-        self.assertIn('<script type="application/ld+json">', out)
-        json.loads(out.split('<script type="application/ld+json">')[1].split("</script>")[0])
+        self.assertNotIn("ld+json", out)  # the schema ships once, in ai-info-schema.json
 
     def test_build_writes_everything(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -145,8 +144,14 @@ class Render(unittest.TestCase):
             (run / "data").mkdir()
             (run / "data" / "facts.json").write_text(json.dumps(FACTS), encoding="utf-8")
             self.assertEqual(a.cmd_build(Namespace(run_dir=tmp, canary=None)), 0)
-            for name in (a.PAGE_MD, a.PAGE_HTML, a.PAGE_JSON, a.PAGE_JSONLD, a.HANDOVER, "data/fact-check.csv"):
+            (run / "ai-info.json").write_text("{}")  # left over from an older version
+            self.assertEqual(a.cmd_build(Namespace(run_dir=tmp, canary=None)), 0)
+            for name in (a.PAGE_MD, a.PAGE_HTML, a.PAGE_SCHEMA, a.HANDOVER, "data/fact-check.csv"):
                 self.assertTrue((run / name).is_file(), name)
+            self.assertEqual(sorted(x.name for x in run.iterdir()),
+                             sorted(["data", a.PAGE_MD, a.PAGE_HTML, a.PAGE_SCHEMA, a.HANDOVER]))
+            schema = json.loads((run / a.PAGE_SCHEMA).read_text(encoding="utf-8"))
+            self.assertEqual([n["@type"] for n in schema["@graph"]], ["WebPage", "Organization"])
             handover = (run / a.HANDOVER).read_text(encoding="utf-8")
             self.assertIn("https://acme.example/ai-info/", handover)
             self.assertNotIn("{", handover)
