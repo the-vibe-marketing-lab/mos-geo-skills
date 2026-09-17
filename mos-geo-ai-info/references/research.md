@@ -72,7 +72,10 @@ Read data/probe.md and the new data/pages/probe-*.md files. Add what those pages
 source or it comes out.
 
 Record every place where sources disagree in "discrepancies" (each value with its URL, the
-value you used, and the site fix). Pages missing from the XML sitemap go in too.
+value you used, and the site fix). Pages missing from the XML sitemap go in too. Every
+"missing / not listed" value needs "absent": "<exact name>"; then run
+  python3 {skill}/scripts/aiinfo.py verify --run-dir {run_dir}
+and delete any claim it reports as FOUND.
 
 Then run:  python3 {skill}/scripts/aiinfo.py build --run-dir {run_dir}
 and fix every [FAIL] until it builds. Leave [warn] lines you disagree with and say why.

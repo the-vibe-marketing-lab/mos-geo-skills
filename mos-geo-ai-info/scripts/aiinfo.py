@@ -5,6 +5,7 @@ Subcommands
   path      print this month's run folder (MarketingOS-aware, same rules as brand-360)
   crawl     fetch the brand's own site: sitemap, key pages, JSON-LD, socials, contact
   probe     search the site for named clients, awards and products the sitemap misses
+  verify    re-fetch every "not listed" claim in discrepancies and prove the text is absent
   truths    print client corrections from the month's Brand Truth Review, if any
   build     render the page (md + html), its schema and the handover from data/facts.json, and lint it
   check     test a published page: status, indexable, AI crawlers allowed, linked
@@ -682,6 +683,40 @@ def cmd_probe(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- verify --
+
+def cmd_verify(args) -> int:
+    """Re-fetch each page a discrepancy says is missing something, and search its text
+    (and raw HTML) for the name. Uses the Scrapling fallback so a bot block is not
+    mistaken for absence."""
+    run_dir = Path(args.run_dir)
+    facts = load_facts(run_dir)
+    claims = list(dict.fromkeys((f["url"], f["absent"]) for d in facts.get("discrepancies", [])
+                                for f in d.get("found", []) if claim_kind(f) == "text" and f.get("absent")))
+    results, bad = [], 0
+    for url, term in claims:
+        st, b, fu, via = fetch_page(url, args.delay, args.scrapling)
+        row = {"url": url, "term": term, "status": st, "via": via}
+        if st == 200 and b:
+            text = parse_page(fu, b).text()
+            pat = term_pattern(term)
+            hit = pat.search(text) or pat.search(html.unescape(text_of(b)))
+            row["absent"] = not hit
+            if hit:
+                src = text if pat.search(text) else html.unescape(text_of(b))
+                m = pat.search(src)
+                row["context"] = " ".join(src[max(0, m.start() - 80): m.end() + 80].split())
+        ok = st == 200 and row.get("absent")
+        bad += 0 if ok else 1
+        label = "ABSENT (claim holds)" if ok else ("FOUND (claim is wrong)" if st == 200 else f"UNFETCHABLE {st}")
+        print(f"  [{label}] {term!r} on {url}" + (f"\n      …{row['context']}…" if row.get("context") else ""))
+        results.append(row)
+    (run_dir / VERIFY).write_text(json.dumps({"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                               "results": results}, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"\n{len(claims)} absence claim(s) checked, {bad} failed. Saved {run_dir / VERIFY}")
+    return 1 if bad else 0
+
+
 # ---------------------------------------------------------------- truths --
 
 def cmd_truths(args) -> int:
@@ -814,12 +849,69 @@ def lint(facts: dict) -> tuple[list[str], list[str]]:
         for fnd in found:
             if not fnd.get("value") or not re.match(r"https?://", fnd.get("url", "")):
                 errors.append(f"discrepancy {i} ({d.get('topic')}): every found item needs value and url")
+            elif claim_kind(fnd) == "text" and not str(fnd.get("absent", "")).strip():
+                errors.append(f"discrepancy {i} ({d.get('topic')}): \"{fnd['value']}\" says something is missing "
+                              f"from {fnd['url']}; add \"absent\": \"<the exact name that is missing>\" so verify can "
+                              "prove it")
     words = sum(len(p.get("text", "").split()) for s in secs.values() for p in s.get("paragraphs", []))
     if words < 400:
         warnings.append(f"only {words} words across the sections; thin pages give engines little to quote")
     if words > 3500:
         warnings.append(f"{words} words across the sections; tighten it, engines extract short passages")
     return errors, warnings
+
+
+ABSENCE = re.compile(r"\bnot (?:listed|shown|found|mentioned|on|in|there)\b|\bmissing\b|\babsent\b|"
+                     r"\bno mention\b|\bdoes(?:n't| not) (?:list|show|mention|include)\b", re.I)
+SITEMAP_CLAIM = re.compile(r"\bsitemap\b", re.I)
+VERIFY = "data/verify.json"
+
+
+def claim_kind(fnd: dict) -> str | None:
+    """'sitemap' (proved by probe), 'text' (proved by verify) or None (a positive value)."""
+    if fnd.get("absent"):
+        return "text"
+    value = str(fnd.get("value", ""))
+    if not ABSENCE.search(value):
+        return None
+    return "sitemap" if SITEMAP_CLAIM.search(value) else "text"
+
+
+def absence_problems(run_dir: Path, facts: dict) -> list[str]:
+    """Every "not listed" claim must be backed by a machine check, never by reading.
+    Text claims need a passing data/verify.json result; sitemap claims need probe."""
+    problems = []
+    verify = {}
+    if (run_dir / VERIFY).is_file():
+        for r in json.loads((run_dir / VERIFY).read_text(encoding="utf-8")).get("results", []):
+            verify[(r["url"].rstrip("/"), r["term"])] = r
+    probe = {}
+    crawl = run_dir / DATA_DIR / "crawl.json"
+    if crawl.is_file():
+        for v in json.loads(crawl.read_text(encoding="utf-8")).get("probe", {}).values():
+            for r in v.get("results", []):
+                probe[r["url"].rstrip("/")] = r
+    for d in facts.get("discrepancies", []):
+        for fnd in d.get("found", []):
+            kind, url = claim_kind(fnd), fnd.get("url", "").rstrip("/")
+            if kind == "text":
+                r = verify.get((url, fnd["absent"]))
+                if not r:
+                    problems.append(f"{d['topic']}: '{fnd['absent']}' missing from {url} is unchecked; run verify")
+                elif r.get("status") != 200:
+                    problems.append(f"{d['topic']}: verify could not fetch {url} ({r.get('status')}); "
+                                    "the claim cannot stand")
+                elif not r.get("absent"):
+                    problems.append(f"{d['topic']}: verify FOUND '{fnd['absent']}' on {url}. The claim is wrong: "
+                                    "remove it (and anything built on it)")
+            elif kind == "sitemap":
+                r = probe.get(url)
+                if not r:
+                    problems.append(f"{d['topic']}: {url} 'not in sitemap' is unchecked; run probe with a term "
+                                    "that finds it")
+                elif r.get("in_sitemap"):
+                    problems.append(f"{d['topic']}: probe shows {url} IS in the sitemap. The claim is wrong")
+    return problems
 
 
 def month_name(stamp: str) -> str:
@@ -1035,6 +1127,8 @@ def cmd_build(args) -> int:
     run_dir = Path(args.run_dir)
     facts = load_facts(run_dir)
     errors, warnings = lint(facts)
+    if not errors:
+        errors = absence_problems(run_dir, facts)
     for w in warnings:
         print(f"  [warn] {w}")
     if errors:
@@ -1319,6 +1413,12 @@ def main() -> int:
     p.add_argument("--delay", type=float, default=1.0)
     p.add_argument("--scrapling", choices=["auto", "always", "off"], default="auto")
     p.set_defaults(fn=cmd_probe)
+
+    p = sub.add_parser("verify", help="prove every 'not listed' claim by re-fetching the page")
+    p.add_argument("--run-dir", required=True)
+    p.add_argument("--delay", type=float, default=1.0)
+    p.add_argument("--scrapling", choices=["auto", "always", "off"], default="auto")
+    p.set_defaults(fn=cmd_verify)
 
     p = sub.add_parser("truths", help="print client verdicts from the month's Brand Truth Review")
     p.add_argument("--run-dir", required=True)

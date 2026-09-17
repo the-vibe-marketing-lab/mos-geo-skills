@@ -153,6 +153,21 @@ its URL, the value used, and the fix that makes the site agree. `build` writes t
 `data/discrepancies.md`, and the workbook turns each fix into an Initiative. This is how
 the page ends up accurate and the site ends up consistent with it.
 
+**"Not listed" claims are proved by a machine, never by reading.** A research agent once
+reported an award missing from the organiser's winners page when it was plainly there.
+So any `found` value that says something is missing must carry `"absent": "<exact name>"`,
+and before building run:
+
+```bash
+python3 "$SKILL/scripts/aiinfo.py" verify --run-dir "$RUN"
+```
+
+It re-fetches each page (with the Scrapling fallback, so a bot block is not mistaken for
+absence) and searches the text for the name. `build` refuses to run until every text
+claim is verified absent, and every "not in sitemap" claim is backed by a `probe` result.
+If `verify` prints `FOUND`, the claim is wrong: delete the discrepancy and anything built
+on it.
+
 The build refuses the following, and prints `[FAIL]` for each:
 
 - missing required fields
@@ -161,6 +176,7 @@ The build refuses the following, and prints `[FAIL]` for each:
 - promise language
 - thin guidance
 - a discrepancy with fewer than two sourced values
+- a "not listed" claim that `verify` (or `probe`, for sitemaps) has not proved
 
 Fix `facts.json` and build again until it passes. Then spot-check five statements
 against their URLs yourself, starting with numbers, awards and client names.

@@ -377,6 +377,69 @@ class Probe(unittest.TestCase):
         self.assertEqual(urls, ["https://acme.example/growth-studies/open-colleges/", "https://acme.example/x/"])
 
 
+class AbsenceGate(unittest.TestCase):
+    CLAIM = {"topic": "Award listing",
+             "found": [{"value": "Winner", "url": "https://acme.example/awards/"},
+                       {"value": "not on the organiser's list", "url": "https://awards.example/2025/",
+                        "absent": "Beta Corp"}],
+             "used": "Winner", "fix": "Ask the organiser to correct the list."}
+
+    def run_build(self, tmp, facts):
+        (Path(tmp) / "data" / "facts.json").write_text(json.dumps(facts), encoding="utf-8")
+        with mock.patch("builtins.print") as out:
+            rc = a.cmd_build(Namespace(run_dir=tmp, canary=None))
+        return rc, "\n".join(str(c.args[0]) for c in out.call_args_list if c.args)
+
+    def test_absence_claim_needs_absent_field(self):
+        bad = copy.deepcopy(self.CLAIM)
+        del bad["found"][1]["absent"]
+        errs = "\n".join(a.lint(dict(FACTS, discrepancies=[bad]))[0])
+        self.assertIn('add "absent"', errs)
+        self.assertIsNone(a.claim_kind({"value": "does not offer PPC", "url": "u"}))
+        self.assertEqual(a.claim_kind({"value": "not in the XML sitemap", "url": "u"}), "sitemap")
+
+    def test_build_blocks_until_verified_and_catches_a_wrong_claim(self):
+        page_with = b"<html><body><h4>Winner 2025</h4><h4>Acme &amp; Beta Corp</h4></body></html>"
+        page_without = b"<html><body><h4>Winner 2025</h4><h4>Someone Else</h4></body></html>"
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "data").mkdir()
+            facts = dict(FACTS, discrepancies=[self.CLAIM])
+            rc, out = self.run_build(tmp, facts)
+            self.assertEqual(rc, 1)
+            self.assertIn("is unchecked; run verify", out)
+
+            for body, want_rc, want_msg in ((page_with, 1, "verify FOUND 'Beta Corp'"), (page_without, 0, None)):
+                with mock.patch.object(a, "fetch_page", return_value=(200, body, "https://awards.example/2025/", "urllib")), \
+                        mock.patch("builtins.print"):
+                    self.assertEqual(a.cmd_verify(Namespace(run_dir=tmp, delay=0, scrapling="off")), want_rc)
+                rc, out = self.run_build(tmp, facts)
+                self.assertEqual(rc, want_rc, out)
+                if want_msg:
+                    self.assertIn(want_msg, out)
+
+            with mock.patch.object(a, "fetch_page", return_value=(403, b"", "https://awards.example/2025/", "urllib")), \
+                    mock.patch("builtins.print"):
+                self.assertEqual(a.cmd_verify(Namespace(run_dir=tmp, delay=0, scrapling="off")), 1)
+            rc, out = self.run_build(tmp, facts)
+            self.assertIn("could not fetch", out)
+
+    def test_sitemap_claim_is_proved_by_probe(self):
+        claim = {"topic": "Studies missing from sitemap", "used": "included",
+                 "found": [{"value": "not in sitemap", "url": "https://acme.example/studies/beta/"}],
+                 "note": "found by probe", "fix": "Add studies to the sitemap."}
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "data").mkdir()
+            facts = dict(FACTS, discrepancies=[claim])
+            rc, out = self.run_build(tmp, facts)
+            self.assertIn("run probe", out)
+            for in_sitemap, want in ((True, 1), (False, 0)):
+                crawl = {"root": "https://acme.example/", "probe": {"Beta": {"method": "wp-rest", "results": [
+                    {"url": "https://acme.example/studies/beta/", "in_sitemap": in_sitemap}]}}}
+                (Path(tmp) / "data" / "crawl.json").write_text(json.dumps(crawl))
+                rc, out = self.run_build(tmp, facts)
+                self.assertEqual(rc, want, out)
+
+
 @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "needs openpyxl")
 class Workbook(unittest.TestCase):
     def test_workbook_tab_tick_and_initiative(self):

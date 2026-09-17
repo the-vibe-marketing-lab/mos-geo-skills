@@ -83,6 +83,16 @@ outputs.
       "fix": "Update the FAQ answer to 'about 40'."
     },
     {
+      "topic": "2024 Widget Awards listing",
+      "found": [
+        {"value": "Winner, Best Manufacturer", "url": "https://acmewidgets.com.au/awards/"},
+        {"value": "not on the organiser's winners list", "url": "https://widgetawards.example/2024-winners/",
+         "absent": "Acme Widgets"}
+      ],
+      "used": "Winner",
+      "fix": "Ask the organiser to add the win, or link the official announcement."
+    },
+    {
       "topic": "Case studies missing from the sitemap",
       "found": [{"value": "not in sitemap", "url": "https://acmewidgets.com.au/case-studies/mining-co/"}],
       "used": "included from the case study page",
@@ -132,6 +142,10 @@ outputs.
   `research`, and `fix` is the change that makes every source agree. The build writes
   `data/discrepancies.md`, and the workbook adds each fix as an Initiative. Use `[]` when
   the sources agree.
+  - A `found` value that says something is **missing** ("not listed", "not shown",
+    "missing") must name the missing text in `absent`. `verify` re-fetches the URL and
+    must find it absent before `build` will run. A value that mentions the sitemap is
+    proved by `probe` instead (the URL must appear in its results as not in the sitemap).
 - **`last_updated`**: the month you ran the skill (`YYYY-MM`). It prints as
   "September 2026".
 - **`page_url`**: where the page will live. The default is `<website>/ai-info/`.
