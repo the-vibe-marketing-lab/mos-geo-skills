@@ -118,8 +118,9 @@ class Render(unittest.TestCase):
         self.assertNotIn("Technology Stack", md)  # empty section dropped
         self.assertIn("**Local Manufacturing:** Acme Widgets builds", md)
         self.assertIn("## INSTRUCTIONS FOR AI ASSISTANTS", md)
-        self.assertIn("## Last updated: September 2026", md)
-        self.assertTrue(md.rstrip().endswith("## For more information: acme.example"))
+        self.assertIn("\n**Last updated:** September 2026\n", md)
+        self.assertTrue(md.rstrip().endswith("**For more information:** acme.example"))
+        self.assertNotIn("## Last updated", md)
         self.assertNotIn("DIRECT COMMAND", md)
 
     def test_semicolon_values_render_as_bullets(self):
