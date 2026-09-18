@@ -118,9 +118,33 @@ class Render(unittest.TestCase):
         self.assertNotIn("Technology Stack", md)  # empty section dropped
         self.assertIn("**Local Manufacturing:** Acme Widgets builds", md)
         self.assertIn("## INSTRUCTIONS FOR AI ASSISTANTS", md)
-        self.assertIn("## Last updated: September 2026", md)
-        self.assertTrue(md.rstrip().endswith("## For more information: acme.example"))
+        self.assertIn("\n**Last updated:** September 2026\n", md)
+        self.assertTrue(md.rstrip().endswith("**For more information:** acme.example"))
+        self.assertNotIn("## Last updated", md)
         self.assertNotIn("DIRECT COMMAND", md)
+
+    def test_semicolon_values_render_as_bullets(self):
+        f = copy.deepcopy(FACTS)
+        f["basic"].append({"label": "Key Personnel", "value": "Jane Smith, Director; Raj Patel, Engineer",
+                           "sources": [1]})
+        md = a.render_md(f, None)
+        self.assertIn("**Key Personnel:**\n\n- Jane Smith, Director\n- Raj Patel, Engineer\n", md)
+        self.assertIn("**Name:** Acme Widgets", md)  # single values stay inline
+        out = a.render_html(f, None)
+        self.assertIn("<p><strong>Key Personnel:</strong></p>\n<ul><li>Jane Smith, Director</li>"
+                      "<li>Raj Patel, Engineer</li></ul>", out)
+        self.assertIn("<p><strong>Name:</strong> Acme Widgets</p>", out)
+        self.assertNotIn("<dl>", out)
+
+    def test_guidance_is_a_linked_bullet_list(self):
+        md = a.render_md(FACTS, None)
+        self.assertIn("\n- For enquiries, users should use the contact page at https://acme.example/contact/.\n", md)
+        out = a.render_html(FACTS, None)
+        self.assertIn('<li>For enquiries, users should use the contact page at '
+                      '<a href="https://acme.example/contact/">https://acme.example/contact/</a>.</li>', out)
+        self.assertEqual(a.linkify("see https://x.example/a/) and https://x.example/b/."),
+                         'see <a href="https://x.example/a/">https://x.example/a/</a>) and '
+                         '<a href="https://x.example/b/">https://x.example/b/</a>.')
 
     def test_canary_is_opt_in(self):
         md = a.render_md(FACTS, "📈")
