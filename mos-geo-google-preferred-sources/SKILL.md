@@ -72,9 +72,11 @@ eligible, so the button always points at the host), the stack, up to three artic
 sitemap, the Content-Security-Policy position on `news.google.com`, and any existing install.
 
 Then do the one check the script can't: **open the eligibility link it prints**
-(`https://www.google.com/preferences/source?q=<host>`) in a browser (Interceptor, a browser MCP,
-or ask the user) and confirm the site appears in the search. The tool is a JavaScript app, so
-curl proves nothing. If the site doesn't appear, stop and say so. Don't install a button that
+(`https://www.google.com/preferences/source?q=<host>`) and confirm the site appears in the
+search. The tool only works for a **signed-in Google account**. A headless or logged-out browser
+lands on Google's sign-in page and proves nothing, so ask the user to open it in their own
+signed-in browser (or use a browser session that's already signed in). Put this question in the
+same AskUserQuestion as the Stage 2 style choice, so it costs one round trip. If the site doesn't appear, stop and say so. Don't install a button that
 leads to "no results". Google doesn't say what gets a site listed, so don't guess for the user.
 
 Also tell the user about the Search Console prerequisite. To be "eligible for display as a
@@ -113,8 +115,12 @@ Read **`references/google-spec.md`** (the only source for code) and
   plain link still works. Start from `assets/button.html`.
 - **Standard button** = the two lines from Google, with `data-theme`.
 - Load `publisher.js` **once per page**, only on pages that show the button.
-- Fire a `preferred_source_click` event to `window.dataLayer` (with `placement` and `page_url`)
-  on click, so the user can see which position earns clicks.
+- Fire a `preferred_source_click` event (with `placement` and `page_url`) on click, so the user
+  can see which position earns clicks. Send it to **whatever analytics the site already runs**: in
+  Install mode, look for an existing click-tracking pattern first (a sibling component, a
+  `dataLayer` push, DataFast/Plausible/Fathom/PostHog calls) and copy it. Only push to
+  `window.dataLayer` if it already exists as an array. Creating one on a site without Google Tag
+  Manager just swallows events.
 - Copy for the button: short, first person, and true. "Add us as a preferred source on Google",
   or "Make [Brand] a preferred source on Google". Keep the wording "preferred source" so readers
   recognise Google's own feature. Only use Google's logo from Google's official asset zip (linked
