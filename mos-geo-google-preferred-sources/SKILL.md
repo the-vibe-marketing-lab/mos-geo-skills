@@ -109,8 +109,23 @@ explicitly support a custom button through manual mode, so this isn't a hack.
 Read **`references/google-spec.md`** (the only source for code) and
 **`references/implementation.md`** (one section per stack).
 
-- **Custom button** = manual mode: the script with `preferred-sources-control="manual"` plus a
-  styled `<a>` whose `href` is the deeplink `https://www.google.com/preferences/source?q=<host>`.
+**First decide popup or link, and ask the user** (add it to the Stage 2 AskUserQuestion):
+
+| Mode | What Google receives | Reader experience |
+|---|---|---|
+| **Deeplink** (Recommended when the owner wants the domain pinned) | `?q=<host>`: exactly the domain you set | Google's preferences page opens in a new tab, and the article stays open |
+| **Popup** (manual or standard mode) | `source=<the current page URL>`, sent by `publisher.js`, which you can't override (observed 2026-09-19) | Google's popup opens over the article |
+
+Owners often object when the popup shows the article URL instead of their homepage. Google's
+docs don't say the popup adds anything other than the site, but the documented way to name the
+domain explicitly is the deeplink.
+
+- **Custom button, deeplink mode** = a styled `<a href="https://www.google.com/preferences/source?q=<host>" target="_blank" rel="noopener noreferrer">`
+  with "(opens in a new tab)" in its accessible name. No `publisher.js`. Mark it with
+  `data-preferred-source` (not the `js-preferred-source` class, which `verify` reads as "popup
+  wiring expected"). The script block shrinks to tracking only.
+- **Custom button, popup mode** = manual mode: the script with `preferred-sources-control="manual"` plus a
+  styled `<a class="js-preferred-source">` whose `href` is the same deeplink.
   JavaScript opens Google's popup (the reader stays on the page). With JS blocked or slow, the
   plain link still works. Start from `assets/button.html`.
 - **Standard button** = the two lines from Google, with `data-theme`.
