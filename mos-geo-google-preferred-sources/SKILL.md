@@ -238,6 +238,11 @@ click-test). End with one next action.
 - **Two `publisher.js` tags on one page** (a theme snippet plus a plugin) cause double-init. The
   verify script flags it.
 - **Homepage colours lie** (see Stage 2).
+- **Article prose restyles your button.** The in-article card lives inside the article body,
+  where rules like `.article-prose img { width: 100%; border… }` and `.prose a { … }` hit the G
+  and the link. Scope the button's rules at least two classes deep (`.ps-cta .ps-cta__g img`),
+  reset width, border, margin and radius explicitly, and screenshot the card in the dev server
+  **and** the production build. Stylesheet order differs between them.
 - **`the_content` fires everywhere on WordPress**: feeds, REST, related-post loops. The guard in
   `references/implementation.md` is not optional.
 - **Nothing site-specific belongs in this skill.** Every host, colour and name is read at run
