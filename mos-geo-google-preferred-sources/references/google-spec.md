@@ -127,8 +127,19 @@ button.onclick = () => {
 ```
 
 Image variant: wrap an `<img alt="Add as Preferred Source">` in the same link. Google offers
-"official translated graphic assets" (a zip of promotion badges) on the same page. Use those if
-you want Google's mark on the button, and never redraw it.
+"official translated graphic assets" on the same page:
+<https://services.google.com/fh/files/helpcenter/google_preferred_source_badge_all_languages.zip>.
+Checked 2026-09-19: 34 language folders (e.g. `EN/`), each with
+`google_preferred_source_badge_{light,dark}_<lang>.png` and `@2x` versions. Each is a **full
+badge** (the G plus the fixed text "Add as a preferred source on Google"). There's no
+standalone G in the pack.
+
+Standalone G, when the owner chooses a site-styled button with the logo: use a Google-hosted
+copy, never a redraw or an image-search result. Vector:
+<https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg> (© Google). PNG:
+<https://www.gstatic.com/images/branding/googleg/1x/googleg_standard_color_128dp.png>.
+Self-host it, and don't recolour, crop or distort it. Using the G outside Google's badge is a
+trademark decision for the site owner, so record that they made it.
 
 ## 5. Observed behaviour (not in Google's docs)
 

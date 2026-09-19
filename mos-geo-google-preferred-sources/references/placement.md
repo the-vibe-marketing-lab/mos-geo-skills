@@ -40,8 +40,10 @@ It's an editorial call, so make it one:
 
 ## Copy
 
-- The label keeps Google's phrase "preferred source" so readers recognise the feature:
-  "Add {{BRAND}} as a preferred source on Google".
+- The label keeps Google's phrase "preferred source" so readers recognise the feature. Default:
+  "Add us as a preferred source on Google", the same on every placement.
+- The Google G (if the owner chose it) goes on the main in-article button only. The quiet
+  end-of-article link stays text only.
 - The note above the in-article button is one short, true line in the site's voice, e.g.
   "Want more of this when you search on Google?" Never promise rankings, and never promise
   anything for the reader beyond seeing more from the site.
