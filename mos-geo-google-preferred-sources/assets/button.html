@@ -103,12 +103,17 @@
       var btn = event.target.closest && event.target.closest('.js-preferred-source');
       if (!btn) return;
 
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        event: 'preferred_source_click',
-        placement: btn.getAttribute('data-placement') || 'unknown',
-        page_url: location.href
-      });
+      // Tracking: swap in the site's own analytics call if it isn't GTM. Only push to an
+      // existing dataLayer; a new one on a site without GTM swallows events silently.
+      try {
+        if (Array.isArray(window.dataLayer)) {
+          window.dataLayer.push({
+            event: 'preferred_source_click',
+            placement: btn.getAttribute('data-placement') || 'unknown',
+            page_url: location.href
+          });
+        }
+      } catch (e) { /* the click matters more than the measurement */ }
 
       if (!ready) return; // publisher.js not loaded yet: let the link open Google's page.
       event.preventDefault();
