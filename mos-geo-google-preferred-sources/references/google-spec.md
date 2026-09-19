@@ -130,7 +130,16 @@ Image variant: wrap an `<img alt="Add as Preferred Source">` in the same link. G
 "official translated graphic assets" (a zip of promotion badges) on the same page. Use those if
 you want Google's mark on the button, and never redraw it.
 
-## 5. How this skill combines them
+## 5. Observed behaviour (not in Google's docs)
+
+- **The popup sends the page URL.** On click, `addPreferredSource()` opens
+  `https://news.google.com/swg/ui/v1/addpreferredsource?...&source=<location.href>`: the full
+  article URL, not the domain. There is no documented `init()` option to change it. Observed with
+  a headless browser on 2026-09-19. Signed-out readers get a Google sign-in page first.
+- **Consequence:** when the owner wants the button to name only the domain, use the deeplink
+  (`?q=<host>`). It's Google's own documented option and the one place the domain is explicit.
+
+## 6. How this skill combines them
 
 The custom button is an `<a>` whose `href` is the deeplink, enhanced by manual mode:
 
