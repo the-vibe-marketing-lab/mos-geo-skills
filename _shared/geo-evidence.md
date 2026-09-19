@@ -18,6 +18,7 @@ This is the honest version. It exists so no skill in this pack, and no member us
 7. [Evidence gaps](#7-evidence-gaps)
 8. [Sources](#8-sources)
 9. [Schema markup](#9-schema-markup)
+10. [Google Preferred Sources (separate tactic)](#10-google-preferred-sources-separate-tactic)
 
 ---
 
@@ -192,3 +193,14 @@ What the evidence says about structured data, rankings and AI citations. Every l
 - Relixir's "50-site study" (FAQPage pages cited 41% vs 15% without): the study page returns 404, so it is not cited.
 - "3.2x more likely to appear in AI Overviews with FAQPage" and "22% median citation lift from schema updates": no traceable primary source.
 - General claims that AI engines "extract" or "prefer" FAQPage, HowTo, Recipe, MedicalWebPage or speakable markup: no published evidence found.
+
+---
+
+## 10. Google Preferred Sources (separate tactic)
+
+Used by `mos-geo-google-preferred-sources`. The full evidence, with Google's exact wording and code, lives in that skill's `references/google-spec.md`. The short version:
+
+- **What Google says:** for readers who pick a site as a preferred source, its content "is more likely to appear in 'Top Stories'" with a "preferred" badge, and "can be highlighted with a 'preferred' badge" in AI Mode and AI Overviews. <https://developers.google.com/search/docs/appearance/preferred-sources> (checked 2026-09-19)
+- **What Google does not say:** anything about rankings. "Global SEO signal" is Search Engine Journal's headline framing, not Google's. Don't repeat it as fact.
+- **Adoption figure:** more than 600,000 unique sources selected by August 2026, per Google as reported by SE Roundtable. Use it only with the source and date.
+- **Evidence gap:** no public data on how many readers click the button, or on what the badge does to click-through in AI answers. Placement advice (after the strongest paragraph) is editorial judgement, not a tested result.
