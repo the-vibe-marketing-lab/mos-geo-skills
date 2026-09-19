@@ -136,10 +136,18 @@ domain explicitly is the deeplink.
   `dataLayer` push, DataFast/Plausible/Fathom/PostHog calls) and copy it. Only push to
   `window.dataLayer` if it already exists as an array. Creating one on a site without Google Tag
   Manager just swallows events.
-- Copy for the button: short, first person, and true. "Add us as a preferred source on Google",
-  or "Make [Brand] a preferred source on Google". Keep the wording "preferred source" so readers
-  recognise Google's own feature. Only use Google's logo from Google's official asset zip (linked
-  in the spec). Never draw your own Google "G".
+- Copy for the button: **"Add us as a preferred source on Google"** by default. It's short, first
+  person and true, and keeps Google's phrase "preferred source" so readers recognise the feature.
+  Use the same label on every placement.
+- **Google "G" on the button (default: on the main in-article button only).** Google's official
+  pack (`google_preferred_source_badge_all_languages.zip`, linked in the spec) only contains
+  full badges with Google's own fixed wording, not a standalone G. So offer the owner two options:
+  - **Official badge** as the clickable image: Google's asset, used as intended, but the wording
+    is Google's ("Add as a preferred source on Google") and the colours are Google's.
+  - **Site-styled button + G**: the G from Google's own host (see `references/google-spec.md`
+    §4), self-hosted, in a white circular chip so the multicoloured G never sits on a coloured
+    fill. Don't recolour, crop or distort it, and never draw your own G. Say plainly that using
+    Google's logo outside the official badge is the owner's trademark call, and let them make it.
 
 ## Stage 4: Place
 

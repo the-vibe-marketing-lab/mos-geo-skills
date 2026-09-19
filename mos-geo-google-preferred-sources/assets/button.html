@@ -12,7 +12,9 @@
   Placeholders:
     {{BRAND}}            trading name shown in the label, e.g. the site's name
     {{HOST}}             eligible host only, no path: www.example.com
-    {{LABEL}}            button text, e.g. "Add {{BRAND}} as a preferred source on Google"
+    {{LABEL}}            button text, default "Add us as a preferred source on Google"
+    {{GOOGLE_G_SRC}}     self-hosted Google G (see references/google-spec.md §4), only if the
+                         owner chose the G; otherwise delete the <span class="ps-cta__g"> line
     {{NOTE}}             one short line above the button, e.g. "Want more of this in Google?"
     {{COLOR_PRIMARY}}    site's primary/action colour (from an ARTICLE page)
     {{COLOR_ON_PRIMARY}} text colour on the primary colour
@@ -46,6 +48,10 @@
                  transition: transform .15s ease, filter .15s ease; }
   .ps-cta__btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
   .ps-cta__btn:focus-visible { outline: 3px solid {{COLOR_TEXT}}; outline-offset: 2px; }
+  /* Google G sits on white so the multicolour mark never touches the brand fill. */
+  .ps-cta__g { display: inline-flex; align-items: center; justify-content: center; flex: none;
+               width: 26px; height: 26px; border-radius: 50%; background: #fff; }
+  .ps-cta__g img { display: block; width: 18px; height: 18px; }
   .ps-cta--quiet { border: 0; padding: 0; }
   .ps-cta--quiet .ps-cta__btn { background: transparent; color: inherit; padding: 0;
                                 text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
@@ -67,7 +73,7 @@
   <aside class="ps-cta" data-placement="in-article">
     <p class="ps-cta__note">{{NOTE}}</p>
     <a class="ps-cta__btn js-preferred-source" data-placement="in-article"
-       href="https://www.google.com/preferences/source?q={{HOST}}" rel="noopener">{{LABEL}}</a>
+       href="https://www.google.com/preferences/source?q={{HOST}}" rel="noopener"><span class="ps-cta__g"><img src="{{GOOGLE_G_SRC}}" alt="" aria-hidden="true" width="18" height="18"></span>{{LABEL}}</a>
   </aside>
   <!-- ===== SNIPPET END: BUTTON (in-article) ===== -->
 
