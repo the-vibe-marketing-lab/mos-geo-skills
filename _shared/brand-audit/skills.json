@@ -28,6 +28,15 @@
       "output": "campaigns/geo/YYYY-MM/llm-buttons/",
       "feeds_tab": "Initiatives",
       "needs": "Client website URL"
+    },
+    {
+      "skill": "mos-geo-google-preferred-sources",
+      "category": "Brand Optimisation",
+      "what_it_does": "Google 'Add as a preferred source' button: eligibility check, a button styled to the site using Google's official code, placement after the best paragraph, and a live verify. Readers who choose the site see it more in Top Stories and get a 'preferred' badge in AI Overviews and AI Mode.",
+      "run": "/mos-geo-google-preferred-sources",
+      "output": "campaigns/geo/YYYY-MM/preferred-sources/",
+      "feeds_tab": "Initiatives",
+      "needs": "Client website URL (site code or WordPress access to install; otherwise a developer handover)"
     }
   ]
 }

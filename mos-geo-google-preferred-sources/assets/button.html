@@ -1,0 +1,125 @@
+<!doctype html>
+<!--
+  Preferred Sources button: custom-styled, manual mode, deeplink fallback.
+
+  Two jobs:
+  1. PREVIEW. Fill the {{PLACEHOLDERS}} and save as <client>-preferred-sources-preview.html.
+     It renders the button on a sample article so the client can approve the look.
+  2. SNIPPET SOURCE. Everything between "SNIPPET START" and "SNIPPET END" is what ships:
+     the CSS, the button markup (repeat it per placement, changing data-placement), and one
+     script block per page. references/implementation.md shows where each part goes per stack.
+
+  Placeholders:
+    {{BRAND}}            trading name shown in the label, e.g. the site's name
+    {{HOST}}             eligible host only, no path: www.example.com
+    {{LABEL}}            button text, e.g. "Add {{BRAND}} as a preferred source on Google"
+    {{NOTE}}             one short line above the button, e.g. "Want more of this in Google?"
+    {{COLOR_PRIMARY}}    site's primary/action colour (from an ARTICLE page)
+    {{COLOR_ON_PRIMARY}} text colour on the primary colour
+    {{COLOR_TEXT}}       body text colour
+    {{COLOR_SURFACE}}    card/background colour
+    {{COLOR_BORDER}}     border/muted colour
+    {{RADIUS}}           the site's button radius, e.g. 6px
+    {{FONT_STACK}}       the site's body font stack
+    {{THEME}}            light | dark: Google's popup theme
+    {{LANG}}             page language code for Google's popup, e.g. en
+  Any value you could not extract stays as [VERIFY — could not auto-extract] in the handover.
+-->
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{BRAND}}: Preferred Sources button preview</title>
+<style>
+  body { margin: 0; background: {{COLOR_SURFACE}}; color: {{COLOR_TEXT}}; font-family: {{FONT_STACK}}; line-height: 1.6; }
+  .preview-article { max-width: 680px; margin: 0 auto; padding: 48px 16px; }
+  .preview-article p { margin: 0 0 1.2em; }
+  .preview-label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; opacity: .6; margin: 32px 0 8px; }
+
+  /* ===== SNIPPET START: CSS ===== */
+  .ps-cta { margin: 28px 0; padding: 16px 18px; border: 1px solid {{COLOR_BORDER}}; border-radius: {{RADIUS}};
+            display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+  .ps-cta__note { margin: 0; font-size: .95em; flex: 1 1 220px; }
+  .ps-cta__btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+                 background: {{COLOR_PRIMARY}}; color: {{COLOR_ON_PRIMARY}}; border-radius: {{RADIUS}};
+                 font: inherit; font-weight: 600; text-decoration: none; line-height: 1.2;
+                 transition: transform .15s ease, filter .15s ease; }
+  .ps-cta__btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+  .ps-cta__btn:focus-visible { outline: 3px solid {{COLOR_TEXT}}; outline-offset: 2px; }
+  .ps-cta--quiet { border: 0; padding: 0; }
+  .ps-cta--quiet .ps-cta__btn { background: transparent; color: inherit; padding: 0;
+                                text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+  @media (prefers-reduced-motion: reduce) { .ps-cta__btn { transition: none; } .ps-cta__btn:hover { transform: none; } }
+  /* ===== SNIPPET END: CSS ===== */
+</style>
+<!-- ===== SNIPPET START: HEAD (once per page, only on pages with the button) ===== -->
+<script async preferred-sources-control="manual" src="https://news.google.com/swg/js/v1/publisher.js"></script>
+<!-- ===== SNIPPET END: HEAD ===== -->
+</head>
+<body>
+<main class="preview-article">
+  <h1>Sample article on {{BRAND}}</h1>
+  <p>This is placeholder copy standing in for a real article, so the button can be judged in context rather than on a blank page.</p>
+  <p>Imagine this paragraph is the strongest point in the piece: the stat, the fix or the example the reader came for.</p>
+
+  <p class="preview-label">Placement 1: after the best paragraph (main)</p>
+  <!-- ===== SNIPPET START: BUTTON (in-article) ===== -->
+  <aside class="ps-cta" data-placement="in-article">
+    <p class="ps-cta__note">{{NOTE}}</p>
+    <a class="ps-cta__btn js-preferred-source" data-placement="in-article"
+       href="https://www.google.com/preferences/source?q={{HOST}}" rel="noopener">{{LABEL}}</a>
+  </aside>
+  <!-- ===== SNIPPET END: BUTTON (in-article) ===== -->
+
+  <p>The article carries on here. The button sits in the flow of the piece, not in a popup and not in the header.</p>
+
+  <p class="preview-label">Placement 2: end of article (quiet)</p>
+  <!-- ===== SNIPPET START: BUTTON (end-of-article) ===== -->
+  <aside class="ps-cta ps-cta--quiet" data-placement="end-of-article">
+    <a class="ps-cta__btn js-preferred-source" data-placement="end-of-article"
+       href="https://www.google.com/preferences/source?q={{HOST}}" rel="noopener">{{LABEL}}</a>
+  </aside>
+  <!-- ===== SNIPPET END: BUTTON (end-of-article) ===== -->
+</main>
+
+<!-- ===== SNIPPET START: SCRIPT (once per page, before </body>) ===== -->
+<script>
+  (function () {
+    // Guard: safe if this block is pasted twice or re-run by a framework.
+    if (window.__preferredSourceInit) return;
+    window.__preferredSourceInit = true;
+
+    var ready = null; // Google's preferredSource object, once publisher.js has loaded.
+
+    // Google's manual-mode queue. Until it runs, clicks follow the plain deeplink.
+    (self.PREFERRED_SOURCE = self.PREFERRED_SOURCE || []).push(function (preferredSource) {
+      preferredSource.init({ theme: '{{THEME}}', lang: '{{LANG}}' });
+      ready = preferredSource;
+    });
+
+    // One delegated listener covers every button, including ones rendered after this script
+    // (footer, hydrated components).
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('.js-preferred-source');
+      if (!btn) return;
+
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'preferred_source_click',
+        placement: btn.getAttribute('data-placement') || 'unknown',
+        page_url: location.href
+      });
+
+      if (!ready) return; // publisher.js not loaded yet: let the link open Google's page.
+      event.preventDefault();
+      try {
+        ready.addPreferredSource();
+      } catch (e) {
+        window.location.href = btn.href; // never leave a dead click
+      }
+    });
+  })();
+</script>
+<!-- ===== SNIPPET END: SCRIPT ===== -->
+</body>
+</html>
