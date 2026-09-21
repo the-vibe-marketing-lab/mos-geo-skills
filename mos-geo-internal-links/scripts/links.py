@@ -1275,7 +1275,11 @@ def write_readme(run: Path, cfg: dict) -> None:
     rec_min = n_auto + 2 * n_rev
 
     def dur(m):
-        return f"about {m} minutes" if m < 90 else f"about {m / 60:.1f} hours"
+        # Round to what a person can plan around: 5-minute steps, then whole hours.
+        if m < 60:
+            return f"about {max(5, round(m / 5) * 5)} minutes"
+        h = max(1, round(m / 60))
+        return f"about {h} hour{'s' if h > 1 else ''}"
     s = graph["summary"]
     rec_step = (f"{n_auto + n_rev} new links to add inside the text of {n_src} pages ({n_auto} auto, {n_rev} review)."
                 if rc else "Not ready yet: the link suggestions haven't been generated for this run.")
