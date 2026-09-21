@@ -311,6 +311,29 @@ class Units(unittest.TestCase):
             self.assertNotIn(o.split()[-1].lower(), STOP)
         self.assertNotIn("here", [o.lower() for o in opts])
 
+    def test_blocks_group_to_h2_and_keep_sentence_ids(self):
+        sec = lambda i, lvl, h: {"id": i, "level": lvl, "heading": h, "words": 10,
+                                 "sentences": [{"id": f"{i}.01", "text": f"{h} text."}]}
+        page = {"sections": [sec("S01", "intro", ""), sec("S02", "h2", "A"), sec("S03", "h3", "A1"),
+                             sec("S04", "h4", "A1a"), sec("S05", "h2", "B"), sec("S06", "h3", "B1")]}
+        b = L.blocks_of(page, CFG)
+        self.assertEqual([x["members"] for x in b], [["S01"], ["S02", "S03", "S04"], ["S05", "S06"]])
+        self.assertEqual([s["id"] for s in b[1]["sentences"]], ["S02.01", "S03.01", "S04.01"])
+        self.assertEqual(b[1]["words"], 30)
+        self.assertEqual(b[1]["subheadings"], ["A1", "A1a"])
+        fine = L.deep_merge(CFG, {"sections": {"group_level": "h4"}})
+        self.assertEqual(len(L.blocks_of(page, fine)), 6)
+
+    def test_block_text_truncated_by_whole_sentences(self):
+        sents = [{"id": f"S01.{i:02d}", "text": "word " * 40} for i in range(20)]  # ~51 tokens each
+        kept, cut = L.budget_sentences(sents, 200)
+        self.assertTrue(cut)
+        self.assertEqual(len(kept), 3)
+        cfg = L.deep_merge(CFG, {"sections": {"max_block_tokens": 200}})
+        st = L.section_state({"title": "T", "url": "u", "h1": "T"}, {"heading": "H", "sentences": sents}, cfg)
+        self.assertIn("[truncated: first 3 of 20 sentences]", st["source_section"]["text"])
+        self.assertFalse(L.budget_sentences(sents[:2], 200)[1])
+
     def test_validate_payload(self):
         good = {"state": {}, "model": "jev-latest",
                 "questions": {"q": {"type": "choice", "instructions": "x", "criteria": {"a": None, "none": "n"}}}}

@@ -27,12 +27,15 @@
 
   "sections": {
     "heading_levels": ["h2", "h3", "h4"],
+    "_group_comment": "Judging unit: h2 merges each H3/H4 into its parent H2 block (sentence IDs unchanged). h3 or h4 = finer units, more calls.",
+    "group_level": "h2",
     "min_section_words": 40,
-    "max_state_chars": 6000
+    "_budget_comment": "Block text sent to Jev is cut at whole sentences past this many tokens (~4 chars each) and marked [truncated].",
+    "max_block_tokens": 1500
   },
 
   "candidates": {
-    "k": 25,
+    "k": 12,
     "bm25_k1": 1.2,
     "bm25_b": 0.75,
     "field_weights": {"title": 3, "h1": 2, "headings": 1, "slug": 2, "meta": 1},

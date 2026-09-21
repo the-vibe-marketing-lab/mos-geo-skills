@@ -128,17 +128,19 @@ theme), anchor conflicts, and the pages that need links.
 ## Stage 4: Candidates and the recall test
 
 ```bash
-python3 "$SKILL/scripts/links.py" candidates --run-dir "$RUN" --k 25
+python3 "$SKILL/scripts/links.py" candidates --run-dir "$RUN"
 ```
 
-For every source section with at least 40 words it ranks eligible targets with BM25 over
+It judges **blocks**, not headings: each H2 with its H3/H4 subsections merged in
+(`sections.group_level`, default `h2`; sentence IDs are unchanged, so `place` still picks single
+sentences). For every block with at least 40 words it ranks the top `k` (default 12) eligible targets with BM25 over
 title, H1, headings, slug and meta description, then drops self, anything the source already
 links **in any position** (nav and footer count: only the first link from a page reliably
 counts), and near-duplicates. The folder's category hub is added when it isn't already linked.
 
 **Jev can't pick what recall misses**, so the command also re-ranks every existing contextual link
 between eligible pages and reports how often the linked target makes its section's shortlist
-(`@5`, `@10`, `@k`), next to the random baseline `k / targets`. The section holds the anchor text,
+(`@5`, `@10`, `@k`, `@25`), next to the random baseline `k / targets`. The section holds the anchor text,
 which flatters BM25: read it as an upper bound. On small sites k is a large share of all targets;
 say so when you report it.
 
@@ -149,7 +151,9 @@ python3 "$SKILL/scripts/links.py" judge --run-dir "$RUN" --env-file <.env> [--li
 python3 "$SKILL/scripts/links.py" place --run-dir "$RUN" --env-file <.env> [--limit N] [--dry-run]
 ```
 
-- **judge**, per section: request A asks a `link_opportunity` Noul (can every candidate lose?)
+- Block text sent to Jev stops at the last whole sentence under `sections.max_block_tokens`
+  (1,500) and ends with `[truncated: first N of M sentences]`. Long FAQ or listicle blocks hit this.
+- **judge**, per block: request A asks a `link_opportunity` Noul (can every candidate lose?)
   and a `best_target` Choice over the shortlist plus `none`. Request B re-checks the top 3 with
   fuller text: an `adds_value` Noul per target ("merely a similar topic" is the false criterion)
   and an intent Choice for the section and each target, compared in code.

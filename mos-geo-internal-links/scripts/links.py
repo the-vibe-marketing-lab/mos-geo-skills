@@ -1127,6 +1127,43 @@ def target_doc(p: dict, cfg: dict, stop: set) -> list[str]:
     return out
 
 
+def blocks_of(page: dict, cfg: dict) -> list[dict]:
+    """Judging units: inventory sections (H2-H4) merged up to `sections.group_level` (default h2),
+    so an H2 and its H3/H4 subsections are one block. Sentence IDs are unchanged, so `place`
+    still addresses individual sentences. group_level h4 = every section on its own."""
+    rank = {"intro": 0, "h2": 2, "h3": 3, "h4": 4}
+    top = rank.get(cfg["sections"].get("group_level", "h2"), 2)
+    blocks = []
+    for sec in page.get("sections", []):
+        lvl = rank.get(sec["level"], 4)
+        if not blocks or lvl <= top or blocks[-1]["level"] == "intro":
+            blocks.append({"id": sec["id"], "heading": sec["heading"], "level": sec["level"],
+                           "members": [], "sentences": [], "words": 0})
+        b = blocks[-1]
+        b["members"].append(sec["id"])
+        if sec["heading"] and b["members"][0] != sec["id"]:
+            b.setdefault("subheadings", []).append(sec["heading"])
+        b["sentences"] += sec["sentences"]
+        b["words"] += sec["words"]
+    return blocks
+
+
+def block_of_section(page: dict, cfg: dict) -> dict:
+    return {m: b for b in blocks_of(page, cfg) for m in b["members"]}
+
+
+def budget_sentences(sents: list[dict], max_tokens: int) -> tuple[list[dict], bool]:
+    """Keep whole sentences, in order, until ~max_tokens (4 chars a token). True if cut."""
+    out, used = [], 0
+    for x in sents:
+        t = len(x["text"]) // 4 + 1
+        if out and used + t > max_tokens:
+            return out, True
+        out.append(x)
+        used += t
+    return out, False
+
+
 def section_text(sec: dict) -> str:
     return " ".join([sec["heading"]] + [s["text"] for s in sec["sentences"] if not s.get("link_only")])
 
@@ -1170,7 +1207,7 @@ def cmd_candidates(args) -> int:
         already = set(graph["pages"][u]["all_out"])
         excl = {u} | already | {t for t in targets if frozenset((u, t)) in dups}
         secs = []
-        for sec in p["sections"]:
+        for sec in blocks_of(p, cfg):
             if sec["words"] < min_words:
                 continue
             ranked = shortlist(bm, tokens(section_text(sec), stop), excl, k)
@@ -1179,13 +1216,15 @@ def cmd_candidates(args) -> int:
             if cfg["candidates"]["add_pillar"] and pillar and pillar not in excl and pillar not in {c["url"] for c in cands}:
                 cands.append({"url": pillar, "bm25": 0.0, "why": "pillar"})
             if cands:
-                secs.append({"section": sec["id"], "heading": sec["heading"], "words": sec["words"], "candidates": cands})
+                secs.append({"section": sec["id"], "heading": sec["heading"], "members": sec["members"],
+                             "words": sec["words"], "candidates": cands})
                 n_sections += 1
         out[u] = {"already_linked": sorted(already & set(targets)), "sections": secs}
     # Recall proxy: existing contextual links between eligible pages. Would the section that holds
     # the link have shortlisted its target? Ranked without the already-linked exclusion, or the
     # test would be circular.
-    hits = {5: 0, 10: 0, k: 0}
+    hits = {n: 0 for n in sorted({5, 10, k, 25})}
+    bmap = {u: block_of_section(pages[u], cfg) for u in pages if pages[u]["eligible_source"]}
     page_hits, total, missed = 0, 0, []
     cache = {}
     n_targets = len(targets)
@@ -1195,7 +1234,7 @@ def cmd_candidates(args) -> int:
         s, d = l["source"], l["final_destination"] or l["destination"]
         if s not in pages or not pages[s]["eligible_source"] or d not in targets or d == s or not l["section"]:
             continue
-        sec = next((x for x in pages[s]["sections"] if x["id"] == l["section"]), None)
+        sec = bmap[s].get(l["section"])
         if not sec:
             continue
         total += 1
@@ -1207,7 +1246,7 @@ def cmd_candidates(args) -> int:
             if d in ranked[:kk]:
                 hits[kk] += 1
         page_rank = set()
-        for x in pages[s]["sections"]:
+        for x in blocks_of(pages[s], cfg):
             kk2 = (s, x["id"])
             if kk2 not in cache:
                 cache[kk2] = [t for t, _ in shortlist(bm, tokens(section_text(x), stop), {s}, max(hits))]
@@ -1259,10 +1298,15 @@ def clip(text: str, n: int) -> str:
 
 
 def section_state(page: dict, sec: dict, cfg: dict) -> dict:
-    return {"source_page": {"title": page["title"], "url": page["url"]},
-            "source_section": {"heading": sec["heading"] or page["h1"] or page["title"],
-                               "text": clip(" ".join(s["text"] for s in sec["sentences"] if not s.get("link_only")),
-                                            cfg["sections"]["max_state_chars"])}}
+    sents = [s for s in sec["sentences"] if not s.get("link_only")]
+    kept, cut = budget_sentences(sents, cfg["sections"]["max_block_tokens"])
+    text = " ".join(s["text"] for s in kept)
+    if cut:
+        text += f" [truncated: first {len(kept)} of {len(sents)} sentences]"
+    out = {"heading": sec["heading"] or page["h1"] or page["title"], "text": text}
+    if sec.get("subheadings"):
+        out["subheadings"] = sec["subheadings"]
+    return {"source_page": {"title": page["title"], "url": page["url"]}, "source_section": out}
 
 
 def judge_request_a(page: dict, sec: dict, cands: list[dict], pages: dict, cfg: dict) -> dict:
@@ -1379,7 +1423,7 @@ def eligible_sentences(sec: dict, cfg: dict, site_host: str) -> list[dict]:
 
 
 def place_request(page: dict, sec: dict, target: dict, cfg: dict, stop: set, site_host: str) -> tuple[dict | None, dict]:
-    sents = eligible_sentences(sec, cfg, site_host)[:254]
+    sents, _ = budget_sentences(eligible_sentences(sec, cfg, site_host)[:254], cfg["sections"]["max_block_tokens"])
     if not sents:
         return None, {}
     tgt_toks = set(tokens(f"{target['title']} {target['h1']}", stop))
@@ -1559,14 +1603,14 @@ def need_key(env: dict, dry: bool) -> None:
                  "or run with --dry-run to write the request payloads only.")
 
 
-def iter_sections(run: Path, limit: int | None):
+def iter_sections(run: Path, limit: int | None, cfg: dict):
     inv = read_json(run / DATA / "pages.json")
     cands = read_json(run / DATA / "candidates.json")
     pages = inv["pages"]
     n = 0
     for u, src in cands["sources"].items():
         page = pages[u]
-        secs = {s["id"]: s for s in page["sections"]}
+        secs = {b["id"]: b for b in blocks_of(page, cfg)}
         for sc in src["sections"]:
             if limit is not None and n >= limit:
                 return
@@ -1579,7 +1623,7 @@ def cmd_judge(args) -> int:
     run = Path(args.run_dir)
     env = load_env(args.env_file)
     need_key(env, args.dry_run)
-    items = list(iter_sections(run, args.limit))
+    items = list(iter_sections(run, args.limit, cfg))
     if not items:
         print("no source sections with candidates")
         return 1
@@ -1652,7 +1696,7 @@ def cmd_place(args) -> int:
     env = load_env(args.env_file)
     need_key(env, args.dry_run)
     stop = set(cfg["stopwords"])
-    items = list(iter_sections(run, args.limit))
+    items = list(iter_sections(run, args.limit, cfg))
     if not items:
         print("no source sections with candidates")
         return 1
@@ -1885,6 +1929,7 @@ def highlight(sentence: str, anchor: str) -> str:
 
 
 def cmd_build(args) -> int:
+    cfg = load_config(args.config)
     run = Path(args.run_dir)
     inv = read_json(run / DATA / "pages.json")
     sc = read_json(run / DATA / "scored.json")
@@ -1897,7 +1942,7 @@ def cmd_build(args) -> int:
     out = []
     for c in rows:
         src = pages[c["source"]]
-        heading = next((s["heading"] for s in src["sections"] if s["id"] == c["section"]), "")
+        heading = next((s["heading"] for s in blocks_of(src, cfg) if s["id"] == c["section"]), "")
         out.append({**c, "source_title": src["title"], "section_heading": heading, "sentence_id": c["sentence"],
                     "sentence": highlight(c["sentence_text"], c["anchor"]), "target_title": pages[c["target"]]["title"]})
     d = run / DELIV
