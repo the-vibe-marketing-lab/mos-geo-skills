@@ -198,8 +198,8 @@ class Pipeline(unittest.TestCase):
         bad = {(r["destination"], r["status"]) for r in t["broken"]}
         self.assertIn((f"{SITE}/category/old/", "301"), bad)
         self.assertIn((f"{SITE}/guides/", "404"), bad)
-        self.assertTrue((self.rundir / "deliverables/audit.md").is_file())
-        self.assertTrue((self.rundir / "deliverables/audit.csv").is_file())
+        self.assertTrue((self.rundir / "deliverables/01-audit/audit.md").is_file())
+        self.assertTrue((self.rundir / "deliverables/01-audit/audit.csv").is_file())
 
     def test_candidates_exclude_already_linked(self):
         c = json.loads((self.rundir / "data/candidates.json").read_text())
@@ -244,13 +244,53 @@ class Pipeline(unittest.TestCase):
             "anchor": "clean your widget", "anchor_confidence": 0.8}}))
         quiet(L.cmd_score, Namespace(config=None, run_dir=str(self.rundir)))
         quiet(L.cmd_build, Namespace(config=None, run_dir=str(self.rundir)))
-        with open(self.rundir / "deliverables/recommendations.csv", encoding="utf-8") as fh:
+        d = self.rundir / "deliverables"
+        with open(d / "03-add-internal-links/recommendations.csv", encoding="utf-8") as fh:
             rows = list(csv.DictReader(fh))
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["target"], c)
-        self.assertIn("[[clean your widget]]", rows[0]["sentence"])
-        md = (self.rundir / "deliverables/recommendations.md").read_text(encoding="utf-8")
+        self.assertEqual(rows[0]["sentence"], sent["text"])  # verbatim, no markup in the CSV
+        self.assertEqual((rows[0]["approved"], rows[0]["status"], rows[0]["note"]), ("", "", ""))
+        md = (d / "03-add-internal-links/recommendations.md").read_text(encoding="utf-8")
         self.assertIn("[[clean your widget]]", md)
+        self.assertIn("1 new links to add", (d / "README.md").read_text(encoding="utf-8"))
+
+    def test_deliverables_layout(self):
+        quiet(L.cmd_score, Namespace(config=None, run_dir=str(self.rundir)))  # works with or without Jev results
+        quiet(L.cmd_build, Namespace(config=None, run_dir=str(self.rundir)))
+        d = self.rundir / "deliverables"
+        files = {str(p.relative_to(d)).replace("\\", "/") for p in d.rglob("*") if p.is_file()}
+        self.assertEqual(files, {"README.md", "01-audit/audit.md", "01-audit/audit.csv",
+                                 "02-fix-broken-links/broken-links.md", "02-fix-broken-links/broken-links.csv",
+                                 "03-add-internal-links/recommendations.md", "03-add-internal-links/recommendations.csv"})
+        for md, csv_name in (("01-audit/audit.md", "audit.csv"), ("02-fix-broken-links/broken-links.md", "broken-links.csv"),
+                             ("03-add-internal-links/recommendations.md", "recommendations.csv")):
+            text = (d / md).read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("## What this is\n"), md)
+            i, j, k = text.index("## What to do"), text.index("## Prompt for your AI"), text.index("```text")
+            self.assertTrue(i < j < k, md)
+            prompt = text[k + 8: text.index("```", k + 8)]
+            self.assertIn(f"`{csv_name}`", prompt)            # names its CSV by relative path
+            self.assertNotIn("acme", prompt.lower())          # generic: nothing site-specific in prompts
+        readme = (d / "README.md").read_text(encoding="utf-8")
+        for h in ("## What this is", "## Start here", "## The two bands", "## Safety", "## Words used here"):
+            self.assertIn(h, readme)
+        for step in ("01-audit/audit.md", "02-fix-broken-links/broken-links.md",
+                     "03-add-internal-links/recommendations.md", "Screaming Frog"):
+            self.assertIn(step, readme)
+        for name, first in (("02-fix-broken-links/broken-links.csv", L.BROKEN_FIELDS),
+                            ("03-add-internal-links/recommendations.csv", L.REC_FIELDS)):
+            with open(d / name, encoding="utf-8") as fh:
+                self.assertEqual(next(csv.reader(fh)), first)  # header row first, no prompt rows
+        self.assertEqual(L.REC_FIELDS[:8], ["page", "page_title", "section_heading", "sentence", "anchor", "target",
+                                            "target_title", "band"])
+        with open(d / "02-fix-broken-links/broken-links.csv", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        scopes = {(r["scope"], r["old_url"]) for r in rows}
+        self.assertIn(("template", f"{SITE}/category/old/"), scopes)   # footer: fixed once, site-wide
+        self.assertIn(("template", f"{SITE}/guides/"), scopes)         # header + breadcrumb are template too
+        self.assertFalse([r for r in rows if r["scope"] == "body"])    # no broken links in body text here
+
 
 
 class Units(unittest.TestCase):
@@ -363,6 +403,17 @@ class Units(unittest.TestCase):
         self.assertFalse(ok(["using", "hand", "wraps"]))
         self.assertTrue(ok(["hand", "wraps"]))
         self.assertTrue(ok(["tips", "and", "tricks"]))
+
+    def test_broken_rows_split_template_and_body(self):
+        br = lambda src, where: {"source": src, "destination": f"{SITE}/old/", "anchor": "Old", "status": "301",
+                                 "fix_to": f"{SITE}/new/", "action": "update the href to the final URL", "where": where}
+        rows = L.broken_rows({"broken": [br("p1", "footer:1"), br("p2", "footer:1 contextual:1"), br("p3", "nav:2")]})
+        tm = [r for r in rows if r["scope"] == "template"]
+        bd = [r for r in rows if r["scope"] == "body"]
+        self.assertEqual(len(tm), 1)                       # one site-wide fix per old URL
+        self.assertEqual((tm[0]["instances"], tm[0]["pages_affected"]), (4, 3))
+        self.assertEqual([(r["page"], r["instances"]) for r in bd], [("p2", 1)])
+        self.assertTrue(all(r["status"] == "" and r["note"] == "" for r in rows))
 
     def test_validate_payload(self):
         good = {"state": {}, "model": "jev-latest",

@@ -47,11 +47,11 @@ editor adds the `<a href>` and nothing else changes.
 | 0 | Inputs + `preflight` | Both CSVs parse with the needed columns; HTML folder found; key present (or dry-run agreed) |
 | 1 | `inventory` | `data/pages.json`: eligible targets and sources look right; HTML mapped for every 200 page |
 | 2 | `graph` | `data/links.json`: every link classified; spot-check 10 "contextual" links against the page |
-| 3 | `audit` | `deliverables/audit.md` + `audit.csv` + `audit-broken-links.csv` shown to the user |
+| 3 | `audit` | `deliverables/01-audit/` and `02-fix-broken-links/` written; headline shown to the user |
 | 4 | `candidates` | Recall proxy reported and well above the random baseline |
 | 5 | `judge` | Jev: gate + best target per section, then adds_value + intent for the top 3 |
 | 6 | `place` | Jev: sentence + verbatim anchor per judged pair |
-| 7 | `score` + `build` | `deliverables/recommendations.csv` + `.md`; user reviews every row |
+| 7 | `score` + `build` | `deliverables/03-add-internal-links/` + `README.md`; user reviews every row |
 
 Set `SKILL=<this skill's folder>` and run from the user's project so the run folder lands in their brain:
 
@@ -66,7 +66,11 @@ with no brain, and `-2`, `-3` for repeat runs in a month.
 
 ```
 <run folder>/
-  deliverables/  audit.md, audit.csv, audit-broken-links.csv, recommendations.csv, recommendations.md
+  deliverables/
+    README.md                              start here: the steps in order, with this run's numbers
+    01-audit/                              audit.md, audit.csv            (read-only)
+    02-fix-broken-links/                   broken-links.md, broken-links.csv
+    03-add-internal-links/                 recommendations.md, recommendations.csv
   data/          pages.json, links.json, candidates.json, jev_requests.jsonl (+ .index.jsonl),
                  judgements.json, placements.json, scored.json, jev_cache.jsonl, jev_usage.json
 ```
@@ -124,6 +128,10 @@ audit. If a builder or plugin puts body copy somewhere else, add its class to
 Show the user the audit headline: true contextual links against the SF "Content" count and the
 breakdown, orphans, deep pages, links to redirects and errors (template ones are fixed once in the
 theme), anchor conflicts, and the pages that need links.
+
+`audit` writes `01-audit/` and `02-fix-broken-links/` (template-wide fixes once per old URL,
+in-body fixes per page) and `README.md`; `build` adds `03-add-internal-links/` and refreshes the
+README. Every run produces this layout.
 
 ## Stage 4: Candidates and the recall test
 
@@ -193,9 +201,19 @@ walks the list best-first and drops, with a reason in `data/scored.json`:
 
 Bands: `auto` (score ≥ 0.55 and anchor confidence ≥ 0.3), `review` (≥ 0.25), `drop`. **These
 thresholds are placeholders from the TypeSafe cookbooks.** Until they are tuned on about 100
-labelled section → target pairs from the user, treat `auto` as "review first". Walk the user
-through `recommendations.md` (sentence with the anchor in [[brackets]], grouped by source page);
-nothing goes live without their approval.
+labelled section → target pairs from the user, treat `auto` as "review first".
+
+## Handing it over
+
+The person running this is usually a marketer, not an SEO. Point them at `deliverables/README.md`
+and nothing else. It lists three steps in order (audit, broken links, new links) with this run's
+numbers, time estimates, the two bands and a glossary. Each step's `.md` opens with "What this is",
+"What to do" and a **Prompt for your AI** they paste into Claude Code. The prompt tells the AI which
+CSV to read, what each column means and the rules: link only the exact anchor in the exact sentence,
+never rewrite copy, skip rows whose sentence changed, fill `status` and `note`, auto rows first,
+review rows one yes/no at a time, drafts or revisions only when it can edit the site (never
+publish), otherwise a per-page checklist for a developer. The CSVs are clean tables: `approved`,
+`status` and `note` start blank. Nothing goes live without the user's approval.
 
 ## Reference map
 
@@ -205,6 +223,8 @@ nothing goes live without their approval.
 | `scripts/links.py` | The docstring lists every subcommand; `apply_rules` is the hard-rule list |
 | `scripts/test_links.py` | Before changing a rule: `python3 -m unittest scripts/test_links.py` (offline) |
 | `.env.example` | Setting up the TypeSafe key, outside the repo |
+| `deliverables/README.md` (in the run folder) | Handing over: the only file the user needs to open first |
+| `AUDIT_PROMPT`, `BROKEN_PROMPT`, `RECS_PROMPT` in `scripts/links.py` | Changing what the user's AI is told to do; `write_readme` for the README |
 
 ## Things that will bite you
 

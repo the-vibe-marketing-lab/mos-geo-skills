@@ -994,7 +994,15 @@ def cmd_audit(args) -> int:
     t = audit_tables(inv, graph, cfg)
     s = graph["summary"]
     pages = inv["pages"]
-    L = [f"# Internal link audit: {inv['site_host']}", "",
+    L = doc_head(
+        ["A health check of how the pages on this site link to each other: which pages get no links from other "
+         "pages' text (orphans), which are buried deep, and which links point at old or missing pages.",
+         "Read-only. Nothing here changes the site."],
+        ["Paste the prompt below into your AI and read its summary.",
+         "Skim the headline numbers under \"The audit in full\".",
+         "Move on to `../02-fix-broken-links/broken-links.md`."],
+        AUDIT_PROMPT)
+    L += [f"## The audit in full: {inv['site_host']}", "",
          f"Generated {time.strftime('%Y-%m-%d')} from a Screaming Frog crawl and the saved page HTML. "
          "Numbers are counts of link instances unless stated.", "",
          "## Headline", "",
@@ -1041,22 +1049,9 @@ def cmd_audit(args) -> int:
     L += [f"- {short(r['url'])}: depth {r['depth']:g}, {r['contextual_inlinks']} contextual inlinks" for r in t["deep"]] or ["- None."]
     L += ["", "Screaming Frog crawl depth from the home page. Contextual links from shallow, well-linked articles "
           "are the cheapest way to pull these up."]
-    L += ["", "## Links to redirects and errors", "",
-          "Fix the link in the source page to point straight at `fix_to`. Full list in `audit-broken-links.csv`.", "",
-          "| Status | Destination | Fix | Instances | Sources | Where |", "|---|---|---|---:|---:|---|"]
-    agg = defaultdict(lambda: {"n": 0, "src": set(), "fix": "", "where": Counter()})
-    for r in t["broken"]:
-        a = agg[(r["status"], r["destination"])]
-        a["n"] += r["count"]
-        a["src"].add(r["source"])
-        a["fix"] = (f"-> {r['fix_to']}" if r["fix_to"] and r["action"].startswith("update") else r["action"] +
-                    (f" (now {r['fix_to']})" if r["fix_to"] else ""))
-        for part in r["where"].split():
-            c, n = part.rsplit(":", 1)
-            a["where"][c] += int(n)
-    for (st, d), a in sorted(agg.items(), key=lambda kv: -kv[1]["n"]):
-        L.append(f"| {st} | {d} | {a['fix']} | {a['n']} | {len(a['src'])} | "
-                 + ", ".join(f"{c} {n}" for c, n in a["where"].most_common()) + " |")
+    L += ["", "## Links to old or missing pages", "",
+          f"{sum(r['count'] for r in t['broken']):,} links point at a redirect or a missing page. The fixes, split "
+          "into site-wide and per-page, are in `../02-fix-broken-links/broken-links.md`."]
     L += ["", "## Anchor text pointing at more than one page", "",
           "One anchor should mean one page site-wide. Generic anchors are flagged.", ""]
     for c in t["conflicts"][:40]:
@@ -1071,20 +1066,263 @@ def cmd_audit(args) -> int:
         pos = f"{r['position']:.1f}" if r["position"] else ""
         L.append(f"| {short(r['url'])} | {r['impressions']:g} | {r['clicks']:g} | {pos} | {r['contextual_inlinks']} | "
                  f"{fmt_n(r['depth'])} |")
-    L += ["", "## Per-page counts", "", "Every eligible page with its contextual in/out counts: `audit.csv`.", ""]
-    out = run / DELIV
+    L += ["", "## Per-page counts", "", "Every page that can receive links, with its in/out counts: `audit.csv`.", ""]
+    out = run / DELIV / AUDIT_DIR
     out.mkdir(parents=True, exist_ok=True)
     (out / "audit.md").write_text("\n".join(L) + "\n", encoding="utf-8")
-    fields = ["url", "title", "page_type", "depth", "contextual_inlinks", "contextual_inlink_sources",
-              "link_list_inlinks", "contextual_outlinks", "all_inlinks_html", "sf_inlinks", "sf_unique_inlinks",
-              "impressions", "clicks", "position", "ctr", "orphan", "deep", "needs_links", "inlink_kinds"]
-    write_csv(out / "audit.csv", sorted(t["per_page"], key=lambda r: (r["contextual_inlinks"], -r["impressions"])), fields)
-    write_csv(out / "audit-broken-links.csv", t["broken"],
-              ["status", "source", "destination", "anchor", "fix_to", "final_status", "action", "count", "where"])
+    write_csv(out / "audit.csv", sorted(t["per_page"], key=lambda r: (r["contextual_inlinks"], -r["impressions"])),
+              AUDIT_FIELDS)
+    write_broken_links(run, t)
+    write_readme(run, cfg)
     print(f"orphans {len(t['orphans'])}  deep {len(t['deep'])}  broken {len(t['broken'])}  "
           f"anchor conflicts {len(t['conflicts'])}  need links {len(t['need'])}")
     print(f"wrote {out / 'audit.md'}")
     return 0
+
+
+# ------------------------------------------------------------------ deliverables --
+# deliverables/README.md + 01-audit/ + 02-fix-broken-links/ + 03-add-internal-links/.
+# Every .md opens with "What this is", "What to do" and a copy-paste "Prompt for your AI", then
+# the human-readable detail. CSVs are clean tables: header row first, no prompts inside.
+
+AUDIT_DIR, BROKEN_DIR, RECS_DIR = "01-audit", "02-fix-broken-links", "03-add-internal-links"
+BODY_CLASSES = {"contextual", "link_list", "heading_link", "other", "self_link"}
+BROKEN_FIELDS = ["scope", "page", "old_url", "fix_to", "what_to_do", "anchor", "http_status", "instances",
+                 "pages_affected", "found_in", "status", "note"]
+REC_FIELDS = ["page", "page_title", "section_heading", "sentence", "anchor", "target", "target_title", "band",
+              "approved", "status", "note", "score", "sentence_id", "section", "adds_value", "link_opportunity",
+              "best_target_prob", "exists", "anchor_confidence", "intent_match", "target_need", "source_strength",
+              "placement", "penalty", "model"]
+AUDIT_FIELDS = ["url", "title", "page_type", "depth", "contextual_inlinks", "contextual_inlink_sources",
+                "link_list_inlinks", "contextual_outlinks", "all_inlinks_html", "sf_inlinks", "sf_unique_inlinks",
+                "impressions", "clicks", "position", "ctr", "orphan", "deep", "needs_links", "inlink_kinds"]
+
+AUDIT_PROMPT = """You are helping me understand an internal link audit of my website. Do not change anything on the site.
+
+Read `audit.md` and `audit.csv`. Both are in the same folder as this file (deliverables/01-audit/). If you can't find them, ask me for the path.
+
+audit.csv has one row per page that can receive links. Columns:
+- url, title, page_type: the page.
+- depth: clicks from the home page. More than 3 is deep and hard to find.
+- contextual_inlinks: links to this page from inside the body text of other pages. 0 means an orphan.
+- link_list_inlinks: links from "see also" style lists, which help less than links in sentences.
+- contextual_outlinks: body links this page gives to other pages.
+- impressions, clicks, position, ctr: Google Search Console numbers for the page.
+- orphan, deep, needs_links: flags the audit already worked out.
+- The other columns are extra detail. Ignore them unless you need them.
+
+Then:
+1. Summarise the audit in plain words, in five short bullet points. No jargon. If you use a technical word, explain it in a few words.
+2. Recommend my top 5 priorities, most valuable first. For each: what to do, which pages, and why it matters.
+3. Point out anything that looks surprising or wrong in the numbers.
+
+Do not edit the site, the CSV or any other file. This step is read-only."""
+
+BROKEN_PROMPT = """You are helping me fix internal links that point at old or missing pages on my website. Change nothing I haven't approved.
+
+Read `broken-links.csv` in the same folder as this file (deliverables/02-fix-broken-links/). If you can't find it, ask me for the path. One row = one fix. Columns:
+- scope: "template" means the link sits in the site's footer, menu or page template, so it is fixed once for the whole site. "body" means it sits in the text of one page.
+- page: the page to edit. For template rows it says the whole site.
+- old_url: the link as it is now.
+- fix_to: the URL to use instead. Blank means there is no safe replacement.
+- what_to_do: the fix in plain words.
+- anchor: the clickable words of the link, to help you find it.
+- http_status: 301 = redirect (the old address forwards somewhere else), 404 = page not found.
+- instances, pages_affected, found_in: how often and where the link appears.
+- status, note: you fill these in.
+
+Rules:
+1. Only replace the old_url with the fix_to URL. Never change the link text or any other copy.
+2. If fix_to is blank, don't guess. Flag the row for me and ask what to do.
+3. If you can't find the old link where the row says, skip the row.
+4. After each row set status to done or skipped, and write a short note. Save the CSV as you go.
+
+Order:
+1. Template rows first. Group them (footer, menu, other template areas) and show me the list. Once I say yes, fix each one once in the theme, menu or template, not page by page.
+2. Then the body rows, grouped by page. Show me each page's list and ask me to confirm before you change it.
+
+How to apply:
+- If you can edit the site directly (for example through a WordPress connector or MCP), make the changes as a draft or revision. Never publish. Tell me which pages or menus are waiting for me to check and publish.
+- If you can't edit the site, make a checklist: template fixes first, then one section per page with each old URL and its replacement. I'll do it myself or send it to my developer.
+
+Finish with a summary: how many done, skipped (and why), and flagged for me."""
+
+RECS_PROMPT = """You are helping me add internal links to my website. Work carefully and change nothing I haven't approved.
+
+Read `recommendations.csv` in the same folder as this file (deliverables/03-add-internal-links/). If you can't find it, ask me for the path. One row = one link to add. Columns:
+- page: the URL of the page to edit.
+- page_title, section_heading: where on that page the sentence sits.
+- sentence: the exact sentence, word for word, as it was when the site was crawled.
+- anchor: the exact words inside that sentence that become the link (the clickable text).
+- target: the URL the new link points to. target_title is that page's title.
+- band: "auto" means high confidence. "review" means I need to say yes or no first.
+- approved: blank until I answer. Fill in yes or no from my answer.
+- status, note: you fill these in.
+- Every column after note is a score. Ignore them unless I ask.
+
+Rules:
+1. Only add a link around the exact anchor text, inside the exact sentence. Nothing else changes.
+2. Never rewrite, reword or "improve" any copy. Not one word.
+3. If the sentence on the live page no longer matches the sentence column, or the anchor isn't in it, skip the row.
+4. One link per row. If the page already links to the target, skip the row.
+5. After each row set status to done or skipped, and write a short note (what you did, or why you skipped). Save the CSV as you go.
+
+Order:
+1. Auto rows first. Show me them grouped by page (the sentence with the anchor marked, and the target). Ask me to confirm the batch before you change anything, and record my answer in approved.
+2. Then the review rows, one page at a time. Ask me yes or no for each row and record it in approved. Only apply rows marked yes.
+
+How to apply:
+- If you can edit the site directly (for example through a WordPress connector or MCP), add the approved links as a draft or revision. Never publish. Tell me which pages have drafts waiting so I can check and publish them myself.
+- If you can't edit the site, make a checklist grouped by page: the page URL, the sentence, the words to link and the URL to link to. I'll do it myself or send it to my developer.
+
+Finish with a summary: how many done, how many skipped (and why), and how many are waiting for me."""
+
+
+def doc_head(what: list[str], steps: list[str], prompt: str) -> list[str]:
+    return (["## What this is", "", *what, "", "## What to do", "",
+             *[f"{i}. {s}" for i, s in enumerate(steps, 1)], "",
+             "## Prompt for your AI", "", "Copy everything in the box and paste it into Claude Code (or your AI).", "",
+             "```text", prompt, "```", "", "---", ""])
+
+
+def broken_rows(t: dict) -> list[dict]:
+    """Template fixes once per old URL (site-wide), body fixes per page."""
+    tmpl, body = {}, []
+    for r in t["broken"]:
+        parts = [p.rsplit(":", 1) for p in r["where"].split()]
+        b_n = sum(int(n) for c, n in parts if c in BODY_CLASSES)
+        t_parts = [(c, int(n)) for c, n in parts if c not in BODY_CLASSES]
+        base = {"old_url": r["destination"], "fix_to": r["fix_to"], "what_to_do": r["action"],
+                "http_status": r["status"], "status": "", "note": ""}
+        if b_n:
+            body.append({**base, "scope": "body", "page": r["source"], "anchor": r["anchor"], "instances": b_n,
+                         "pages_affected": 1, "found_in": " ".join(f"{c}:{n}" for c, n in parts if c in BODY_CLASSES)})
+        if t_parts:
+            row = tmpl.setdefault(r["destination"], {**base, "scope": "template", "page": "whole site (theme or menu)",
+                                                    "anchor": r["anchor"], "instances": 0, "pages": set(),
+                                                    "where": Counter()})
+            row["instances"] += sum(n for _, n in t_parts)
+            row["pages"].add(r["source"])
+            for c, n in t_parts:
+                row["where"][c] += n
+    out = []
+    for row in sorted(tmpl.values(), key=lambda r: -r["instances"]):
+        row["pages_affected"] = len(row.pop("pages"))
+        row["found_in"] = " ".join(f"{c}:{n}" for c, n in row.pop("where").most_common())
+        out.append(row)
+    return out + sorted(body, key=lambda r: (r["page"], r["old_url"]))
+
+
+def write_broken_links(run: Path, t: dict) -> list[dict]:
+    rows = broken_rows(t)
+    d = run / DELIV / BROKEN_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    write_csv(d / "broken-links.csv", rows, BROKEN_FIELDS)
+    tm = [r for r in rows if r["scope"] == "template"]
+    bd = [r for r in rows if r["scope"] == "body"]
+    L = doc_head(
+        ["Links on your site that point at an old address (a redirect: the old URL forwards somewhere else) or a "
+         "missing page (a 404).",
+         f"{len(tm)} are in the footer, menu or template and are fixed once for the whole site; "
+         f"{len(bd)} sit in the text of {len({r['page'] for r in bd})} pages."],
+        ["Paste the prompt below into your AI.",
+         "Approve the template fixes first. Each one is fixed once, in the theme or menu.",
+         "Approve the in-body fixes page by page.",
+         "Check the drafts (or give the checklist to your developer), then publish.",
+         "Rows with no fix-to URL need your call: the old page is gone and there is no obvious replacement."],
+        BROKEN_PROMPT)
+    L += ["## Template fixes (fix once for the whole site)", ""]
+    if tm:
+        L += ["| Old URL | Fix to | Status | Pages affected | Where |", "|---|---|---|---:|---|"]
+        L += [f"| {r['old_url']} | {r['fix_to'] or r['what_to_do']} | {r['http_status']} | {r['pages_affected']} | "
+              f"{r['found_in']} |" for r in tm]
+    else:
+        L.append("- None.")
+    L += ["", "## In-body fixes, by page", ""]
+    by_page = defaultdict(list)
+    for r in bd:
+        by_page[r["page"]].append(r)
+    for page, rs in by_page.items():
+        L += [f"### {page}", ""]
+        L += [f"- \"{r['anchor']}\": {r['old_url']} ({r['http_status']}) -> "
+              + (r["fix_to"] if r["fix_to"] else f"**needs your call**: {r['what_to_do']}") for r in rs]
+        L.append("")
+    if not bd:
+        L.append("- None.")
+    (d / "broken-links.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+    return rows
+
+
+def rec_counts(run: Path) -> Counter | None:
+    f = run / DELIV / RECS_DIR / "recommendations.csv"
+    if not f.is_file():
+        return None
+    return Counter(r["band"] for r in read_csv(f))
+
+
+def write_readme(run: Path, cfg: dict) -> None:
+    inv = read_json(run / DATA / "pages.json")
+    graph = read_json(run / DATA / "links.json")
+    t = audit_tables(inv, graph, cfg)
+    rows = broken_rows(t)
+    tm = [r for r in rows if r["scope"] == "template"]
+    bd = [r for r in rows if r["scope"] == "body"]
+    bd_pages = len({r["page"] for r in bd})
+    rc = rec_counts(run)
+    n_auto, n_rev = (rc or {}).get("auto", 0), (rc or {}).get("review", 0)
+    n_src = len({r["page"] for r in read_csv(run / DELIV / RECS_DIR / "recommendations.csv")}) if rc else 0
+    fix_min = 15 * bool(tm) + 3 * bd_pages
+    rec_min = n_auto + 2 * n_rev
+
+    def dur(m):
+        return f"about {m} minutes" if m < 90 else f"about {m / 60:.1f} hours"
+    s = graph["summary"]
+    rec_step = (f"{n_auto + n_rev} new links to add inside the text of {n_src} pages ({n_auto} auto, {n_rev} review)."
+                if rc else "Not ready yet: the link suggestions haven't been generated for this run.")
+    L = ["# Internal links: your action pack", "",
+         "## What this is", "",
+         f"A check of how the pages on {inv['site_host']} link to each other, plus a list of links worth adding. "
+         f"Generated {time.strftime('%Y-%m-%d')}.", "",
+         "## Start here", "",
+         "Do these in order. Each folder has a `.md` file. Open it and paste the prompt at the top of that file into "
+         "your AI (Claude Code). The AI does the work and asks you before anything changes.", "",
+         "1. **Read the audit** (`01-audit/audit.md`).  ",
+         f"   What it is: the state of your internal links. Only {s['true_contextual']} of your links sit inside "
+         f"the text of a page. {len(t['orphans'])} pages get no links from other pages' text (orphans).  ",
+         "   Why first: it shows what's wrong before you change anything.  ",
+         "   Time: about 10 minutes.  ",
+         "   Open `01-audit/audit.md` and paste the prompt at the top of that file into your AI.", "",
+         "2. **Fix the broken links** (`02-fix-broken-links/broken-links.md`).  ",
+         f"   What it is: {len(tm)} links in your footer, menus or page templates and {len(bd)} links in the text "
+         f"of {bd_pages} pages "
+         "point at old or missing pages.  ",
+         "   Why second: it's quick, it's safe, and new links shouldn't be added next to broken ones.  ",
+         f"   Time: {dur(max(fix_min, 5))}.  ",
+         "   Open `02-fix-broken-links/broken-links.md` and paste the prompt at the top of that file into your AI.", "",
+         "3. **Add the new internal links** (`03-add-internal-links/recommendations.md`).  ",
+         f"   What it is: {rec_step}  ",
+         "   Why third: it's the biggest job, and it works best once the broken links are gone.  ",
+         f"   Time: {dur(max(rec_min, 5))}, mostly you saying yes or no.  ",
+         "   Open `03-add-internal-links/recommendations.md` and paste the prompt at the top of that file into your AI.",
+         "",
+         "4. **Check your progress.** Two to four weeks after the changes are live, crawl the site again in "
+         "Screaming Frog and re-run this skill. Compare the new audit with this one.", "",
+         "## The two bands", "",
+         "- **auto**: the link fits well and the words are already on the page. Still check the batch before it goes live.",
+         "- **review**: probably useful, but it needs your yes or no, one by one.", "",
+         "## Safety", "",
+         "- Nothing on your site changes until you approve it.",
+         "- If your AI can edit the site, it saves drafts or revisions. It never publishes.",
+         "- Review every draft before you publish it.",
+         "- The AI only adds links around words already on the page. It never rewrites your copy.", "",
+         "## Words used here", "",
+         "- **Internal link**: a link from one page on your site to another page on your site.",
+         "- **Anchor**: the clickable words of a link.",
+         "- **Orphan**: a page no other page links to from its text. Readers and Google struggle to find it.",
+         "- **Redirect (301)**: an old address that forwards to a new one. Linking straight to the new one is cleaner.",
+         "- **404**: a page that no longer exists.",
+         "- **Depth**: how many clicks a page is from the home page.", ""]
+    (run / DELIV / "README.md").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
 # ------------------------------------------------------------------ candidates --
@@ -1957,35 +2195,41 @@ def cmd_build(args) -> int:
     sc = read_json(run / DATA / "scored.json")
     pages = inv["pages"]
     rows = [c for c in sc["kept"] if c["band"] != "drop"]
-    rows.sort(key=lambda c: (c["source"], -c["score"]))
-    fields = ["band", "score", "source", "source_title", "section_heading", "sentence_id", "sentence", "anchor",
-              "target", "target_title", "adds_value", "link_opportunity", "best_target_prob", "exists",
-              "anchor_confidence", "intent_match", "target_need", "source_strength", "placement", "penalty", "model"]
+    rows.sort(key=lambda c: (c["source"], 0 if c["band"] == "auto" else 1, -c["score"]))
     out = []
     for c in rows:
         src = pages[c["source"]]
         heading = next((s["heading"] for s in blocks_of(src, cfg) if s["id"] == c["section"]), "")
-        out.append({**c, "source_title": src["title"], "section_heading": heading, "sentence_id": c["sentence"],
-                    "sentence": highlight(c["sentence_text"], c["anchor"]), "target_title": pages[c["target"]]["title"]})
-    d = run / DELIV
-    write_csv(d / "recommendations.csv", out, fields)
-    L = ["# Internal link recommendations", "",
-         f"{len(out)} recommendations ({Counter(c['band'] for c in out)}) from {sc['judged_sections']} judged sections. "
-         "Nothing ships without review: `auto` means high confidence, not pre-approved.", "",
-         "Each line shows the sentence as it stands, with the proposed anchor in [[double brackets]]. "
-         "The anchor is copied verbatim from the page: no copy changes.", ""]
+        out.append({**c, "page": c["source"], "page_title": src["title"], "section_heading": heading,
+                    "sentence_id": c["sentence"], "sentence": c["sentence_text"],
+                    "target_title": pages[c["target"]]["title"], "approved": "", "status": "", "note": ""})
+    d = run / DELIV / RECS_DIR
+    write_csv(d / "recommendations.csv", out, REC_FIELDS)
+    bands = Counter(c["band"] for c in out)
+    L = doc_head(
+        [f"{len(out)} new internal links to add inside the text of {len({c['page'] for c in out})} pages: "
+         f"{bands.get('auto', 0)} auto (high confidence) and {bands.get('review', 0)} review (needs your yes or no).",
+         "Each link uses words already on the page (the anchor, shown in [[double brackets]]). No copy changes."],
+        ["Paste the prompt below into your AI.",
+         "Confirm the auto links in batches, page by page.",
+         "Say yes or no to each review link.",
+         "Check the drafts on the site (or give the checklist to your developer), then publish.",
+         "Keep `recommendations.csv`: the status and note columns are your record of what was done."],
+        RECS_PROMPT)
+    L += ["## The links, by page", ""]
     by_src = defaultdict(list)
     for c in out:
-        by_src[c["source"]].append(c)
-    for s, cs in by_src.items():
-        L += [f"## {pages[s]['title']}", f"`{s}`", ""]
+        by_src[c["page"]].append(c)
+    for s_url, cs in by_src.items():
+        L += [f"### {pages[s_url]['title']}", f"`{s_url}`", ""]
         for c in cs:
-            L.append(f"- **{c['band']}** ({c['score']:.2f}) under \"{c['section_heading']}\": {c['sentence']}  ")
+            L.append(f"- **{c['band']}** under \"{c['section_heading']}\": {highlight(c['sentence'], c['anchor'])}  ")
             L.append(f"  -> {c['target_title']} `{c['target']}`")
         L.append("")
     if not out:
         L.append("_No recommendations yet: `judge` and `place` have not run against the live API._")
     (d / "recommendations.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+    write_readme(run, cfg)
     print(f"wrote {d / 'recommendations.csv'} ({len(out)} rows) and recommendations.md; "
           f"{len(sc['dropped'])} dropped by hard rules (see data/scored.json)")
     return 0
