@@ -1,0 +1,110 @@
+{
+  "_comment": "Defaults for mos-geo-internal-links. Override per run with --config <file> (a partial JSON merged over this one). Thresholds marked PLACEHOLDER are untuned: tune them on a labelled set before trusting the auto band.",
+
+  "pages": {
+    "target_types": ["article", "page", "category", "product"],
+    "source_types": ["article", "page"],
+    "exclude_target_patterns": ["/privacy", "/terms", "/contact", "/ai-info/", "/llm-info/", "/cart", "/checkout", "/my-account", "/login", "/search"],
+    "exclude_source_patterns": ["/privacy", "/terms", "/contact", "/ai-info/", "/llm-info/", "/about", "/cart", "/checkout", "/my-account"],
+    "near_duplicate_threshold": 0.95,
+    "site_title_suffix_share": 0.5
+  },
+
+  "containers": {
+    "_comment": "Substring matches against an ancestor's class or id (lowercased). Order of checks: header, footer, nav, breadcrumb, toc, author_box, pagination, related_repeater, sidebar, then 'template' for anything outside the main content root.",
+    "content_root": ["ct-inner-content", "entry-content", "post-content", "article-content", "wp-block-post-content", "elementor-widget-theme-post-content"],
+    "header": ["oxy-header", "site-header", "masthead", "elementor-location-header"],
+    "footer": ["site-footer", "colophon", "elementor-location-footer"],
+    "nav": ["menu", "navigation", "navbar", "nav-links-main"],
+    "breadcrumb": ["breadcrumb", "rank-math-breadcrumb", "yoast-breadcrumb"],
+    "toc": ["lwptoc", "ez-toc", "toc_container", "rank-math-toc", "table-of-contents", "wp-block-table-of-contents", "toc-"],
+    "author_box": ["saboxplugin", "author-box", "about-author", "abh_box", "author-bio", "vcard author"],
+    "pagination": ["repeater-pages", "page-numbers", "pagination", "nav-links", "post-navigation"],
+    "related_repeater": ["oxy-dynamic-list", "oxy-repeater", "_dynamic_list", "related-posts", "related_posts", "yarpp", "jp-relatedposts", "crp_related", "wp-block-latest-posts", "wp-block-query", "elementor-posts"],
+    "sidebar": ["sidebar", "widget-area", "widget_"],
+    "skip_text_tags": ["script", "style", "noscript", "template", "svg", "form", "aside", "nav", "header", "footer", "figure", "iframe", "button", "select"]
+  },
+
+  "sections": {
+    "heading_levels": ["h2", "h3", "h4"],
+    "min_section_words": 40,
+    "max_state_chars": 6000
+  },
+
+  "candidates": {
+    "k": 25,
+    "bm25_k1": 1.2,
+    "bm25_b": 0.75,
+    "field_weights": {"title": 3, "h1": 2, "headings": 1, "slug": 2, "meta": 1},
+    "add_pillar": true
+  },
+
+  "jev": {
+    "endpoint": "https://api.typesafe.ai/v1/systemone",
+    "model": "jev-latest",
+    "_model_comment": "Pin jev-1.13.0 (or whatever the response 'model' field says) once thresholds are tuned; the alias moves.",
+    "workers": 4,
+    "max_workers": 6,
+    "timeout": 20,
+    "max_retries": 5,
+    "retry_statuses": [408, 429, 500, 502, 503, 504, 529],
+    "top_n_recheck": 3,
+    "max_anchor_options": 40,
+    "place_fanout_sentences": 3,
+    "one_link_per_sentence": true
+  },
+
+  "thresholds": {
+    "_comment": "PLACEHOLDER values from the TypeSafe cookbooks. Tune on a labelled set.",
+    "link_opportunity_min": 0.30,
+    "adds_value_min": 0.50,
+    "exists_min": 0.35,
+    "anchor_confidence_min": 0.30,
+    "auto_min": 0.55,
+    "review_min": 0.25
+  },
+
+  "scoring": {
+    "intent_match": {"same": 1.0, "different": 0.6},
+    "target_need": {
+      "base": 1.0,
+      "gsc_near_top": 0.25,
+      "near_top_range": [4, 20],
+      "high_impressions_low_ctr": 0.15,
+      "high_impressions_min": 50,
+      "low_ctr_max": 0.02,
+      "low_contextual_inlinks": 0.25,
+      "low_contextual_inlinks_max": 2,
+      "orphan": 0.35,
+      "deep": 0.15,
+      "deep_depth": 3,
+      "max": 2.0
+    },
+    "source_strength": {
+      "base": 1.0,
+      "impressions_weight": 0.10,
+      "outlink_penalty_per_link": 0.03,
+      "min": 0.6,
+      "max": 1.5
+    },
+    "placement": {"p": 1.0, "li": 0.9, "td": 0.8, "th": 0.8, "blockquote": 0.8, "div": 0.85, "other": 0.7, "early_bonus": 0.05},
+    "penalties": {"cross_silo": 0.8, "target_inlink_cap": 45, "target_over_cap": 0.5}
+  },
+
+  "budgets": {
+    "per_source_new_links": 5,
+    "per_target_new_links": 10,
+    "min_anchor_words": 2,
+    "max_anchor_words": 6
+  },
+
+  "audit": {
+    "deep_depth": 3,
+    "need_links_max_contextual_inlinks": 2,
+    "need_links_top": 15
+  },
+
+  "generic_anchors": ["click here", "clicking here", "read more", "learn more", "find out more", "here", "this", "this article", "this post", "this page", "this guide", "more", "link", "website", "this link", "see more", "check it out", "check this out"],
+
+  "stopwords": ["a", "an", "the", "and", "or", "but", "if", "then", "so", "of", "to", "in", "on", "at", "by", "for", "with", "about", "as", "into", "from", "up", "down", "out", "over", "under", "is", "are", "was", "were", "be", "been", "being", "am", "do", "does", "did", "doing", "have", "has", "had", "having", "it", "its", "it's", "this", "that", "these", "those", "there", "their", "they", "them", "he", "she", "his", "her", "him", "we", "our", "us", "you", "your", "i", "me", "my", "what", "which", "who", "whom", "when", "where", "why", "how", "can", "could", "should", "would", "will", "may", "might", "must", "not", "no", "yes", "all", "any", "some", "each", "every", "more", "most", "other", "such", "than", "too", "very", "just", "also", "only", "own", "same", "both", "few", "much", "many", "one", "while", "during", "before", "after", "above", "below", "again", "further", "once", "here", "because", "until", "against", "between", "through", "get", "got", "like", "make", "made", "way", "even", "well", "really", "lot", "lots", "thing", "things", "don't", "doesn't", "isn't", "you're", "you'll", "i'm", "that's"]
+}

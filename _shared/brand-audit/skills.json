@@ -28,6 +28,15 @@
       "output": "campaigns/geo/YYYY-MM/llm-buttons/",
       "feeds_tab": "Initiatives",
       "needs": "Client website URL"
+    },
+    {
+      "skill": "mos-geo-internal-links",
+      "category": "Technical Foundations",
+      "what_it_does": "Internal link audit (true contextual links vs template noise, orphans, deep pages, links to redirects and errors, anchor conflicts) plus reviewable contextual link recommendations: target, sentence and verbatim anchor, judged by TypeSafe Jev.",
+      "run": "/mos-geo-internal-links",
+      "output": "campaigns/geo/YYYY-MM/mos-geo-internal-links/",
+      "feeds_tab": "None yet (audit and recommendations live in the run folder)",
+      "needs": "Screaming Frog Internal HTML + All Inlinks exports and stored HTML (GSC columns optional); TypeSafe API key for judge/place"
     }
   ]
 }
