@@ -334,6 +334,36 @@ class Units(unittest.TestCase):
         self.assertIn("[truncated: first 3 of 20 sentences]", st["source_section"]["text"])
         self.assertFalse(L.budget_sentences(sents[:2], 200)[1])
 
+    def test_anchor_shape_rejects_clauses_and_verb_openers(self):
+        tgt = {"title": "Boxing Gloves", "h1": "Boxing Gloves", "url": f"{SITE}/boxing-gloves/"}
+        cases = {
+            "Height and reach are essential factors in a fight.": "reach are essential factors",
+            "We cover the history of why boxing gloves exist.": "history of why boxing gloves",
+            "Deciding what type of glove to buy is hard.": "Deciding what type of glove",
+            "Prioritize mastering the fundamentals first.": "Prioritize mastering the fundamentals",
+        }
+        for text, bad in cases.items():
+            opts = L.anchor_options({"text": text, "links": []}, tgt, CFG, STOP)
+            self.assertNotIn(bad, opts, text)
+            for o in opts:
+                self.assertIn(o, text)
+        opts = L.anchor_options({"text": "Boxing gloves protect your hands during sparring sessions.", "links": []},
+                                tgt, CFG, STOP)
+        self.assertIn("Boxing gloves", opts)  # a sentence-opening -ing noun is still fine
+        self.assertIn("sparring sessions", opts)
+        opts = L.anchor_options({"text": "Read the history of boxing gloves today.", "links": []}, tgt, CFG, STOP)
+        self.assertIn("history of boxing gloves", opts)  # 'of' inside a noun phrase is fine
+        self.assertEqual(opts[0], "boxing gloves")  # target-overlapping noun phrase ranks first
+
+    def test_anchor_shape_edges(self):
+        ok = lambda ws, start=False: L.anchor_shape_ok(ws, start, STOP, set(CFG["anchors"]["inner_break_words"]),
+                                                       set(CFG["anchors"]["edge_verbs"]), CFG["anchors"]["verbish_suffixes"])
+        self.assertFalse(ok(["the", "gloves"]))
+        self.assertFalse(ok(["gloves", "for"]))
+        self.assertFalse(ok(["using", "hand", "wraps"]))
+        self.assertTrue(ok(["hand", "wraps"]))
+        self.assertTrue(ok(["tips", "and", "tricks"]))
+
     def test_validate_payload(self):
         good = {"state": {}, "model": "jev-latest",
                 "questions": {"q": {"type": "choice", "instructions": "x", "criteria": {"a": None, "none": "n"}}}}
@@ -361,7 +391,7 @@ def page(url, source=True, target=True, silo="/g/"):
 
 class Rules(unittest.TestCase):
     def setUp(self):
-        self.pages = {u: page(u) for u in ("s1", "s2", "t1", "t2", "t3")}
+        self.pages = {u: page(u) for u in ("s1", "s2", "t1", "t2", "t3", "t4")}
         self.pages["bad"] = page("bad", target=False)
         self.gp = {"s1": {"all_out": ["t3"]}, "s2": {"all_out": []}}
 
@@ -380,7 +410,7 @@ class Rules(unittest.TestCase):
             self.cand("s2", "t2", "old steel widgets", 0.5, "c"),
             self.cand("s2", "t1", "rust prevention", 0.4, "c"),               # same sentence as a kept link
             self.cand("s2", "t1", "brand", 0.3, "e"),                         # one word
-            self.cand("s2", "t2", "existing anchor text", 0.3, "f"),          # existing site anchor -> t1
+            self.cand("s2", "t3", "existing anchor text", 0.3, "f"),          # existing site anchor -> t1
         ]
         kept, dropped = L.apply_rules(cands, self.pages, self.gp, {"existing anchor text": "t1"}, CFG)
         self.assertEqual([(c["source"], c["target"], c["anchor"]) for c in kept],
@@ -399,12 +429,25 @@ class Rules(unittest.TestCase):
         cfg = L.deep_merge(CFG, {"budgets": {"per_source_new_links": 2, "per_target_new_links": 1}})
         cands = [self.cand("s1", "t1", "first good anchor", 0.9, "a"),
                  self.cand("s1", "t2", "second good anchor", 0.8, "b"),
-                 self.cand("s1", "t2", "third good anchor", 0.7, "c"),
+                 self.cand("s1", "t4", "third good anchor", 0.7, "c"),
                  self.cand("s2", "t1", "fourth good anchor", 0.6, "a")]
         kept, dropped = L.apply_rules(cands, self.pages, self.gp, {}, cfg)
         self.assertEqual(len(kept), 2)
         reasons = sorted(c["drop_reason"] for c in dropped)
         self.assertEqual(reasons, ["source over its new-link budget", "target over its new-link cap"])
+
+    def test_one_recommendation_per_pair_and_dupes_free_no_budget(self):
+        cfg = L.deep_merge(CFG, {"budgets": {"per_source_new_links": 2}})
+        cands = [self.cand("s1", "t1", "second best anchor", 0.8, "b"),
+                 self.cand("s1", "t1", "best anchor here", 0.9, "a"),
+                 self.cand("s1", "t1", "third anchor option", 0.7, "c"),
+                 self.cand("s1", "t2", "other target anchor", 0.6, "d")]
+        kept, dropped = L.apply_rules(cands, self.pages, self.gp, {}, cfg)
+        self.assertEqual([(c["target"], c["anchor"]) for c in kept],
+                         [("t1", "best anchor here"), ("t2", "other target anchor")])
+        self.assertEqual(len({(c["source"], c["target"]) for c in kept}), len(kept))
+        self.assertTrue(all("duplicate pair" in c["drop_reason"] for c in dropped))
+        self.assertEqual(len(dropped), 2)
 
     def test_near_duplicates_never_linked(self):
         self.pages["t1"]["similar"] = {"url": "s1", "score": 0.97}

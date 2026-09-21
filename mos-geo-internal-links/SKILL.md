@@ -181,8 +181,12 @@ every weight in `config/defaults.json`, so re-weighting never re-calls Jev. Then
 walks the list best-first and drops, with a reason in `data/scored.json`:
 
 1. targets that aren't a 200, indexable, self-canonical page; sources that aren't eligible
-2. pairs the source already links in any position, and near-duplicate pairs
-3. anchors that aren't verbatim in the sentence, aren't 2–6 words, or are generic
+2. pairs the source already links in any position, near-duplicate pairs, and a second
+   recommendation for the same source → target pair (the best-scoring one stays; dropped
+   duplicates never use up budget)
+3. anchors that aren't verbatim in the sentence, aren't 2–6 words, or are generic. Anchor
+   candidates are also noun-phrase shaped: no stopword or verb at either end, no auxiliary,
+   pronoun or wh-word inside (`config.anchors`)
 4. an anchor already pointing at a different URL anywhere on the site
 5. a second link in the same sentence
 6. anything past the per-source budget (5) or the per-target cap (10)

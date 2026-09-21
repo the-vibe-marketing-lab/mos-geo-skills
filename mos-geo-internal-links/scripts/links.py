@@ -1369,6 +1369,21 @@ def judge_request_b(page: dict, sec: dict, top: list[str], pages: dict, cfg: dic
     return {"state": state, "model": cfg["jev"]["model"], "questions": qs}, keys
 
 
+def anchor_shape_ok(ws: list[str], at_start: bool, stop: set, inner_break: set, verbs: set,
+                    verbish: list[str]) -> bool:
+    """Noun-phrase-like spans only: no stopword or verb at either edge, no auxiliary, pronoun or
+    wh-word inside ("reach are essential factors", "history of why boxing gloves"), and no
+    sentence-opening verb ("Deciding what type", "Prioritize mastering the fundamentals")."""
+    if ws[0] in stop or ws[-1] in stop or ws[0] in verbs or ws[-1] in verbs:
+        return False
+    if any(w in inner_break for w in ws[1:-1]):
+        return False
+    if at_start and ws[0].endswith(tuple(verbish)) and len(ws) > 1 and \
+            (ws[1] in stop or ws[1] in inner_break or ws[1].endswith("ing")):
+        return False
+    return True
+
+
 def anchor_options(sentence: dict, target: dict, cfg: dict, stop: set) -> list[str]:
     """Verbatim 2-6 word spans from the sentence: no stopword at either end, not generic, not
     overlapping an existing link. Ranked by overlap with the target's title/H1/slug."""
@@ -1383,14 +1398,16 @@ def anchor_options(sentence: dict, target: dict, cfg: dict, stop: set) -> list[s
             taken.append((i, i + len(l["anchor"])))
     tgt = set(tokens(" ".join([target.get("title", ""), target.get("h1", ""),
                                path_of(target.get("url", "/")).replace("-", " ").replace("/", " ")]), stop))
+    ac = cfg["anchors"]
+    inner_break, verbs = set(ac["inner_break_words"]), set(ac["edge_verbs"])
     seen, opts = set(), []
     for i in range(len(words)):
         for n in range(b["min_anchor_words"], b["max_anchor_words"] + 1):
             j = i + n - 1
             if j >= len(words):
                 break
-            first, last = words[i][2].lower(), words[j][2].lower()
-            if first in stop or last in stop:
+            ws = [w[2].lower().replace("’", "'") for w in words[i:j + 1]]
+            if not anchor_shape_ok(ws, i == 0, stop, inner_break, verbs, ac["verbish_suffixes"]):
                 continue
             st, en = words[i][0], words[j][1]
             if any(not (en <= a or st >= z) for a, z in taken):
@@ -1404,9 +1421,11 @@ def anchor_options(sentence: dict, target: dict, cfg: dict, stop: set) -> list[s
             seen.add(na)
             toks = tokens(span, stop)
             overlap = len(set(toks) & tgt)
-            opts.append((overlap, -abs(n - 3), span))
-    opts.sort(key=lambda x: (-x[0], x[1]))
-    return [o[2] for o in opts[: cfg["jev"]["max_anchor_options"]]]
+            nounish = not ws[-1].endswith(("ly", "ing", "ed")) or ws[-1] in ("boxing", "training", "sparring")
+            # most target overlap, noun-like ending, fewest words that aren't about the target, then ~3 words
+            opts.append(((-overlap, -int(nounish), n - overlap, abs(n - 3)), span))
+    opts.sort(key=lambda x: x[0])
+    return [o[1] for o in opts[: cfg["jev"]["max_anchor_options"]]]
 
 
 def eligible_sentences(sec: dict, cfg: dict, site_host: str) -> list[dict]:
@@ -1807,7 +1826,7 @@ def apply_rules(cands: list[dict], pages: dict, graph_pages: dict, existing_anch
     generic = {norm_anchor(g) for g in cfg["generic_anchors"]}
     dups = near_dup_pairs(pages, cfg)
     kept, dropped = [], []
-    per_src, per_tgt, used_sent = Counter(), Counter(), set()
+    per_src, per_tgt, used_sent, pairs = Counter(), Counter(), set(), set()
     anchor_owner = dict(existing_anchors)
     for c in sorted(cands, key=lambda x: -x["score"]):
         s, t, a = c["source"], c["target"], c.get("anchor") or ""
@@ -1821,6 +1840,8 @@ def apply_rules(cands: list[dict], pages: dict, graph_pages: dict, existing_anch
             why = "target not eligible (must be 200, indexable, self-canonical)"
         elif s == t:
             why = "self link"
+        elif (s, t) in pairs:
+            why = "duplicate pair: a higher-scoring recommendation already links source to target"
         elif t in set(graph_pages.get(s, {}).get("all_out", [])):
             why = "source already links to target (any position)"
         elif frozenset((s, t)) in dups:
@@ -1845,6 +1866,7 @@ def apply_rules(cands: list[dict], pages: dict, graph_pages: dict, existing_anch
             dropped.append({**c, "drop_reason": why})
             continue
         kept.append(c)
+        pairs.add((s, t))
         per_src[s] += 1
         per_tgt[t] += 1
         used_sent.add((s, c.get("sentence")))
