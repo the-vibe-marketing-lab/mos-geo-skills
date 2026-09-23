@@ -1,0 +1,98 @@
+{
+  "_comment": "Example input for scripts/generate-docx.js. Harbour Meal Co is fictional. Copy this shape into <schema folder>/brief/brief-data.json and replace every value.",
+  "client": {
+    "name": "Harbour Meal Co",
+    "url": "https://harbourmeals.example",
+    "preparedBy": "Your Business Name",
+    "date": "September 2026"
+  },
+  "outputFilename": "2026-09-24-schema-optimisation-brief.docx",
+  "executiveSummary": [
+    "This brief audits the schema markup on harbourmeals.example, based on a Screaming Frog structured data extraction of 64 URLs (61 indexable).",
+    "Every template ships the same thin Organization block and nothing else. The 22 product pages have no Product markup, so they are not eligible for product rich results, and the blog carries no breadcrumbs.",
+    "This document gives template-level JSON-LD for the top three priorities, with margin comments on every value the team should confirm before deploy."
+  ],
+  "crawlOverview": {
+    "totalUrls": 64,
+    "indexableUrls": 61,
+    "nonIndexableUrls": "3 (noindex)",
+    "pagesWithErrors": 0,
+    "pagesWithWarnings": 4,
+    "richResultWarnings": 9,
+    "richResultErrors": 0,
+    "richResultFeaturesEarned": 0,
+    "uniqueSchemaTypes": 2
+  },
+  "crawlOverviewAssessment": "Only two schema types across 64 pages, both generic. No page earns a rich result feature.",
+  "currentSchemaTypes": [
+    {
+      "type": "Organization",
+      "pages": 64,
+      "assessment": "Present site-wide but holds only name and url. Missing logo, sameAs and contactPoint, and no @id to reference from other pages."
+    },
+    {
+      "type": "WebSite",
+      "pages": 1,
+      "assessment": "Correct on the homepage. Keep it and give it an @id."
+    }
+  ],
+  "pageTemplates": [
+    {
+      "template": "Homepage",
+      "pages": 1,
+      "currentSchema": "Organization, WebSite",
+      "contentType": "Brand homepage with the current menu"
+    },
+    {
+      "template": "Product Pages",
+      "pages": 22,
+      "currentSchema": "Organization",
+      "contentType": "Meal box product pages with price and add to cart"
+    },
+    {
+      "template": "Collection Pages",
+      "pages": 6,
+      "currentSchema": "Organization",
+      "contentType": "Product listings by diet"
+    },
+    {
+      "template": "Blog Posts",
+      "pages": 28,
+      "currentSchema": "Organization",
+      "contentType": "Recipes, meal prep guides and news"
+    },
+    {
+      "template": "Utility Pages",
+      "pages": 7,
+      "currentSchema": "Organization",
+      "contentType": "About, contact, delivery, terms, privacy"
+    }
+  ],
+  "schemaRows": [
+    {
+      "label": "Organization schema (Homepage, referenced site-wide)",
+      "examplePage": "https://harbourmeals.example/",
+      "current": "<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Organization\",\n  \"name\": \"Harbour Meal Co\",\n  \"url\": \"https://harbourmeals.example/\"\n}\n</script>",
+      "template": "<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Organization\",\n  \"@id\": \"https://harbourmeals.example/#organization\",\n  \"name\": \"[Organisation Name]\",\n  \"url\": \"[Homepage URL]\",\n  \"logo\": \"[Logo URL]\",\n  \"description\": \"[One-sentence description]\",\n  \"sameAs\": [\"[Instagram URL]\", \"[Facebook URL]\", \"[LinkedIn URL]\"],\n  \"contactPoint\": {\n    \"@type\": \"ContactPoint\",\n    \"telephone\": \"[Customer Service Phone]\",\n    \"contactType\": \"customer service\"\n  }\n}\n</script>",
+      "recommended": "<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Organization\",\n  \"@id\": \"https://harbourmeals.example/#organization\",\n  \"name\": \"Harbour Meal Co\",\n  \"url\": \"https://harbourmeals.example/\",\n  \"logo\": \"https://harbourmeals.example/logo.png\",\n  \"description\": \"Chef-made weekly meal boxes delivered across Sydney.\",\n  \"sameAs\": [\"{{COMMENT:Confirm this is the brand's current Instagram handle}}https://www.instagram.com/harbourmeals.example{{/COMMENT}}\", \"https://www.facebook.com/harbourmeals.example\"],\n  \"contactPoint\": {\n    \"@type\": \"ContactPoint\",\n    \"telephone\": \"{{COMMENT:Verify this is the current customer service line}}+61 2 5550 1234{{/COMMENT}}\",\n    \"contactType\": \"customer service\"\n  }\n}\n</script>"
+    },
+    {
+      "label": "Product schema (Product pages, ~22 pages)",
+      "examplePage": "https://harbourmeals.example/products/family-weekly-box",
+      "current": "Not set",
+      "template": "<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Product\",\n  \"name\": \"[Product Name]\",\n  \"url\": \"[Product URL]\",\n  \"image\": \"[Product Image URL]\",\n  \"description\": \"[Product Description]\",\n  \"sku\": \"[SKU]\",\n  \"brand\": { \"@type\": \"Brand\", \"name\": \"[Brand Name]\" },\n  \"offers\": {\n    \"@type\": \"Offer\",\n    \"price\": \"[Price]\",\n    \"priceCurrency\": \"AUD\",\n    \"availability\": \"[Availability URL]\",\n    \"url\": \"[Product URL]\"\n  }\n}\n</script>",
+      "recommended": "<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Product\",\n  \"name\": \"Family Weekly Box\",\n  \"url\": \"https://harbourmeals.example/products/family-weekly-box\",\n  \"image\": \"https://harbourmeals.example/images/family-weekly-box.jpg\",\n  \"description\": \"Four dinners for four people, delivered every Sunday.\",\n  \"sku\": \"[REVIEW: SKU not shown on the page, needs from client]\",\n  \"brand\": { \"@type\": \"Brand\", \"name\": \"Harbour Meal Co\" },\n  \"offers\": {\n    \"@type\": \"Offer\",\n    \"price\": \"{{COMMENT:Price taken from the live page; confirm it has not changed before deploy}}129.00{{/COMMENT}}\",\n    \"priceCurrency\": \"AUD\",\n    \"availability\": \"https://schema.org/InStock\",\n    \"url\": \"https://harbourmeals.example/products/family-weekly-box\"\n  }\n}\n</script>"
+    },
+    {
+      "label": "BreadcrumbList (Blog posts, ~28 pages)",
+      "examplePage": "https://harbourmeals.example/blogs/news/five-meal-prep-habits",
+      "current": "Not set",
+      "template": "<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"BreadcrumbList\",\n  \"itemListElement\": [\n    { \"@type\": \"ListItem\", \"position\": 1, \"name\": \"Home\", \"item\": \"[Homepage URL]\" },\n    { \"@type\": \"ListItem\", \"position\": 2, \"name\": \"[Category Name]\", \"item\": \"[Category URL]\" },\n    { \"@type\": \"ListItem\", \"position\": 3, \"name\": \"[Page Title]\" }\n  ]\n}\n</script>",
+      "recommended": "<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"BreadcrumbList\",\n  \"itemListElement\": [\n    { \"@type\": \"ListItem\", \"position\": 1, \"name\": \"Home\", \"item\": \"https://harbourmeals.example/\" },\n    { \"@type\": \"ListItem\", \"position\": 2, \"name\": \"Blog\", \"item\": \"https://harbourmeals.example/blogs/news\" },\n    { \"@type\": \"ListItem\", \"position\": 3, \"name\": \"Five meal prep habits that stick\" }\n  ]\n}\n</script>"
+    }
+  ],
+  "footerNotes": [
+    "Validation: after deploy, test each changed template in Google's Rich Results Test (search.google.com/test/rich-results) and the Schema Markup Validator (validator.schema.org).",
+    "Accuracy: price and availability in Product markup must match the live page. Only add aggregateRating from a verified third-party review platform."
+  ]
+}

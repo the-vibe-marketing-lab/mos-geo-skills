@@ -1,0 +1,17 @@
+{
+  "skill_name": "mos-geo-schema-optimisation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I've run a Screaming Frog crawl of harbourmeals.example with structured data extraction and validation turned on. The export is at ./structured_data_all.csv. Harbour Meal Co is a Sydney meal delivery business with an online store (weekly meal boxes, collections by diet, a recipe blog). Can you build the schema optimisation brief?",
+      "expected_output": "A landscape DOCX in the brand's schema/brief/ folder, rendered from brief-data.json: cover, Executive summary of about 150 words, Current state (crawl overview with an assessment line, schema types deployed with assessments that say what is wrong, page templates consolidated to 5 to 8 rows) and a 4-column recommendations table with 3 to 5 schemas, likely Organization, Product and BreadcrumbList or CollectionPage. Template column uses [Placeholder] markers; Example column uses real values with {{COMMENT:...}} markers on anything unverified (prices, phone, social URLs). Uses schema/raw/ for the current column if it exists. No claim that schema earns AI citations.",
+      "files": ["structured_data_all.csv"]
+    },
+    {
+      "id": 2,
+      "prompt": "Here's a Screaming Frog structured data export for Northside Plumbing Co (northsideplumbing.example), a local plumber with one office and service pages for eight suburbs: ./northside-structured-data.csv. Generate a schema optimisation brief please.",
+      "expected_output": "A landscape DOCX brief adapted for a single-location service business: Organization, LocalBusiness (only for the real office) and Service with areaServed for the suburb pages, not LocalBusiness with invented addresses. FAQPage only if a page is genuinely Q&A. aggregateRating only from a third-party platform. 3 to 5 schemas, lean fields, margin comments on unverified phone numbers and addresses, sentence-case headings, Ember palette.",
+      "files": ["northside-structured-data.csv"]
+    }
+  ]
+}

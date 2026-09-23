@@ -37,6 +37,24 @@
       "output": "campaigns/geo/YYYY-MM/mos-geo-internal-links/",
       "feeds_tab": "None yet (audit and recommendations live in the run folder)",
       "needs": "Screaming Frog Internal HTML + All Inlinks exports and stored HTML (GSC columns optional); TypeSafe API key for judge/place"
+    },
+    {
+      "skill": "mos-geo-schema-scraper",
+      "category": "Technical Foundations",
+      "what_it_does": "Live JSON-LD snapshot of a URL list, rendered in a real browser so tag-manager and JavaScript schema is caught: one pure-JSON file per page ([] if none), sorted by page type. The 'before' state for a schema rebuild.",
+      "run": "/mos-geo-schema-scraper",
+      "output": "campaigns/geo/YYYY-MM/schema/",
+      "feeds_tab": "None yet (outputs live in the schema folder)",
+      "needs": "Apify token (APIFY_TOKEN or `apify login`), a URL list"
+    },
+    {
+      "skill": "mos-geo-schema-optimisation",
+      "category": "Technical Foundations",
+      "what_it_does": "Landscape Word brief: current schema audit plus the 3 to 5 highest-impact schemas, each with a developer template and an example filled with the brand's real values, unverified values raised as margin comments.",
+      "run": "/mos-geo-schema-optimisation",
+      "output": "campaigns/geo/YYYY-MM/schema/",
+      "feeds_tab": "None yet (outputs live in the schema folder)",
+      "needs": "Screaming Frog structured data export (CSV); Node 18+"
     }
   ]
 }

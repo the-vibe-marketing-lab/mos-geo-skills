@@ -1,0 +1,9 @@
+{
+  "name": "mos-geo-schema-optimisation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Renders the schema optimisation brief (landscape DOCX) from brief-data.json.",
+  "dependencies": {
+    "docx": "^9.0.0"
+  }
+}
