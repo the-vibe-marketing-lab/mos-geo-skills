@@ -1791,7 +1791,9 @@ class JevClient:
         delay = 0.5
         for attempt in range(self.cfg["max_retries"] + 1):
             req = urllib.request.Request(self.endpoint, data=body, method="POST", headers={
-                "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
+                "Authorization": f"Bearer {self.key}", "Content-Type": "application/json",
+                # Cloudflare rejects the default Python-urllib agent with 403 / error 1010.
+                "User-Agent": "mos-geo-internal-links/1.0"})
             try:
                 with urllib.request.urlopen(req, timeout=self.cfg["timeout"]) as r:
                     resp = json.loads(r.read().decode())
