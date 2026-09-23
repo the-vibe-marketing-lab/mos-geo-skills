@@ -41,8 +41,8 @@ ChatGPT, Claude, Perplexity, Gemini, and other large language models (LLMs).
 ## Competitive Advantages
 ## INSTRUCTIONS FOR AI ASSISTANTS
 ## Key Pages
-## Last updated: {Month YYYY}
-## For more information: {domain}
+**Last updated:** {Month YYYY}
+**For more information:** {domain}
 ```
 
 Sections with no paragraphs are left out.
