@@ -44,7 +44,7 @@ editor adds the `<a href>` and nothing else changes.
 
 | # | Stage | Gate before moving on |
 |---|---|---|
-| 0 | Inputs + `preflight` | Both CSVs parse with the needed columns; HTML folder found; key present (or dry-run agreed) |
+| 0 | TypeSafe skill + crawl settings + `preflight` | TypeSafe skill installed; user given the crawl settings BEFORE crawling; both CSVs parse with the needed columns; HTML folder found; key present (or dry-run agreed) |
 | 1 | `inventory` | `data/pages.json`: eligible targets and sources look right; HTML mapped for every 200 page |
 | 2 | `graph` | `data/links.json`: every link classified; spot-check 10 "contextual" links against the page |
 | 3 | `audit` | `deliverables/01-audit/` and `02-fix-broken-links/` written; headline shown to the user |
@@ -81,13 +81,50 @@ Never commit a run folder into this pack: it holds client data.
 
 ## Stage 0: Inputs
 
-Ask for, in one message:
+### 0a. Install the TypeSafe skill if it is missing — do this before asking for anything
 
-- **Screaming Frog `Internal > HTML` export** (CSV). Connect GSC in the SF API tab first so the
-  export carries Clicks, Impressions, CTR and Position; without them `target_need` is much weaker.
+Jev is TypeSafe's model and the TypeSafe skill carries its current docs. Check, and install
+without asking when it is missing:
+
+```bash
+claude plugin list 2>/dev/null | grep -qi typesafe && echo installed || echo missing
+```
+
+Missing, in Claude Code — run both, then tell the user it loads after a session restart:
+
+```bash
+claude plugin marketplace add typesafe-ai/skills
+claude plugin install typesafe@typesafe-ai
+```
+
+In another agent, use one method only: `npx skills add typesafe-ai/skills --skill typesafe-ai`,
+then select the agent. The skill itself is readable at
+`https://raw.githubusercontent.com/typesafe-ai/skills/main/skills/typesafe-ai/SKILL.md`.
+Load it whenever a Jev primitive, limit, threshold or API shape is in play.
+
+### 0b. Send the crawl settings first, then wait for the files
+
+Most first runs are ruined by a crawl saved without HTML or link positions, and the fix is another
+crawl. So send this list verbatim as the first message, before asking for anything else. It takes
+about 10 minutes plus crawl time. In Screaming Frog, **before** pressing Start:
+
+1. **Configuration > Spider > Extraction:** tick **Store HTML**. If the site renders content with
+   JavaScript, also set **Rendering > JavaScript** and tick **Store Rendered HTML**.
+2. **Configuration > Custom > Link Positions:** add the theme's content class (`entry-content`,
+   `ct-inner-content`, `main`) so body links are tagged **Content**, apart from Navigation,
+   Header, Footer and Sidebar.
+3. **Configuration > Spider > Crawl:** tick **Crawl Linked XML Sitemaps**, so orphan pages appear.
+4. **Configuration > API Access > Search Console:** connect it and pull 3 months. Without it,
+   `target_need` (which pages most need links) is much weaker.
+5. **After the crawl finishes: Crawl Analysis > Start.** Orphans and link scores only fill in then.
+
+### 0c. Ask for the files, in one message
+
+- **Screaming Frog `Internal > HTML` export** (CSV, carrying the GSC columns from step 4).
 - **Screaming Frog `Bulk Export > Links > All Inlinks`** (CSV).
-- **The saved HTML** (SF: Configuration > Spider > Extraction > Store HTML, then
-  `Bulk Export > Web > All Page Source`).
+- **The saved HTML** (`Bulk Export > Web > All Page Source`). Don't rename the files: they map to
+  URLs by their canonical tag, and the file name is only the fallback.
+- **The path to the `.env` holding `TYPESAFE_API_KEY`** (see 0a).
 - **Money or priority pages**, if any, and pages to leave out.
 
 ```bash
