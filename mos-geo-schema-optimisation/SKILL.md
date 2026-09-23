@@ -14,7 +14,7 @@ description: >
   markup audit", "schema report", "schema recommendations", "/mos-geo-schema-optimisation", or
   hands over a Screaming Frog structured data CSV, or mentions "structured data" alongside
   "Screaming Frog", "crawl" or "audit".
-  NOT FOR pulling the live schema from a list of URLs (use mos-geo-schema-scraper first), one
+  NOT FOR saving the raw live JSON-LD of each page (use mos-geo-schema-scraper, same crawl), one
   schema file for a brand's AI Info Page (use mos-geo-ai-info), writing the final optimised JSON
   files for every page, or promising AI citations from schema (the evidence does not support it:
   _shared/geo-evidence.md, section 9).
@@ -184,6 +184,12 @@ If you cannot find a value at all, keep `[Placeholder]` in the Template column a
 
 ### Step 1: Gather context
 
+**One crawl serves both schema skills.** Before the user crawls, send them the settings list in
+`mos-geo-schema-scraper` (step 1): JavaScript rendering, the `JSON-LD` custom extraction and the
+JSON-LD structured data extraction with validation. From that one crawl they export the
+**Structured Data** tab (this skill's input) and the **Custom Extraction** tab (the scraper's
+input, for the raw JSON), so nobody crawls twice.
+
 1. Read the CSV the user provides (Screaming Frog, Bulk Export → Structured Data → All, with
    structured data extraction and validation turned on in the crawl config).
 2. Identify the brand from the domain.
@@ -215,8 +221,9 @@ From the CSV, calculate:
 (from `mos-geo-schema-scraper`), use those files for the "Schema Implemented Currently" column:
 they are the rendered, JavaScript-inclusive state, where a Screaming Frog crawl without
 JavaScript rendering can miss schema injected by a tag manager. Where the two disagree, say so in
-the assessment. If there is no `raw/` folder and the crawl was not rendered, consider offering
-to run the scraper on the 3 to 5 example pages first (about $0.006 each).
+the assessment. If there is no `raw/` folder, offer to run the scraper first: it reads the same
+Screaming Frog crawl, so it costs nothing extra when the crawl had the JSON-LD custom extraction
+(or stored HTML) switched on.
 
 **Location pages are not always LocalBusiness pages.** A service area page targeting a suburb
 without a physical office there gets `Service` with `areaServed`, not `LocalBusiness` with an
@@ -382,6 +389,6 @@ no badges, and no new sections from one brief to the next.
 
 ## Related skills
 
-- **`mos-geo-schema-scraper`**: run first to save the live, rendered schema into `schema/raw/`.
+- **`mos-geo-schema-scraper`**: run first, from the same Screaming Frog crawl, to save the live, rendered schema into `schema/raw/`.
 - **`mos-geo-ai-info`**: one schema file for the brand's AI Info Page.
 - **`mos-geo-brand-360`**: what AI engines actually say about the brand.
