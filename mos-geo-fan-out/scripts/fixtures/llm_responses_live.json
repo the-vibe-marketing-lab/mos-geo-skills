@@ -1,0 +1,44 @@
+{
+  "_comment": "Real shape of a DataForSEO POST /v3/ai_optimization/chat_gpt/llm_responses/live response, verified live 2026-09-25 (see references/evidence.md). fan_out_queries sits on result[0], citations are annotations on each text section.",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "tasks": [
+    {
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "cost": 0.052,
+      "result": [
+        {
+          "items": [
+            {"type": "reasoning", "sections": null},
+            {
+              "type": "message",
+              "sections": [
+                {
+                  "type": "text",
+                  "text": "LLM share buttons open an assistant with the page pre-summarised. The chatgpt.com/?q= endpoint prefills the composer but the reader must press send. ",
+                  "annotations": [
+                    {"title": "Example Guides", "url": "https://example-guides.test/guides/geo/llm-share-buttons/"}
+                  ]
+                },
+                {
+                  "type": "text",
+                  "text": "No controlled test shows a citation lift from the buttons alone.",
+                  "annotations": [
+                    {"title": "Search Engine Land", "url": "https://searchengineland.com/ai-buttons-474137"}
+                  ]
+                }
+              ]
+            }
+          ],
+          "fan_out_queries": [
+            "site:platform.openai.com chatgpt share url parameters",
+            "\"chatgpt.com/?q=\" prefill composer",
+            "do LLM share buttons increase citations 2026",
+            "claude.ai/new?q= share button"
+          ]
+        }
+      ]
+    }
+  ]
+}

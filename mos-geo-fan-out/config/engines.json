@@ -1,0 +1,71 @@
+{
+  "_comment": "Which AI engines mos-geo-fan-out asks, and the DataForSEO endpoints it uses. Verified live 2026-09-25 (see references/evidence.md). DataForSEO is the only provider: the LLM Scraper (ChatGPT app) does not return fan_out_queries, so this pack only uses LLM Responses (models) and LLM Mentions (prompt discovery). gpt-5.6-luna is the default fan-out model: $0.024/call with 6 fan-outs matching terra's exact-string and site: queries on the one prompt tested live. gpt-5.6-terra ($0.044-0.062/call) is selectable per run with `run --model gpt-5.6-terra`. Model names go stale: `fanout.py preflight` checks them against DataForSEO's live model list. Set enabled=false to skip an engine.",
+
+  "providers": {
+    "dataforseo": {
+      "base_url": "https://api.dataforseo.com/v3/",
+      "llm_responses_path": "ai_optimization/{se}/llm_responses/live",
+      "models_path": "ai_optimization/{se}/llm_responses/models",
+      "locations_path": "ai_optimization/chat_gpt/llm_scraper/locations",
+      "llm_mentions_path": "ai_optimization/llm_mentions/search/live",
+      "serp_path": "serp/google/organic/live/regular",
+      "language_code": "en",
+      "max_output_tokens": 1200
+    }
+  },
+
+  "engines": [
+    {
+      "id": "chat_gpt",
+      "label": "ChatGPT",
+      "se": "chat_gpt",
+      "model": "gpt-5.6-luna",
+      "_note": "Default fan-out model. Override per run with `run --model gpt-5.6-terra` (pricier, same fan-out shape) or another live model name.",
+      "country_field": true,
+      "always_searches": false,
+      "enabled": true
+    },
+    {
+      "id": "claude",
+      "label": "Claude",
+      "se": "claude",
+      "model": "claude-sonnet-5",
+      "country_field": true,
+      "always_searches": false,
+      "enabled": false
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini",
+      "se": "gemini",
+      "model": "gemini-3.8-flash",
+      "country_field": false,
+      "always_searches": false,
+      "enabled": false
+    },
+    {
+      "id": "perplexity",
+      "label": "Perplexity",
+      "se": "perplexity",
+      "model": "sonar",
+      "country_field": true,
+      "always_searches": true,
+      "enabled": false,
+      "_note": "Sonar always searches; web_search is not sent for it."
+    }
+  ],
+
+  "generator_model": {
+    "_comment": "Cheap closed-book model used by `prompts` to draft buyer prompts from a page's title/headings. Not used for fan-out itself.",
+    "se": "chat_gpt",
+    "model": "gpt-5.4-nano"
+  },
+
+  "cost_estimate": {
+    "_comment": "Rough $/call from references/evidence.md, used only for the preflight cost estimate and the spend cap math. Actual cost is read from DataForSEO's own `cost` field on every call and is always what governs the spend cap during `run`.",
+    "engine_call": 0.03,
+    "generator_call": 0.01,
+    "llm_mentions_call": 0.105,
+    "serp_call": 0.006
+  }
+}

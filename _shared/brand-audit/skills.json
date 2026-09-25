@@ -37,6 +37,15 @@
       "output": "campaigns/geo/YYYY-MM/mos-geo-internal-links/",
       "feeds_tab": "None yet (audit and recommendations live in the run folder)",
       "needs": "Screaming Frog Internal HTML + All Inlinks exports and stored HTML (GSC columns optional); TypeSafe API key for judge/place"
+    },
+    {
+      "skill": "mos-geo-fan-out",
+      "category": "Content Strategy",
+      "what_it_does": "For 1 to 500+ pages, finds the searches AI engines actually run (query fan-out) for the prompts each page should win, measures whether the page is cited today, and produces a per-page fix list (add exact string, add section, earn retrieval, skip unwinnable vendor searches) ranked by stability.",
+      "run": "/mos-geo-fan-out",
+      "output": "campaigns/geo/YYYY-MM/fan-out/",
+      "feeds_tab": "Fan-Out, Initiatives",
+      "needs": "DataForSEO (LLM Responses + LLM Mentions)"
     }
   ]
 }

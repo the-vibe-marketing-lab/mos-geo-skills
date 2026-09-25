@@ -16,7 +16,8 @@ This is the honest version. It exists so no skill in this pack, and no member us
 5. [Calibration: how sibling GEO tactics measured](#5-calibration-how-sibling-geo-tactics-measured)
 6. [How to pitch this honestly to a client](#6-how-to-pitch-this-honestly-to-a-client)
 7. [Evidence gaps](#7-evidence-gaps)
-8. [Sources](#8-sources)
+8. [Query fan-out coverage (mos-geo-fan-out)](#8-query-fan-out-coverage-mos-geo-fan-out)
+9. [Sources](#9-sources)
 
 ---
 
@@ -142,7 +143,36 @@ If a skill in this pack ever needs one of these answers, the correct response is
 
 ---
 
-## 8. Sources
+## 8. Query fan-out coverage (mos-geo-fan-out)
+
+**Last reviewed:** 2026-09-25.
+
+`mos-geo-fan-out` measures whether a page's own content covers the searches an AI engine
+actually runs (query fan-out) before answering a buyer prompt, and whether the page is cited
+today. **Coverage of a fan-out is a hypothesis for citation lift, not a proven cause** - no
+controlled test exists (here or cited anywhere else in this file) showing that adding a
+missing fan-out's exact string or a matching section actually raises citation rate. Treat it
+the same way this file treats llms.txt and share buttons above: plausible, cheap to check,
+unproven until measured on the client's own site.
+
+What was verified live (2026-09-25, see `mos-geo-fan-out/references/evidence.md` for the
+full detail):
+
+- DataForSEO LLM Responses (the model API) returns `fan_out_queries`; the DataForSEO LLM
+  Scraper (the ChatGPT app endpoint) does not (`fan_out_queries: null` on 4/4 test runs).
+- Fan-out varies run to run - one run is a snapshot, not a rate.
+- Most ChatGPT fan-outs observed were `site:` queries or quoted exact strings. A `site:` fan-out
+  aimed at another domain cannot be won by a third-party page - `mos-geo-fan-out` excludes
+  these from its winnable-gap list rather than scoring them as opportunities.
+- On a real page tested live (`thevibemarketinglab.com/guides/geo/llm-share-buttons/`), 11 of
+  15 fan-outs across 3 prompts were `site:` vendor-doc queries, and the page was cited 0/3.
+  The page held one exact-string match (`chatgpt.com/?q=`) but was missing two others
+  (`claude.ai/new?q=`, `perplexity.ai/search/new?q=`) that were themselves fan-outs.
+
+`mos-geo-fan-out` ships a `retest` step for exactly this reason: re-run the same baseline
+prompts after a fix ships and diff the citation rate, instead of assuming the fix worked.
+
+## 9. Sources
 
 - Metehan Yesilyurt, "CiteMET: AI share buttons growth hack for LLMs", 29 June 2025 — <https://metehan.ai/blog/citemet-ai-share-buttons-growth-hack-for-llms/>
 - Search Engine Land, "AI buttons: Smart UX play, risky GEO tactic, or both?", 13 April 2026 — <https://searchengineland.com/ai-buttons-474137>
