@@ -1,0 +1,31 @@
+{
+  "_comment": "Real shape of a DataForSEO POST /v3/ai_optimization/llm_mentions/search/live response with search_scope=[fan_out_queries], verified live 2026-09-25 (see references/evidence.md). Real user questions whose fan-outs contain the target keyword.",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "tasks": [
+    {
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "cost": 0.105,
+      "result": [
+        {
+          "total_count": 76,
+          "items": [
+            {
+              "question": "do llm share buttons actually help with AI citations",
+              "fan_out_queries": ["llm share buttons citations evidence", "site:searchengineland.com ai buttons"]
+            },
+            {
+              "question": "is the chatgpt share button worth adding to a blog",
+              "fan_out_queries": ["chatgpt share button blog worth it", "\"chatgpt.com/?q=\" button"]
+            },
+            {
+              "question": "what do ai overview citations actually reward",
+              "fan_out_queries": ["ai overview citation ranking factors"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

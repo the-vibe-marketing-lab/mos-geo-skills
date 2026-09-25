@@ -1,0 +1,21 @@
+{
+  "_comment": "Real shape of a DataForSEO POST /v3/serp/google/organic/live/regular response, verified live 2026-09-25. Used by `analyse --serp` to check whether the page ranks for an open fan-out.",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "tasks": [
+    {
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "cost": 0.006,
+      "result": [
+        {
+          "items": [
+            {"type": "organic", "rank_absolute": 1, "url": "https://vendor-docs.test/api/share-links"},
+            {"type": "organic", "rank_absolute": 2, "url": "https://another-vendor.test/blog/share-buttons"},
+            {"type": "organic", "rank_absolute": 24, "url": "https://example-guides.test/guides/geo/llm-share-buttons/"}
+          ]
+        }
+      ]
+    }
+  ]
+}
