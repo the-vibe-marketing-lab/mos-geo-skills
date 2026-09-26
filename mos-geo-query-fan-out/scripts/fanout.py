@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fanout.py - the data layer for mos-geo-fan-out.
+"""fanout.py - the data layer for mos-geo-query-fan-out.
 
 For 1 to 500+ pages of a site, finds the searches AI engines actually run (query
 fan-out) for the prompts each page should win, measures whether the page is cited
@@ -65,7 +65,7 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = SKILL_DIR / "config" / "engines.json"
-API_UA = "mos-geo-fan-out/1.0"
+API_UA = "mos-geo-query-fan-out/1.0"
 # Some hosts 403 anything that doesn't look like a browser.
 PAGE_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
@@ -400,7 +400,7 @@ def cmd_preflight(args) -> int:
     cfg = load_config(args.config)
     n_engines = len({x.strip() for x in args.engines.split(",") if x.strip()})
 
-    print("mos-geo-fan-out preflight")
+    print("mos-geo-query-fan-out preflight")
     print("==========================")
     for key in ENV_KEYS:
         print(f"{key:<21} {mask(env.get(key))}")
@@ -1188,7 +1188,7 @@ def add_initiatives(wb, stable: list[dict]) -> int:
         ws.cell(row=r, column=3, value="Content Strategy")
         ws.cell(row=r, column=4, value=f"Fix fan-out gap on {row['page_url']}")
         ws.cell(row=r, column=5, value=f"{FIX_LABELS.get(row['fix'], '')} Fan-out: {row['cluster_query']}")
-        ws.cell(row=r, column=6, value="mos-geo-fan-out")
+        ws.cell(row=r, column=6, value="mos-geo-query-fan-out")
         ws.cell(row=r, column=7, value="Scheduled")
         ws.cell(row=r, column=9, value="[AGENCY]")
         ws.cell(row=r, column=10, value=impact)
@@ -1236,7 +1236,7 @@ def cmd_workbook(args) -> int:
 
     note = f"{len(stable)} stable fan-out cluster(s); see the 'Fan-Out' tab. Files in {out.resolve().name}/"
     try:
-        subprocess.run([sys.executable, str(TICK_SCRIPT), "--skill", "mos-geo-fan-out",
+        subprocess.run([sys.executable, str(TICK_SCRIPT), "--skill", "mos-geo-query-fan-out",
                        "--run-dir", str(out.resolve()), "--status", "Client review", "--note", note],
                       check=True, capture_output=True, text=True)
     except Exception as e:  # noqa: BLE001 - the tabs above are already saved either way

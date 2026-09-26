@@ -1,5 +1,5 @@
 ---
-name: mos-geo-fan-out
+name: mos-geo-query-fan-out
 description: >
   For 1 to 500+ pages of a site, find the searches AI engines actually run (query fan-out)
   for the prompts each page should win, measure whether the page is cited today, and produce
@@ -8,7 +8,7 @@ description: >
   see references/evidence.md for what was verified live and what this does not prove.
   USE WHEN the user says "query fan-out", "fan out", "fan-out analysis", "citability",
   "page citation gaps", "what does ChatGPT search for", "why isn't this page cited",
-  "close the citation gap", "/mos-geo-fan-out", or hands over a page or a list of pages and
+  "close the citation gap", "/mos-geo-query-fan-out", or hands over a page or a list of pages and
   asks why an AI engine isn't citing them. NOT FOR brand-level visibility (does ChatGPT know
   the brand at all) - use mos-geo-brand-360. NOT FOR bulk citation scraping for outreach
   lists, simulating a multi-turn buyer journey, or auditing whether a crawler can read a
@@ -173,7 +173,7 @@ uv run --with openpyxl python "$SKILL/scripts/fanout.py" workbook --out "$RUN"
 
 Adds a **Fan-Out** tab (one row per page x stable cluster) and ICE-scored rows on
 **Initiatives** to `brand-audit-master.xlsx` one level above `$RUN` (creating it from the
-pack template if it isn't there yet), then ticks the `mos-geo-fan-out` row on **Checklist**
+pack template if it isn't there yet), then ticks the `mos-geo-query-fan-out` row on **Checklist**
 via `_shared/brand-audit/tick_checklist.py`. `site_vendor` (unwinnable) clusters never get an
 Initiative.
 
