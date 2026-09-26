@@ -1,7 +1,7 @@
 # GEO evidence base — LLM share buttons
 
 **Last reviewed:** 2026-08-23
-**Applies to:** every skill in `mos-geo-skills`, but especially `mos-geo-llm-buttons`.
+**Applies to:** every skill in `mos-geo-skills`, especially `mos-geo-llm-buttons` (sections 1 to 8) and the schema skills, `mos-geo-schema-scraper` and `mos-geo-schema-optimisation` (section 9, reviewed 2026-09-24).
 
 This is the honest version. It exists so no skill in this pack, and no member using one, ever promises a client something the evidence does not support. If you only read one section, read [The one controlled A/B result](#2-the-one-controlled-ab-result) and [What is NOT true](#3-what-is-not-true).
 
@@ -17,6 +17,7 @@ This is the honest version. It exists so no skill in this pack, and no member us
 6. [How to pitch this honestly to a client](#6-how-to-pitch-this-honestly-to-a-client)
 7. [Evidence gaps](#7-evidence-gaps)
 8. [Sources](#8-sources)
+9. [Schema markup](#9-schema-markup)
 
 ---
 
@@ -150,3 +151,44 @@ If a skill in this pack ever needs one of these answers, the correct response is
 - SE Ranking, llms.txt study across ~300,000 domains — <https://seranking.com/blog/llms-txt/>
 - Thomas Peham, GEO Experiments 2026 (llms.txt drew 0.1% of AI bot traffic)
 - `_shared/platform-endpoints.json` (this repo) — verified endpoint contract and provider stability notes
+
+---
+
+## 9. Schema markup
+
+What the evidence says about structured data, rankings and AI citations. Every line below was checked against its source on 2026-09-24. `mos-geo-schema-optimisation/references/schema-knowledge.md` points here instead of making its own claims.
+
+### What Google says
+
+- **No special markup for AI features.** Google's AI features documentation: "You don't need to create new machine readable files, AI text files, or markup to appear in these features. There's also no special schema.org structured data that you need to add." <https://developers.google.com/search/docs/appearance/ai-features>
+- **Structured data still matters for eligibility, and must match the page.** Google Search Central Blog, 21 May 2025: structured data is "useful for sharing information about your content in a machine-readable way that our systems consider and makes pages eligible for certain search features and rich results", and all content in the markup should be visible on the page. <https://developers.google.com/search/blog/2025/05/succeeding-in-ai-search>
+- **Rich results and clicks: Google's own case studies.** Nestlé measured an 82% higher click-through rate for pages shown as rich results; Rotten Tomatoes 25% higher click-through on pages with structured data; Food Network a 35% increase in visits after enabling search features on 80% of pages; Rakuten 1.5x more time on page. These are vendor-published case studies about rich results, not about AI. <https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data>
+- **Retired rich results do not affect ranking.** Google, 12 June 2025, phasing out Book Actions, Course Info, Claim Review, Estimated Salary, Learning Video, Special Announcement and Vehicle Listing: "This update won't affect how pages are ranked." <https://developers.google.com/search/blog/2025/06/simplifying-search-results> A second round was announced on 5 November 2025, with Search Console support removed from January 2026 (Practice Problem among them). <https://developers.google.com/search/blog/2025/11/update-on-our-efforts>
+- **FAQ and How-To.** Google, 8 August 2023: FAQ rich results limited to well-known, authoritative government and health sites; How-To limited to desktop; "This should not be considered a ranking change." <https://developers.google.com/search/blog/2023/08/howto-faq-changes>
+- **Manual actions.** Structured data that breaks Google's policies can earn a manual action, which removes the page's rich result eligibility. <https://developers.google.com/search/docs/appearance/structured-data/sd-policies>
+
+### What Microsoft says
+
+- Fabrice Canel (Principal Product Manager, Bing) said at SMX Munich in March 2025 that schema markup helps Microsoft's LLMs understand content. A conference statement, not documentation, and it says nothing about citation rates. <https://www.seroundtable.com/schema-llms-copilot-bing-microsoft-39093.html>
+
+### Controlled tests on organic traffic
+
+- **SearchPilot, review schema on product pages:** an estimated 20% uplift in organic traffic when the markup targeted review snippets only; the first version, which also included price, was inconclusive. One ecommerce site. <https://www.searchpilot.com/resources/case-studies/seo-split-test-lessons-adding-price-review-schema-product-pages>
+- **SearchPilot, FAQ schema:** 67% of their FAQ schema tests positive, with organic traffic uplifts of 4 to 15%. Most of these tests pre-date or straddle Google's August 2023 FAQ change, so treat them as history. <https://www.searchpilot.com/resources/case-studies/seo-split-test-lessons-adding-faq-schema>
+
+### Schema and AI citations: the studies disagree
+
+- **Growth Marshal, 22 February 2026 (n=730 AI citations, ChatGPT and Gemini):** attribute-rich schema (Product and Review types with populated pricing, ratings and specifications) cited at 61.7%; generic schema (Article, Organization, BreadcrumbList) at 41.6%; no schema at 59.8%. The reported gap is rich versus generic (p = .012). Rich versus none is under two points (61.7% vs 59.8%). <https://marshal.ing/field-notes/your-generic-schema-is-useless>
+- **Search Atlas, 14 December 2025:** across OpenAI, Gemini and Perplexity, domains with full schema coverage were not cited more often than domains with little or none. Correlational, domain-level. <https://searchatlas.com/blog/limits-of-schema-markup-for-ai-search/>
+
+### How to pitch schema honestly
+
+- Sell it on accuracy, rich result eligibility and a clear, connected entity graph. Those are documented.
+- Do not promise AI citations. In the larger study, rich schema was barely ahead of no schema at all; the clear gap was over thin schema.
+- Thin, generic, half-populated markup is the one thing the evidence argues against. Fewer, fully populated blocks beat many empty ones.
+
+### Dropped for lack of a source
+
+- Relixir's "50-site study" (FAQPage pages cited 41% vs 15% without): the study page returns 404, so it is not cited.
+- "3.2x more likely to appear in AI Overviews with FAQPage" and "22% median citation lift from schema updates": no traceable primary source.
+- General claims that AI engines "extract" or "prefer" FAQPage, HowTo, Recipe, MedicalWebPage or speakable markup: no published evidence found.

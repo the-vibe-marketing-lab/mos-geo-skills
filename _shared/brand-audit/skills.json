@@ -37,6 +37,24 @@
       "output": "campaigns/geo/YYYY-MM/mos-geo-internal-links/",
       "feeds_tab": "None yet (audit and recommendations live in the run folder)",
       "needs": "Screaming Frog Internal HTML + All Inlinks exports and stored HTML (GSC columns optional); TypeSafe API key for judge/place"
+    },
+    {
+      "skill": "mos-geo-schema-scraper",
+      "category": "Technical Foundations",
+      "what_it_does": "Live JSON-LD snapshot of every page from a Screaming Frog crawl (custom extraction or stored HTML, JavaScript rendered): one pure-JSON file per page ([] if none), sorted by page type, broken blocks flagged. The 'before' state for a schema rebuild.",
+      "run": "/mos-geo-schema-scraper",
+      "output": "campaigns/geo/YYYY-MM/schema/",
+      "feeds_tab": "None yet (outputs live in the schema folder)",
+      "needs": "Screaming Frog crawl with JavaScript rendering and a JSON-LD custom extraction (or stored HTML); Apify token only for the paid fallback"
+    },
+    {
+      "skill": "mos-geo-schema-optimisation",
+      "category": "Technical Foundations",
+      "what_it_does": "Landscape Word brief: current schema audit plus the 3 to 5 highest-impact schemas, each with a developer template and an example filled with the brand's real values, unverified values raised as margin comments.",
+      "run": "/mos-geo-schema-optimisation",
+      "output": "campaigns/geo/YYYY-MM/schema/",
+      "feeds_tab": "None yet (outputs live in the schema folder)",
+      "needs": "Screaming Frog structured data export (CSV), ideally from the same crawl as the scraper; Node 18+"
     }
   ]
 }
