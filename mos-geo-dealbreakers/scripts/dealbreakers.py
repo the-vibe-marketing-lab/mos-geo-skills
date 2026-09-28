@@ -513,12 +513,12 @@ def cmd_add(args) -> int:
     pages_dir = run_dir / DATA_DIR / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
     crawl = load_crawl(run_dir)
-    entries: list[dict] = crawl.setdefault("pages", [])
-    used_names = {Path(e["file"]).name for e in entries if e.get("file")}
+    used_names = {Path(e["file"]).name for e in crawl.setdefault("pages", []) if e.get("file")}
 
     def upsert(entry: dict) -> None:
+        # Filter the live list, not a snapshot, or each URL in a batch drops the previous one.
         key = normalize_url(entry["url"])
-        crawl["pages"] = [e for e in entries if normalize_url(e.get("url", "")) != key]
+        crawl["pages"] = [e for e in crawl["pages"] if normalize_url(e.get("url", "")) != key]
         crawl["pages"].append(entry)
 
     saved = 0

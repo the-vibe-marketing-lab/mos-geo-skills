@@ -333,6 +333,20 @@ class Add(unittest.TestCase):
             saved = (run / entry["file"]).read_text(encoding="utf-8")
             self.assertIn("support replies within 24 hours", saved)
 
+    def test_batch_of_urls_registers_every_page(self):
+        # Regression: upsert filtered a stale snapshot, so only the last URL of a batch survived.
+        html = b"<html><head><title>T</title></head><body><p>Some page text here.</p></body></html>"
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "run"
+            (run / "data").mkdir(parents=True)
+            urls = ["https://a.example/one", "https://b.example/two", "https://c.example/three"]
+            fake = lambda url, delay, scrapling: (200, html, url, "urllib")
+            with mock.patch.object(d, "fetch_page", side_effect=fake), mock.patch("builtins.print"):
+                d.cmd_add(Namespace(run_dir=str(run), urls=urls, url=None, text_file=None,
+                                    delay=0, scrapling="off"))
+            crawl = json.loads((run / "data" / "crawl.json").read_text())
+            self.assertEqual(sorted(e["url"] for e in crawl["pages"]), sorted(urls))
+
     def test_missing_url_with_text_file_exits(self):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "run"
