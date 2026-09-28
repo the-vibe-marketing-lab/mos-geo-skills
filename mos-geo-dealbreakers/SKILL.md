@@ -114,7 +114,9 @@ saves the homepage as it looked about 12 months ago from the Wayback Machine, wh
 you spot positioning drift (`--wayback-months 0` to skip).
 
 Open `data/crawl.json`. If pricing, about, FAQ or terms are missing, find them from the
-footer or a site search and `add` them. Blocked or JavaScript-only pages: see "Things that
+footer or a site search and `add` them. FAQ and help-centre hubs often list only the
+question titles, with each answer one click deeper: `add` the answer pages for any question
+you might call `absent`, or the finding is a crawl-budget artefact, not a buyer's gap. Blocked or JavaScript-only pages: see "Things that
 will bite you".
 
 ## Stage 2: Off-site sweep
@@ -134,6 +136,11 @@ python3 "$SKILL/scripts/dealbreakers.py" add --run-dir "$RUN" --url <url> --text
 ```
 
 Keep the queries you ran: an `absent` finding can list them as `search: <query>`.
+
+Review platforms (Trustpilot, G2, Capterra, ProductReview) usually 403 a script. Read them
+with WebFetch or the browser and save the text with `add --text-file`. A search engine's
+summary of a review site is a lead, never a source: its numbers are often stale or wrong.
+If you can't save the page, leave the review out.
 
 ## Stage 3: Read as a buyer, write findings.json
 
