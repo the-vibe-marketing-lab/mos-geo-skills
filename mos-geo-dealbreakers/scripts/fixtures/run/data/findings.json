@@ -1,0 +1,168 @@
+{
+  "brand": "Acme Widgets",
+  "website": "https://example.com",
+  "date": "2026-09-28",
+  "mode": "own",
+  "offer_summary": "Acme Widgets is a time-tracking tool sold to marketing agencies on monthly plans from $49, positioned as a replacement for manual timesheets.",
+  "offer_sources": [
+    {"url": "https://example.com/", "quote": "Acme Widgets helps marketing agencies track billable hours automatically"},
+    {"url": "https://example.com/pricing/", "quote": "Starter plan is $49 per month"}
+  ],
+  "positioning_drift": {
+    "summary": "Older copy sold Acme Widgets as a general project management tool for freelancers; today it is sold only to agencies.",
+    "sources": [
+      {"url": "https://web.archive.org/web/20250101000000/https://example.com/",
+       "quote": "Acme Widgets used to be a general project management tool for freelancers and small teams"}
+    ]
+  },
+  "personas": [
+    {"id": "agency-owner", "label": "Agency owner",
+     "needs": "Needs proof that time tracking replaces manual timesheets before switching.",
+     "source": "https://example.com/"},
+    {"id": "solo-marketer", "label": "Solo marketer",
+     "needs": "Needs a plan under $50 a month with no seat minimums.",
+     "source": "https://example.com/pricing/"}
+  ],
+  "dealbreakers": [
+    {
+      "id": "proof-01", "category": "Proof & Results",
+      "claim": "There isn't yet public proof that Acme Widgets reduces admin time, only that it automates tracking.",
+      "buyer_question": "Show me hours saved, not just an automation feature list.",
+      "severity": "critical", "evidence": "absent",
+      "checked": ["https://example.com/", "https://example.com/faq/"],
+      "personas": ["agency-owner"],
+      "fix": {"type": "proof-asset", "action": "Publish a dated case study with before/after hours saved."}
+    },
+    {
+      "id": "proof-02", "category": "Proof & Results",
+      "claim": "Without a published case study, an agency owner has to take the time-savings claim on faith.",
+      "detail": "No dated before/after figures appear anywhere on the public pages.",
+      "buyer_question": "Where is the evidence this beats a spreadsheet?",
+      "severity": "major", "evidence": "inferred",
+      "reason": "No dated before/after data is shown anywhere on the public pages.",
+      "personas": ["agency-owner"],
+      "fix": {"type": "proof-asset", "action": "Add a results page with named clients and figures."}
+    },
+    {
+      "id": "pricing-01", "category": "Pricing & Offer Clarity",
+      "claim": "Enterprise pricing is hidden behind a sales call.",
+      "buyer_question": "What does the Enterprise plan actually cost?",
+      "severity": "critical", "evidence": "stated",
+      "sources": [{"url": "https://example.com/pricing/", "quote": "Enterprise pricing is available on request"}],
+      "personas": ["agency-owner"],
+      "fix": {"type": "pricing-page", "action": "Publish an indicative Enterprise price band."}
+    },
+    {
+      "id": "pricing-02", "category": "Pricing & Offer Clarity",
+      "claim": "A 21-person agency has to jump straight to a sales conversation once seats run out.",
+      "buyer_question": "What happens once we pass 20 seats?",
+      "severity": "major", "evidence": "stated",
+      "sources": [{"url": "https://example.com/pricing/", "quote": "Growth plan is $99 per month for up to 20 seats"}],
+      "personas": ["agency-owner"],
+      "fix": {"type": "pricing-page", "action": "List the per-seat rate above 20 seats."}
+    },
+    {
+      "id": "risk-01", "category": "Risk & Guarantees",
+      "claim": "Refunds are capped at 14 days, which may not cover a full onboarding cycle.",
+      "buyer_question": "What if onboarding takes longer than two weeks to show value?",
+      "severity": "major", "evidence": "stated",
+      "sources": [{"url": "https://example.com/faq/", "quote": "Refunds are available within 14 days of purchase"}],
+      "personas": ["solo-marketer"],
+      "fix": {"type": "policy-doc", "action": "Extend or clarify the refund window relative to onboarding time."}
+    },
+    {
+      "id": "risk-02", "category": "Risk & Guarantees",
+      "claim": "A buyer cannot verify what happens to their data if they cancel.",
+      "buyer_question": "Is our data deleted or exported when we cancel?",
+      "severity": "minor", "evidence": "absent",
+      "checked": ["https://example.com/security/", "https://example.com/faq/"],
+      "personas": ["solo-marketer"],
+      "fix": {"type": "policy-doc", "action": "Add a data retention and export line to the security page."}
+    },
+    {
+      "id": "product-01", "category": "Product & Setup Requirements",
+      "claim": "It's unclear whether Acme Widgets still serves freelancers or has moved upmarket to agencies only.",
+      "buyer_question": "Is this still for a solo freelancer, or agencies only now?",
+      "severity": "major", "evidence": "contradicted",
+      "sources": [
+        {"url": "https://example.com/", "quote": "Not for freelancers who only need a simple stopwatch app"},
+        {"url": "https://web.archive.org/web/20250101000000/https://example.com/",
+         "quote": "Acme Widgets used to be a general project management tool for freelancers and small teams"}
+      ],
+      "personas": ["solo-marketer"],
+      "fix": {"type": "positioning", "action": "Retire or update the old freelancer-facing copy so it matches today's offer."}
+    },
+    {
+      "id": "product-02", "category": "Product & Setup Requirements",
+      "claim": "Switching from spreadsheets may mean re-entering every active client project by hand.",
+      "detail": "No migration or import tool is mentioned on any page.",
+      "buyer_question": "Can we import our existing client and project list?",
+      "severity": "minor", "evidence": "inferred",
+      "reason": "No migration or import tool is mentioned on any page.",
+      "personas": ["agency-owner"],
+      "fix": {"type": "product", "action": "Ship a CSV import for clients and projects."}
+    },
+    {
+      "id": "support-01", "category": "Support & Service",
+      "claim": "A buyer cannot verify response times for support tickets.",
+      "buyer_question": "How fast do you respond to a support ticket?",
+      "severity": "major", "evidence": "absent",
+      "checked": ["https://example.com/faq/", "https://example.com/security/"],
+      "personas": ["agency-owner"],
+      "fix": {"type": "faq", "action": "Add a stated support response time to the FAQ."}
+    },
+    {
+      "id": "support-02", "category": "Support & Service",
+      "claim": "A review on reviews.example.org says onboarding ran longer than the sales team promised.",
+      "buyer_question": "How long does onboarding actually take?",
+      "severity": "minor", "evidence": "stated",
+      "sources": [{"url": "https://reviews.example.org/acme-widgets/",
+                  "quote": "onboarding took two weeks longer than the sales team promised"}],
+      "personas": ["solo-marketer"],
+      "fix": {"type": "none", "action": ""}
+    },
+    {
+      "id": "audience-01", "category": "Audience Fit",
+      "claim": "Acme Widgets explicitly excludes freelancers who only need a simple stopwatch.",
+      "buyer_question": "Is this too much tool for a one-person shop?",
+      "severity": "major", "evidence": "stated",
+      "sources": [{"url": "https://example.com/", "quote": "Not for freelancers who only need a simple stopwatch app"}],
+      "personas": ["solo-marketer"],
+      "fix": {"type": "none", "action": ""}
+    },
+    {
+      "id": "audience-02", "category": "Audience Fit",
+      "claim": "A buyer cannot verify whether Acme Widgets supports non-agency service businesses.",
+      "buyer_question": "Does this work for a consulting firm, not just an agency?",
+      "severity": "minor", "evidence": "absent",
+      "checked": ["https://example.com/", "search: consulting"],
+      "personas": ["agency-owner"],
+      "fix": {"type": "faq", "action": "Add a line on which service-business types Acme Widgets suits."}
+    },
+    {
+      "id": "credibility-01", "category": "Category Credibility",
+      "claim": "There's no quantified before/after for hours saved.",
+      "buyer_question": "Show me the actual reduction in hours logged, not just 'automatic tracking'.",
+      "severity": "critical", "evidence": "absent",
+      "checked": ["https://example.com/", "https://example.com/pricing/"],
+      "personas": ["agency-owner"],
+      "fix": {"type": "proof-asset", "action": "Publish a before/after hours-logged chart from real accounts."}
+    },
+    {
+      "id": "credibility-02", "category": "Category Credibility",
+      "claim": "SOC 2 status is stated as not-yet, with no target date given.",
+      "buyer_question": "Which security certifications do you actually hold today?",
+      "severity": "major", "evidence": "absent",
+      "checked": ["https://example.com/security/", "https://example.com/faq/"],
+      "personas": ["agency-owner"],
+      "fix": {"type": "policy-doc", "action": "Publish a security page with a certification roadmap and date."}
+    }
+  ],
+  "handled": [
+    {"objection": "Do they lock you into an annual contract?",
+     "how": "Plans are billed monthly with no lock-in mentioned anywhere.",
+     "sources": [{"url": "https://example.com/pricing/", "quote": "Starter plan is $49 per month"}]}
+  ],
+  "priorities": ["pricing-01", "proof-01", "product-01", "support-01", "credibility-01"],
+  "not_prioritised": "Generic 'is this another subscription' objections are left off: the pricing page already lists monthly plans with no lock-in."
+}

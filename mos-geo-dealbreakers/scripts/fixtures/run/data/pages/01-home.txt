@@ -1,0 +1,9 @@
+URL: https://example.com/
+
+# Acme Widgets
+
+Acme Widgets helps marketing agencies track billable hours automatically across every client project, with no manual timesheets required.
+
+Trusted by growing agencies who need accurate time tracking without the admin overhead.
+
+Not for freelancers who only need a simple stopwatch app.

@@ -1,0 +1,7 @@
+URL: https://example.com/pricing/
+
+# Pricing
+
+Starter plan is $49 per month for up to 5 seats.
+Growth plan is $99 per month for up to 20 seats.
+Enterprise pricing is available on request.

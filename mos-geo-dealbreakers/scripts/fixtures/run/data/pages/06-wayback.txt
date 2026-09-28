@@ -1,0 +1,5 @@
+URL: https://web.archive.org/web/20250101000000/https://example.com/
+
+# Acme Widgets (archived)
+
+Acme Widgets used to be a general project management tool for freelancers and small teams.
