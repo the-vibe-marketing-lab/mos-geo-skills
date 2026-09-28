@@ -348,6 +348,123 @@ class FanmapTest(unittest.TestCase):
                 rc = f.cmd_preflight(args)
         self.assertEqual(rc, 0)
 
+    # ---------------------------------------------------------- workbook --
+
+    def _workbook_predictions(self, page_a_url: str, page_b_url: str) -> list[dict]:
+        return [
+            {"url": page_a_url, "slug": "a", "status": "ok", "primary_entity": "Page A",
+             "prompts": ["p1"], "gaps": [], "follow_ups": [],
+             "fan_outs": [
+                 {"query": "widget install steps", "type": "procedural", "coverage": "no", "evidence": ""},
+                 {"query": "widget refund policy", "type": "implicit", "coverage": "no", "evidence": ""},
+             ]},
+            {"url": page_b_url, "slug": "b", "status": "ok", "primary_entity": "Page B",
+             "prompts": ["p2"], "gaps": [], "follow_ups": [],
+             "fan_outs": [
+                 {"query": "widget pricing plans", "type": "open", "coverage": "yes", "evidence": "e"},
+             ]},
+        ]
+
+    def _write_predictions_jsonl(self, run_dir: Path, predictions: list[dict]) -> None:
+        (run_dir / "data").mkdir(parents=True, exist_ok=True)
+        with (run_dir / "data" / "predictions.jsonl").open("w", encoding="utf-8") as fh:
+            for row in predictions:
+                fh.write(json.dumps(row) + "\n")
+
+    def _fanout_map_row_count(self, wb) -> int:
+        ws = wb[f.FANOUT_MAP_TAB]
+        return sum(1 for r in range(5, ws.max_row + 1) if ws.cell(row=r, column=2).value)
+
+    def _initiatives_row_count(self, wb) -> int:
+        ws = wb["Initiatives"]
+        return sum(1 for r in range(6, ws.max_row + 1) if ws.cell(row=r, column=4).value)
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "openpyxl not installed")
+    def test_workbook_creates_fanout_map_tab_and_initiatives(self):
+        import openpyxl
+        run_dir = self.dir / "run"
+        self._write_predictions_jsonl(run_dir, self._workbook_predictions(
+            "https://example-guides.test/a/", "https://example-guides.test/b/"))
+        book_path = self.dir / "brand-audit-master.xlsx"
+
+        # explicit --workbook: tick_checklist.py's own path math can't see this location, so
+        # cmd_workbook must tick the Checklist row in-process instead of shelling out to it.
+        with mock.patch.object(f.subprocess, "run") as run_mock:
+            args = Namespace(out=str(run_dir), workbook=str(book_path), top=5)
+            with mock.patch("builtins.print"):
+                rc = f.cmd_workbook(args)
+        self.assertEqual(rc, 0)
+        run_mock.assert_not_called()
+
+        self.assertTrue(book_path.is_file())
+        wb = openpyxl.load_workbook(book_path)
+        self.assertIn(f.FANOUT_MAP_TAB, wb.sheetnames)
+        ws = wb[f.FANOUT_MAP_TAB]
+        self.assertIn("PREDICTED", ws.cell(row=2, column=2).value)
+        self.assertEqual(ws.cell(row=4, column=2).value, "Page URL")
+        self.assertEqual(self._fanout_map_row_count(wb), 3)  # 2 + 1 fan-outs across 2 pages
+
+        by_query = {ws.cell(row=r, column=5).value: ws.cell(row=r, column=10).value
+                    for r in range(5, ws.max_row + 1) if ws.cell(row=r, column=2).value}
+        self.assertEqual(by_query["widget install steps"], "Y")            # coverage=no, nobody covers it -> gap
+        self.assertIn(by_query["widget pricing plans"], (None, ""))        # coverage=yes -> not a gap
+
+        self.assertIn("Initiatives", wb.sheetnames)
+        init_ws = wb["Initiatives"]
+        tasks = [init_ws.cell(row=r, column=4).value for r in range(6, init_ws.max_row + 1)
+                if init_ws.cell(row=r, column=4).value]
+        self.assertTrue(any(t.startswith("Optimise ") for t in tasks))
+        self.assertTrue(any(t.startswith("New content candidate:") for t in tasks))
+
+        # the real pack template registers this skill in Checklist - confirm it got ticked
+        # in the SAME file cmd_workbook just wrote to, not some other default location.
+        checklist_ws = wb["Checklist"]
+        row = next(r for r in range(1, checklist_ws.max_row + 1)
+                  if checklist_ws.cell(row=r, column=3).value == "mos-geo-fan-out-map")
+        self.assertEqual(checklist_ws.cell(row=row, column=8).value, "Client review")
+        self.assertEqual(checklist_ws.cell(row=row, column=9).value, "☑")
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "openpyxl not installed")
+    def test_workbook_default_location_shells_out_to_tick_checklist(self):
+        run_dir = self.dir / "brain" / "campaigns" / "geo" / "2026-09" / "mos-geo-fan-out-map"
+        self._write_predictions_jsonl(run_dir, self._workbook_predictions(
+            "https://example-guides.test/a/", "https://example-guides.test/b/"))
+
+        with mock.patch.object(f.subprocess, "run") as run_mock:
+            args = Namespace(out=str(run_dir), workbook=None, top=5)
+            with mock.patch("builtins.print"):
+                rc = f.cmd_workbook(args)
+        self.assertEqual(rc, 0)
+        run_mock.assert_called_once()
+        called_cmd = run_mock.call_args[0][0]
+        self.assertIn("mos-geo-fan-out-map", called_cmd)
+        self.assertIn(str(run_dir.resolve()), called_cmd)
+        # the workbook itself still lands one level above the run folder, same as the sibling skill
+        self.assertTrue((run_dir.parent / f.WORKBOOK).is_file())
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("openpyxl"), "openpyxl not installed")
+    def test_workbook_rerun_does_not_duplicate_rows_or_initiatives(self):
+        import openpyxl
+        run_dir = self.dir / "run"
+        self._write_predictions_jsonl(run_dir, self._workbook_predictions(
+            "https://example-guides.test/a/", "https://example-guides.test/b/"))
+        book_path = self.dir / "brand-audit-master.xlsx"
+        args = Namespace(out=str(run_dir), workbook=str(book_path), top=5)
+
+        with mock.patch.object(f.subprocess, "run"):
+            with mock.patch("builtins.print"):
+                f.cmd_workbook(args)
+        wb1 = openpyxl.load_workbook(book_path)
+        fanout_n1, init_n1 = self._fanout_map_row_count(wb1), self._initiatives_row_count(wb1)
+
+        with mock.patch.object(f.subprocess, "run"):
+            with mock.patch("builtins.print"):
+                rc2 = f.cmd_workbook(args)
+        self.assertEqual(rc2, 0)
+        wb2 = openpyxl.load_workbook(book_path)
+        self.assertEqual(self._fanout_map_row_count(wb2), fanout_n1)
+        self.assertEqual(self._initiatives_row_count(wb2), init_n1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,7 @@ prioritise; use `mos-geo-query-fan-out` to confirm.
 | 1 | Pages | Every page fetched and parsed into layout-aware chunks -> `data/pages.jsonl` |
 | 2 | Predict | `data/predictions.jsonl` written; a re-run with unchanged pages makes 0 calls |
 | 3 | Report | `fan-out-map.md`, `pages/<slug>.md` and `data/fan-out-map.csv` written |
+| 4 | Workbook (optional) | `brand-audit-master.xlsx` has a Fan-Out Map tab and Initiatives rows |
 
 Set the run folder once, then pass `--out "$RUN"` to every subcommand:
 
@@ -149,6 +150,24 @@ Writes:
 - **`pages/<slug>.md`** per page - entity, buyer prompts, the fan-out table
   (query/type/coverage/evidence), gaps, likely follow-ups.
 - **`data/fan-out-map.csv`** - one row per page x fan-out, for a spreadsheet.
+
+## Stage 4: Fill the workbook (optional)
+
+```bash
+uv run --with openpyxl python "$SKILL/scripts/fanmap.py" workbook --out "$RUN" --top 5
+```
+
+Adds a **Fan-Out Map** tab (distinct from the paid sibling's **Fan-Out** tab - one row per
+page x fan-out, with the honesty note as a banner row, page/cluster coverage colour-coded
+green/amber/red, and an "Uncovered site-wide" column) and ICE-scored **Initiatives** rows
+(top `--top` lowest-coverage pages -> "Optimise `<page>`: run mos-geo-query-fan-out before
+editing"; top `--top` uncovered clusters -> "New content candidate: `<cluster>`") to
+`brand-audit-master.xlsx` one level above `$RUN` (creating it from the pack template if it
+isn't there yet), then ticks the `mos-geo-fan-out-map` row on **Checklist**. **Idempotent**:
+re-running replaces the Fan-Out Map tab wholesale and skips any Initiative that already
+exists (matched by task text + source skill) - never duplicates a row. Pass an explicit
+`--workbook <path>` to target a workbook outside the normal month-folder convention (e.g. a
+one-off run); the Checklist tick still lands in that same file, not the default location.
 
 ## Reference map
 

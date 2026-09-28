@@ -50,10 +50,10 @@
     {
       "skill": "mos-geo-fan-out-map",
       "category": "Content Strategy",
-      "what_it_does": "Free, inventory-wide companion to mos-geo-fan-out. Predicts each page's query fan-out with Gemini Flash (no search, no spend) from a sitemap or URL list, scores each page's own coverage, and maps which pages to optimise and which topics across the inventory have no page. Run first to prioritise before spending mos-geo-fan-out's DataForSEO budget.",
+      "what_it_does": "Free, inventory-wide companion to mos-geo-query-fan-out. Predicts each page's query fan-out with Gemini Flash (no search, no spend) from a sitemap or URL list, scores each page's own coverage, and maps which pages to optimise and which topics across the inventory have no page. Run first to prioritise before spending mos-geo-query-fan-out's DataForSEO budget.",
       "run": "/mos-geo-fan-out-map",
       "output": "campaigns/geo/YYYY-MM/mos-geo-fan-out-map/",
-      "feeds_tab": "None yet (report and per-page files live in the run folder)",
+      "feeds_tab": "Fan-Out Map, Initiatives",
       "needs": "Gemini API key (free tier)"
     }
   ]

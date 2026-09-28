@@ -58,6 +58,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -65,7 +66,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from argparse import Namespace
-from collections import defaultdict, deque
+from collections import deque
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -104,6 +105,13 @@ STOPWORDS = {
 MAX_JSON_RETRIES = 1     # extra attempts after the first, on invalid/malformed JSON
 MAX_HTTP_RETRIES = 5     # attempts on 429/503 before giving up on a page
 BACKOFF_BASE = 2.0       # seconds, doubles each retry
+
+# the shared GEO brand-audit workbook - same conventions as the paid sibling's `workbook` step
+WORKBOOK = "brand-audit-master.xlsx"
+PACK_TEMPLATE = SKILL_DIR.parent / "_shared" / "brand-audit" / "brand-audit-template.xlsx"
+TICK_SCRIPT = SKILL_DIR.parent / "_shared" / "brand-audit" / "tick_checklist.py"
+FANOUT_MAP_TAB = "Fan-Out Map"
+COVERAGE_FILL = {"yes": "DCFCE7", "partial": "FEF3C7", "no": "FEE2E2"}  # green / amber / red
 
 
 # --------------------------------------------------------------- helpers --
@@ -818,29 +826,64 @@ def cluster_fanouts(items: list[tuple[str, str, str]], threshold: float = CLUSTE
     return clusters
 
 
-def cmd_report(args) -> int:
-    out = Path(args.out)
-    pages = load_pages_jsonl(out)
-    pages_by_url = {p["url"]: p for p in pages}
+def load_predictions_jsonl(out: Path) -> list[dict]:
     pred_path = out / DATA_DIR / "predictions.jsonl"
     if not pred_path.is_file():
         sys.exit(f"missing {pred_path} - run `predict` first")
-    predictions = [json.loads(l) for l in pred_path.read_text(encoding="utf-8").splitlines() if l.strip()]
-    ok = [p for p in predictions if p.get("status") == "ok"]
+    return [json.loads(l) for l in pred_path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
-    # per-page score, own-fan-out flat rows, and a fan-out-map.csv row per page x fan-out
+
+def compute_site_analysis(predictions: list[dict]) -> dict:
+    """The one place site-wide scoring and gap/overlap clustering happens, shared by
+    `report` (the human-readable map) and `workbook` (the Fan-Out Map tab + Initiatives)
+    so the two never disagree about which pages or clusters are the priority."""
+    ok = [p for p in predictions if p.get("status") == "ok"]
     page_scores: dict[str, float] = {}
-    csv_rows: list[dict] = []
     all_fanouts: list[tuple[str, str, str]] = []  # (page_url, query, coverage) for site-wide clustering
     for p in ok:
         fan_outs = p.get("fan_outs") or []
         scores = [COVERAGE_SCORE.get(fo.get("coverage"), 0.0) for fo in fan_outs]
         page_scores[p["url"]] = round(sum(scores) / len(scores), 2) if scores else 0.0
         for fo in fan_outs:
+            all_fanouts.append((p["url"], fo.get("query", ""), fo.get("coverage", "no")))
+
+    clusters = cluster_fanouts(all_fanouts)
+    gap_clusters, overlap_clusters, gap_queries = [], [], set()
+    for c in clusters:
+        rep = max((m[1] for m in c["members"]), key=len)
+        covering_pages = {u for u, q, cov in c["members"] if cov == "yes"}
+        entry = {"query": rep, "size": len(c["members"]), "pages": len({u for u, *_ in c["members"]}),
+                 "covering_pages": sorted(covering_pages)}
+        if not covering_pages:
+            gap_clusters.append(entry)
+            gap_queries.update(q for _, q, _ in c["members"])
+        elif len(covering_pages) >= 2:
+            overlap_clusters.append(entry)
+    gap_clusters.sort(key=lambda e: -e["size"])
+    overlap_clusters.sort(key=lambda e: -len(e["covering_pages"]))
+
+    ranked_pages = sorted(page_scores.items(), key=lambda kv: kv[1])  # lowest coverage first
+    avg_score = round(sum(page_scores.values()) / len(page_scores), 2) if page_scores else 0.0
+    return {"ok": ok, "n_errors": len(predictions) - len(ok), "page_scores": page_scores,
+            "ranked_pages": ranked_pages, "avg_score": avg_score, "gap_clusters": gap_clusters,
+            "overlap_clusters": overlap_clusters, "gap_queries": gap_queries}
+
+
+def cmd_report(args) -> int:
+    out = Path(args.out)
+    pages = load_pages_jsonl(out)
+    pages_by_url = {p["url"]: p for p in pages}
+    predictions = load_predictions_jsonl(out)
+    analysis = compute_site_analysis(predictions)
+    ok = analysis["ok"]
+
+    # own-fan-out flat rows, and a fan-out-map.csv row per page x fan-out
+    csv_rows: list[dict] = []
+    for p in ok:
+        for fo in p.get("fan_outs") or []:
             csv_rows.append({"page_url": p["url"], "slug": p["slug"], "primary_entity": p.get("primary_entity", ""),
                              "query": fo.get("query", ""), "type": fo.get("type", ""),
                              "coverage": fo.get("coverage", ""), "evidence": fo.get("evidence", "")})
-            all_fanouts.append((p["url"], fo.get("query", ""), fo.get("coverage", "no")))
 
     data_dir = out / DATA_DIR
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -849,25 +892,10 @@ def cmd_report(args) -> int:
         w.writeheader()
         w.writerows(csv_rows)
 
-    clusters = cluster_fanouts(all_fanouts)
-    gap_clusters, overlap_clusters = [], []
-    for c in clusters:
-        rep = max((m[1] for m in c["members"]), key=len)
-        covering_pages = {u for u, q, cov in c["members"] if cov == "yes"}
-        entry = {"query": rep, "size": len(c["members"]), "pages": len({u for u, *_ in c["members"]}),
-                 "covering_pages": sorted(covering_pages)}
-        if not covering_pages:
-            gap_clusters.append(entry)
-        elif len(covering_pages) >= 2:
-            overlap_clusters.append(entry)
-    gap_clusters.sort(key=lambda e: -e["size"])
-    overlap_clusters.sort(key=lambda e: -len(e["covering_pages"]))
-
-    ranked_pages = sorted(page_scores.items(), key=lambda kv: kv[1])  # lowest coverage first
+    gap_clusters, overlap_clusters = analysis["gap_clusters"], analysis["overlap_clusters"]
+    ranked_pages = analysis["ranked_pages"]
     top_optimise = ranked_pages[: args.top]
-
-    avg_score = round(sum(page_scores.values()) / len(page_scores), 2) if page_scores else 0.0
-    n_errors = len(predictions) - len(ok)
+    avg_score, n_errors = analysis["avg_score"], analysis["n_errors"]
 
     honesty = (
         "**These fan-outs are PREDICTED by a model from the page's own content, not observed "
@@ -958,6 +986,228 @@ def cmd_report(args) -> int:
     return 0
 
 
+# --------------------------------------------------------------- workbook --
+
+WORKBOOK_HONESTY = (
+    "These fan-outs are PREDICTED by a model from the page's own content, not observed searches. "
+    "They are biased toward topics already on the page. Use mos-geo-query-fan-out (DataForSEO, "
+    "observed ChatGPT fan-out and live citation status) before writing or optimising anything."
+)
+
+
+def build_fanout_map_rows(analysis: dict) -> list[dict]:
+    """One row per page x fan-out for the Fan-Out Map tab - the same shape as `report`'s
+    fan-out-map.csv, plus the two columns a spreadsheet reviewer needs that the CSV
+    doesn't carry: the page's buyer prompts and whether this fan-out's cluster is a
+    site-wide gap (no page anywhere in the inventory covers it)."""
+    rows = []
+    for p in analysis["ok"]:
+        prompts_joined = "; ".join(p.get("prompts") or [])
+        score = analysis["page_scores"].get(p["url"], 0.0)
+        for fo in p.get("fan_outs") or []:
+            query = fo.get("query", "")
+            rows.append({
+                "page_url": p["url"], "primary_entity": p.get("primary_entity", ""), "page_score": score,
+                "query": query, "type": fo.get("type", ""), "coverage": fo.get("coverage", ""),
+                "evidence": fo.get("evidence", ""), "prompts": prompts_joined,
+                "uncovered_site_wide": "Y" if query in analysis["gap_queries"] else "",
+            })
+    return rows
+
+
+def build_fanout_map_tab(wb, rows: list[dict], styles: dict):
+    if FANOUT_MAP_TAB in wb.sheetnames:
+        del wb[FANOUT_MAP_TAB]
+    ws = wb.create_sheet(FANOUT_MAP_TAB)
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 2
+
+    ws.merge_cells("B2:J2")
+    banner = ws.cell(row=2, column=2, value=WORKBOOK_HONESTY)
+    banner.font, banner.fill, banner.alignment = styles["banner_font"], styles["banner_fill"], styles["wrap"]
+    ws.row_dimensions[2].height = 30
+
+    header_row = 4
+    headers = ["Page URL", "Primary entity", "Page coverage score", "Fan-out query", "Type", "Coverage",
+               "Evidence", "Buyer prompts", "Uncovered site-wide"]
+    for i, h in enumerate(headers, start=2):
+        c = ws.cell(row=header_row, column=i, value=h)
+        c.font, c.fill, c.alignment, c.border = styles["head"], styles["head_fill"], styles["wrap"], styles["edge"]
+    ws.row_dimensions[header_row].height = 26
+    ws.freeze_panes = ws.cell(row=header_row + 1, column=2)
+
+    for r, row in enumerate(rows, start=header_row + 1):
+        values = [row["page_url"], row["primary_entity"], row["page_score"], row["query"], row["type"],
+                  row["coverage"], row["evidence"], row["prompts"], row["uncovered_site_wide"]]
+        for i, v in enumerate(values, start=2):
+            c = ws.cell(row=r, column=i, value=v)
+            c.alignment, c.border = styles["wrap"], styles["edge"]
+        fill_colour = COVERAGE_FILL.get(row["coverage"])
+        if fill_colour:
+            ws.cell(row=r, column=7).fill = styles["fill"](fill_colour)  # column G = Coverage
+
+    last_row = header_row + max(len(rows), 1)
+    ws.auto_filter.ref = f"B{header_row}:J{last_row}"
+    widths = {"B": 46, "C": 22, "D": 12, "E": 44, "F": 14, "G": 12, "H": 40, "I": 55, "J": 12}
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+    return ws
+
+
+def ice_for_optimise(score: float) -> tuple[int, int, int]:
+    """Worse predicted coverage -> higher confidence that spending observed-fan-out
+    budget on this page is worth it."""
+    impact, ease = 7, 5
+    confidence = max(1, min(10, round(9 - score * 8)))
+    return impact, confidence, ease
+
+
+def ice_for_gap(size: int, max_size: int) -> tuple[int, int, int]:
+    """More predicted mentions of a cluster across the inventory -> higher confidence
+    it's a real content gap, not one page's one-off guess."""
+    impact, ease = 6, 4
+    confidence = max(1, min(10, round(3 + 6 * (size / max(max_size, 1)))))
+    return impact, confidence, ease
+
+
+def build_initiative_tasks(analysis: dict, top_n: int) -> list[dict]:
+    tasks = []
+    for url, score in analysis["ranked_pages"][:top_n]:
+        impact, confidence, ease = ice_for_optimise(score)
+        tasks.append({
+            "task": f"Optimise {url}: run mos-geo-query-fan-out before editing",
+            "category": "Content Strategy",
+            "instructions": f"Predicted coverage score {score} across its own fan-outs (Gemini, not "
+                            "observed - see fan-out-map.md). Run mos-geo-query-fan-out on this page for "
+                            "OBSERVED fan-out before writing or optimising.",
+            "from_skill": "mos-geo-fan-out-map", "impact": impact, "confidence": confidence, "ease": ease,
+        })
+    gap_clusters = analysis["gap_clusters"][:top_n]
+    max_size = max((e["size"] for e in gap_clusters), default=1)
+    for e in gap_clusters:
+        impact, confidence, ease = ice_for_gap(e["size"], max_size)
+        tasks.append({
+            "task": f"New content candidate: {e['query']}",
+            "category": "Content Strategy",
+            "instructions": f"Predicted fan-out cluster with no page covering it ({e['size']} mention(s) "
+                            f"across the inventory, {e['pages']} page(s) touched it). See fan-out-map.md - "
+                            "Content gaps across the inventory.",
+            "from_skill": "mos-geo-fan-out-map", "impact": impact, "confidence": confidence, "ease": ease,
+        })
+    return tasks
+
+
+def add_initiatives(wb, tasks: list[dict]) -> int:
+    """Idempotent: a (Task, From skill) pair already on the Initiatives tab is skipped,
+    not re-added, so re-running `workbook` never duplicates a row."""
+    if "Initiatives" not in wb.sheetnames:
+        return 0
+    ws = wb["Initiatives"]
+    existing = {(ws.cell(row=r, column=4).value, ws.cell(row=r, column=6).value)
+               for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=4).value}
+    next_row, n = 6, 0  # template's Initiatives header is row 5; data starts row 6
+    for t in tasks:
+        key = (t["task"], t["from_skill"])
+        if key in existing:
+            continue
+        while ws.cell(row=next_row, column=4).value:
+            next_row += 1
+        r = next_row
+        ws.cell(row=r, column=2, value=f'=IFERROR(ROUND(J{r}*K{r}/L{r},1),"")')
+        ws.cell(row=r, column=3, value=t["category"])
+        ws.cell(row=r, column=4, value=t["task"])
+        ws.cell(row=r, column=5, value=t["instructions"])
+        ws.cell(row=r, column=6, value=t["from_skill"])
+        ws.cell(row=r, column=7, value="Scheduled")
+        ws.cell(row=r, column=9, value="[AGENCY]")
+        ws.cell(row=r, column=10, value=t["impact"])
+        ws.cell(row=r, column=11, value=t["confidence"])
+        ws.cell(row=r, column=12, value=t["ease"])
+        existing.add(key)
+        next_row += 1
+        n += 1
+    return n
+
+
+def tick_checklist_inline(wb, skill: str, status: str, note: str) -> bool:
+    """Same column logic as _shared/brand-audit/tick_checklist.py, applied directly to an
+    already-open workbook. Used instead of shelling out to that script when `--workbook`
+    points somewhere other than tick_checklist.py's own default (run_dir.parent) location
+    - otherwise the subprocess ticks a DIFFERENT file than the one this command just wrote."""
+    if "Checklist" not in wb.sheetnames:
+        return False
+    ws = wb["Checklist"]
+    for r in range(1, ws.max_row + 1):
+        if ws.cell(row=r, column=3).value == skill:
+            ws.cell(row=r, column=8, value=status)
+            ws.cell(row=r, column=9, value="☑" if status in ("Client review", "Completed") else "☐")
+            ws.cell(row=r, column=10, value=time.strftime("%Y-%m-%d"))
+            ws.cell(row=r, column=11, value=note)
+            return True
+    return False
+
+
+def cmd_workbook(args) -> int:
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    except ImportError:
+        sys.exit("openpyxl is needed: uv run --with openpyxl python fanmap.py workbook ...")
+
+    out = Path(args.out)
+    predictions = load_predictions_jsonl(out)
+    analysis = compute_site_analysis(predictions)
+    rows = build_fanout_map_rows(analysis)
+
+    book = Path(args.workbook) if args.workbook else out.resolve().parent / WORKBOOK
+    if not book.is_file():
+        if not PACK_TEMPLATE.is_file():
+            sys.exit(f"no workbook at {book} and no pack template at {PACK_TEMPLATE}")
+        book.parent.mkdir(parents=True, exist_ok=True)
+        book.write_bytes(PACK_TEMPLATE.read_bytes())
+    wb = openpyxl.load_workbook(book)
+
+    styles = {"wrap": Alignment(wrap_text=True, vertical="top"), "head": Font(bold=True, color="FFFFFF"),
+              "head_fill": PatternFill("solid", fgColor="1F2937"),
+              "edge": Border(*(Side(style="thin", color="D1D5DB"),) * 4),
+              "banner_font": Font(bold=True, italic=True, color="92400E"),
+              "banner_fill": PatternFill("solid", fgColor="FEF3C7"),
+              "fill": lambda hexcolor: PatternFill("solid", fgColor=hexcolor)}
+    build_fanout_map_tab(wb, rows, styles)
+
+    tasks = build_initiative_tasks(analysis, args.top)
+    n_init = add_initiatives(wb, tasks)
+
+    order = ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility", "AI Info Page",
+             "Fan-Out", FANOUT_MAP_TAB, "Initiatives"]
+    wb._sheets = [wb[n] for n in order if n in wb.sheetnames] + [s for s in wb._sheets if s.title not in order]
+
+    note = (f"{len(analysis['ok'])} page(s) predicted, {len(rows)} fan-out row(s); "
+            f"see the '{FANOUT_MAP_TAB}' tab.")
+    # tick_checklist.py always derives its target file as run_dir.parent/brand-audit-master.xlsx -
+    # the same place `book` defaults to. If --workbook pointed somewhere else, shelling out to it
+    # would silently tick a DIFFERENT file than the one we just wrote, so tick in-process instead.
+    ticked_inline = False
+    if args.workbook:
+        ticked_inline = tick_checklist_inline(wb, "mos-geo-fan-out-map", "Client review", note)
+    wb.save(book)
+    print(f"Wrote {book}: {FANOUT_MAP_TAB} tab ({len(rows)} row(s)), {n_init} new Initiatives row(s) "
+          f"({len(tasks) - n_init} already present, skipped).")
+
+    if args.workbook:
+        if not ticked_inline:
+            print("(Checklist tick skipped: no Checklist row for mos-geo-fan-out-map - "
+                  "add it to _shared/brand-audit/skills.json and rebuild the template)")
+    else:
+        try:
+            subprocess.run([sys.executable, str(TICK_SCRIPT), "--skill", "mos-geo-fan-out-map",
+                           "--run-dir", str(out.resolve()), "--status", "Client review", "--note", note],
+                          check=True, capture_output=True, text=True)
+        except Exception as e:  # noqa: BLE001 - the tabs above are already saved either way
+            print(f"(Checklist tick skipped: {e})")
+    return 0
+
+
 # ------------------------------------------------------------------- cli --
 
 def build_parser() -> argparse.ArgumentParser:
@@ -999,6 +1249,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--out", required=True)
     sp.add_argument("--top", type=int, default=10)
     sp.set_defaults(func=cmd_report)
+
+    sp = sub.add_parser("workbook", help=f"add the {FANOUT_MAP_TAB} tab + Initiatives and tick Checklist (needs openpyxl)")
+    sp.add_argument("--out", required=True)
+    sp.add_argument("--workbook", help="explicit path to brand-audit-master.xlsx (default: one level "
+                    "above --out, created from the pack template if missing)")
+    sp.add_argument("--top", type=int, default=5, help="max Initiatives rows per category (pages to "
+                    "optimise, new-content candidates)")
+    sp.set_defaults(func=cmd_workbook)
 
     return p
 
