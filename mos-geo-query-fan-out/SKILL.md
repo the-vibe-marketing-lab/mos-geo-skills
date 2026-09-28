@@ -6,10 +6,15 @@ description: >
   a per-page fix list to raise citability. Re-runnable later (`retest`) to measure lift.
   Runs on DataForSEO LLM Responses (fan_out_queries) and LLM Mentions (prompt discovery);
   see references/evidence.md for what was verified live and what this does not prove.
+  Use for a page (or a short, already-prioritised list of pages) being written or
+  optimised now; for the whole inventory, run the free `mos-geo-fan-out-map` first to see
+  which pages are worth spending this skill's DataForSEO budget on.
   USE WHEN the user says "query fan-out", "fan out", "fan-out analysis", "citability",
   "page citation gaps", "what does ChatGPT search for", "why isn't this page cited",
-  "close the citation gap", "/mos-geo-query-fan-out", or hands over a page or a list of pages and
-  asks why an AI engine isn't citing them. NOT FOR brand-level visibility (does ChatGPT know
+  "close the citation gap", "/mos-geo-query-fan-out", or hands over a page or a short list
+  of prioritised pages and asks why an AI engine isn't citing them. NOT FOR a whole-site
+  inventory with no prioritised pages yet - run mos-geo-fan-out-map first (free, predicted
+  fan-out) and bring its top pages here. NOT FOR brand-level visibility (does ChatGPT know
   the brand at all) - use mos-geo-brand-360. NOT FOR bulk citation scraping for outreach
   lists, simulating a multi-turn buyer journey, or auditing whether a crawler can read a
   page's HTML (that's a different failure mode - the page might be perfectly crawlable and
@@ -21,7 +26,10 @@ description: >
 You are diagnosing **why a specific page is or isn't cited** by AI engines, at the level of
 the actual searches those engines run - not whether the brand is known in general
 (`mos-geo-brand-360`) and not whether a crawler can technically read the HTML
-(`mos-geo-ai-info`, `pm-ai-crawl-page-simulator`).
+(`mos-geo-ai-info`, `pm-ai-crawl-page-simulator`). For a page being written or optimised
+now, use this skill directly. For a whole content inventory with no prioritised pages yet,
+run the free `mos-geo-fan-out-map` first (predicted fan-out, Gemini Flash, no DataForSEO
+spend) and bring its top "pages to optimise" here for the observed, paid confirmation.
 
 ## The rule this skill exists to protect
 
