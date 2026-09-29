@@ -64,6 +64,15 @@
       "output": "campaigns/geo/YYYY-MM/schema/",
       "feeds_tab": "None yet (outputs live in the schema folder)",
       "needs": "Screaming Frog structured data export (CSV), ideally from the same crawl as the scraper; Node 18+"
+    },
+    {
+      "skill": "mos-geo-fan-out-map",
+      "category": "Content Strategy",
+      "what_it_does": "Free, inventory-wide query fan-out. Predicts each page's query fan-out with Gemini Flash (no search, no spend) from a sitemap or URL list, scores each page's own coverage, and maps which pages to optimise and which topics across the inventory have no page. Predicted, not observed - confirm priority pages with a live ChatGPT / Google AI Mode check before writing or optimising.",
+      "run": "/mos-geo-fan-out-map",
+      "output": "campaigns/geo/YYYY-MM/mos-geo-fan-out-map/",
+      "feeds_tab": "Fan-Out Map, Initiatives",
+      "needs": "Gemini API key (free tier)"
     }
   ]
 }
