@@ -104,8 +104,10 @@ Ask in one message, skipping anything the user already gave:
 
 ```bash
 python3 "$SKILL/scripts/dealbreakers.py" crawl --url <website> --out "$RUN" \
-  --extra <community about page> <listing URL>
+  --extra <community about page> --extra <listing URL>
 ```
+
+`--extra` takes one URL each time; repeat the flag for more.
 
 The crawl reads robots.txt, sitemaps and the homepage's nav and footer, ranks buying pages
 (pricing, about, FAQ, features, case studies, terms, refunds, security, integrations,
