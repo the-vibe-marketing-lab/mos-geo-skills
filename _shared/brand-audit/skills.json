@@ -21,6 +21,15 @@
       "needs": "Client website URL (uses Brand Truth Review corrections when present)"
     },
     {
+      "skill": "mos-geo-dealbreakers",
+      "category": "Content Strategy",
+      "what_it_does": "Dealbreaker Detector: reads the brand's public site, community and reviews as a sceptical buyer and lists every reason a qualified buyer would walk away (proof, pricing, setup, maturity, risk, fit), each with a verified quote or the pages checked, plus priorities, what's already handled and an FAQ draft.",
+      "run": "/mos-geo-dealbreakers",
+      "output": "campaigns/geo/YYYY-MM/dealbreakers/",
+      "feeds_tab": "Dealbreakers, Initiatives",
+      "needs": "Client website URL (community or marketplace URLs optional)"
+    },
+    {
       "skill": "mos-geo-llm-buttons",
       "category": "Content Strategy",
       "what_it_does": "Client-ready LLM share buttons package: brief, code reference and an in-brand demo of 'ask ChatGPT / Claude / Perplexity about this page' buttons.",

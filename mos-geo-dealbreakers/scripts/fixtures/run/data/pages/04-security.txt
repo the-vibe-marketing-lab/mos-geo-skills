@@ -1,0 +1,6 @@
+URL: https://example.com/security/
+
+# Security
+
+We do not have SOC 2 certification yet.
+Customer data is encrypted at rest and in transit.

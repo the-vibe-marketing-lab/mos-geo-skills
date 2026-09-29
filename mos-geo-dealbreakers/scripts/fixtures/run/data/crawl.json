@@ -1,0 +1,22 @@
+{
+  "crawled_at": "2026-09-28T00:00:00",
+  "start": "https://example.com/",
+  "root": "https://example.com/",
+  "sitemap_urls": 4,
+  "pages": [
+    {"url": "https://example.com/", "final_url": "https://example.com/", "status": 200, "via": "urllib",
+     "kind": "site", "title": "Acme Widgets", "words": 40, "file": "data/pages/01-home.txt"},
+    {"url": "https://example.com/pricing/", "final_url": "https://example.com/pricing/", "status": 200,
+     "via": "urllib", "kind": "site", "title": "Pricing", "words": 20, "file": "data/pages/02-pricing.txt"},
+    {"url": "https://example.com/faq/", "final_url": "https://example.com/faq/", "status": 200,
+     "via": "urllib", "kind": "site", "title": "FAQ", "words": 15, "file": "data/pages/03-faq.txt"},
+    {"url": "https://example.com/security/", "final_url": "https://example.com/security/", "status": 200,
+     "via": "urllib", "kind": "site", "title": "Security", "words": 15, "file": "data/pages/04-security.txt"},
+    {"url": "https://reviews.example.org/acme-widgets/", "final_url": "https://reviews.example.org/acme-widgets/",
+     "status": 200, "via": "urllib", "kind": "extra", "title": "Reviews", "words": 15,
+     "file": "data/pages/05-reviews.txt"},
+    {"url": "https://web.archive.org/web/20250101000000/https://example.com/",
+     "final_url": "https://web.archive.org/web/20250101000000/https://example.com/", "status": 200,
+     "via": "urllib", "kind": "wayback", "title": "Archived", "words": 15, "file": "data/pages/06-wayback.txt"}
+  ]
+}

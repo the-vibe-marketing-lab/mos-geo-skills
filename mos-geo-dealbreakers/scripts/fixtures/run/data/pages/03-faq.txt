@@ -1,0 +1,6 @@
+URL: https://example.com/faq/
+
+# FAQ
+
+We do not currently offer a free trial.
+Refunds are available within 14 days of purchase.
