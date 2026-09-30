@@ -1,7 +1,7 @@
 # GEO evidence base — LLM share buttons
 
 **Last reviewed:** 2026-08-23
-**Applies to:** every skill in `mos-geo-skills`, especially `mos-geo-llm-buttons` (sections 1 to 8) and the schema skills, `mos-geo-schema-scraper` and `mos-geo-schema-optimisation` (section 9, reviewed 2026-09-24).
+**Applies to:** every skill in `mos-geo-skills`, especially `mos-geo-llm-buttons` (sections 1 to 8) and the schema skills, `mos-geo-schema-scraper` and `mos-geo-schema-optimisation` (section 9, reviewed 2026-09-24), and `mos-geo-homepage-faqs` (section 10, reviewed 2026-10-01).
 
 This is the honest version. It exists so no skill in this pack, and no member using one, ever promises a client something the evidence does not support. If you only read one section, read [The one controlled A/B result](#2-the-one-controlled-ab-result) and [What is NOT true](#3-what-is-not-true).
 
@@ -18,6 +18,7 @@ This is the honest version. It exists so no skill in this pack, and no member us
 7. [Evidence gaps](#7-evidence-gaps)
 8. [Sources](#8-sources)
 9. [Schema markup](#9-schema-markup)
+10. [Homepage FAQs for AI search](#10-homepage-faqs-for-ai-search)
 
 ---
 
@@ -164,7 +165,7 @@ What the evidence says about structured data, rankings and AI citations. Every l
 - **Structured data still matters for eligibility, and must match the page.** Google Search Central Blog, 21 May 2025: structured data is "useful for sharing information about your content in a machine-readable way that our systems consider and makes pages eligible for certain search features and rich results", and all content in the markup should be visible on the page. <https://developers.google.com/search/blog/2025/05/succeeding-in-ai-search>
 - **Rich results and clicks: Google's own case studies.** Nestlé measured an 82% higher click-through rate for pages shown as rich results; Rotten Tomatoes 25% higher click-through on pages with structured data; Food Network a 35% increase in visits after enabling search features on 80% of pages; Rakuten 1.5x more time on page. These are vendor-published case studies about rich results, not about AI. <https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data>
 - **Retired rich results do not affect ranking.** Google, 12 June 2025, phasing out Book Actions, Course Info, Claim Review, Estimated Salary, Learning Video, Special Announcement and Vehicle Listing: "This update won't affect how pages are ranked." <https://developers.google.com/search/blog/2025/06/simplifying-search-results> A second round was announced on 5 November 2025, with Search Console support removed from January 2026 (Practice Problem among them). <https://developers.google.com/search/blog/2025/11/update-on-our-efforts>
-- **FAQ and How-To.** Google, 8 August 2023: FAQ rich results limited to well-known, authoritative government and health sites; How-To limited to desktop; "This should not be considered a ranking change." <https://developers.google.com/search/blog/2023/08/howto-faq-changes>
+- **FAQ and How-To.** Google, 8 August 2023: FAQ rich results limited to well-known, authoritative government and health sites; How-To limited to desktop; "This should not be considered a ranking change." <https://developers.google.com/search/blog/2023/08/howto-faq-changes> Superseded: FAQ rich results were removed from Search entirely from 7 May 2026 (see section 10).
 - **Manual actions.** Structured data that breaks Google's policies can earn a manual action, which removes the page's rich result eligibility. <https://developers.google.com/search/docs/appearance/structured-data/sd-policies>
 
 ### What Microsoft says
@@ -192,3 +193,55 @@ What the evidence says about structured data, rankings and AI citations. Every l
 - Relixir's "50-site study" (FAQPage pages cited 41% vs 15% without): the study page returns 404, so it is not cited.
 - "3.2x more likely to appear in AI Overviews with FAQPage" and "22% median citation lift from schema updates": no traceable primary source.
 - General claims that AI engines "extract" or "prefer" FAQPage, HowTo, Recipe, MedicalWebPage or speakable markup: no published evidence found.
+
+---
+
+## 10. Homepage FAQs for AI search
+
+What the evidence says about putting a question-and-answer block on a homepage, marking it up as FAQPage and linking each answer to a supporting page. Every line below was checked against its source on 2026-10-01. `mos-geo-homepage-faqs` points here instead of making its own claims.
+
+### What Google says
+
+- **FAQ rich results are gone.** On 8 August 2023 Google limited FAQ rich results to "well-known, authoritative government and health websites" and added: "While you can drop this structured data from your site, there's no need to proactively remove it. Structured data that's not being used does not cause problems for Search, but also has no visible effects in Google Search." <https://developers.google.com/search/blog/2023/08/howto-faq-changes> Google then deprecated the feature outright: "This feature will no longer appear in Google Search starting May 7, 2026" (changelog, 8 May 2026), and in June 2026 removed the FAQ rich result documentation because "The FAQ rich result feature is no longer shown in Google Search results". The old FAQPage docs URL now redirects to that changelog entry. <https://developers.google.com/search/updates#removing-faq-rich-result> This supersedes the August 2023 line in section 9.
+- **No special markup or files for AI features.** "There are no additional requirements to appear in AI Overviews or AI Mode, nor other special optimizations necessary", and "You don't need to create new machine readable files, AI text files, or markup to appear in these features." The same page says SEO best practices still apply, important content should be "available in textual form", structured data should match the visible text, and content should be findable "through internal links on your website". It also describes "query fan-out", where AI Mode and AI Overviews issue related searches across subtopics to find supporting pages. Last updated 10 December 2025. <https://developers.google.com/search/docs/appearance/ai-features>
+- **Link best practices.** "Google can only crawl your link if it's an `<a>` HTML element with an `href` attribute." "Good anchor text is descriptive, reasonably concise, and relevant to the page that it's on." "Every page you care about should have a link from at least one other page on your site." Keyword-stuffed anchors break the spam policies. <https://developers.google.com/search/docs/crawling-indexing/links-crawlable>
+
+### What Microsoft says
+
+- Microsoft Advertising blog, Krishna Madhavan, 8 October 2025, under the heading "Q&A Formats": "Direct questions with clear answers mirror the way people search. Assistants can often lift these pairs word for word into AI-generated responses." The same post recommends one-to-two-sentence answers, "Sentences that make sense even when pulled out of context", and notes schema "can label your content as a product, review, FAQ, or event". This is guidance from a Microsoft blog, not Bing documentation, and it gives no data on citation rates. <https://about.ads.microsoft.com/en/blog/post/october-2025/optimizing-your-content-for-inclusion-in-ai-search-answers>
+- Fabrice Canel's SMX Munich remark on schema is in section 9.
+
+### What OpenAI and Perplexity say
+
+- **OpenAI:** "Any public website can appear in ChatGPT search." The only publisher guidance is not to block OAI-SearchBot in robots.txt. Nothing about FAQs, Q&A formatting or structured data. <https://help.openai.com/en/articles/12627856-publishers-and-developers-faq> (the page returns 403 to plain curl; it loads in a browser.)
+- **Perplexity:** no official publisher guidance on FAQs, Q&A formatting or structured data was found. Unknown. Third-party "how Perplexity picks sources" posts are not Perplexity statements and are not cited.
+
+### Studies on FAQ content and AI citations
+
+- **SE Ranking, November 2025 (129,000 domains, 216,524 pages, 20 niches, ChatGPT). Correlational.** Pages with FAQ sections averaged 3.8 citations versus 4.1 without. Pages with FAQPage schema averaged 3.6 versus 4.2 without. SE Ranking's model (SHAP values) treated the absence of an FAQ section as a negative signal, and the authors put the raw gap down to FAQs sitting on simpler support and product pages. Their own words: "adding a FAQ section alone won't dramatically increase citations." The same post elsewhere says FAQ sections "nearly double" citation chances, which its raw numbers do not show; quote the numbers, not that line. It studied pages in general, not homepages. <https://seranking.com/blog/ranking-factors-for-chatgpt/>
+- **Aggarwal et al., "GEO: Generative Engine Optimization" (KDD 2024). Controlled, on a research benchmark, not live engines.** Reports visibility gains of up to 40% from rewrites such as adding quotations and statistics. It did not test FAQ or Q&A formatting, so it says nothing either way about this tactic. <https://arxiv.org/abs/2311.09735>
+- **Schema and AI citations:** see section 9 (Growth Marshal, Search Atlas). Neither isolates FAQPage.
+- **No controlled test of homepage FAQs and AI citations was found.** Unknown.
+
+### Origin of the tactic
+
+- The skill's shape comes from Steve Toth's "LLM-Friendly Homepage FAQ Generator" custom GPT. Credited as the origin, not as evidence: no public write-up of the GPT or of results from it was found, so the only record is the run preserved at `mos-geo-homepage-faqs/references/source-sample-steve-toth-gpt.md`.
+
+### What we can say
+
+- FAQ answers are ordinary visible text on the page. Search-backed engines retrieve and quote page text, and Microsoft says assistants "can often lift these pairs word for word".
+- Short, self-contained answers are easy to quote accurately. That is also good writing for the human reading the homepage.
+- FAQPage markup is valid schema.org, is harmless when it matches the visible text, and Google says unused structured data "does not cause problems for Search".
+- Internal links from each answer, with descriptive anchors in plain `<a href>` tags, follow Google's link guidance and help people and crawlers reach the page that backs up the answer.
+
+### What we must not say
+
+- That FAQPage schema earns rich results in Google. It has not since 7 May 2026, and for most sites since August 2023.
+- That FAQs or FAQPage markup raise AI citations or AI Overview inclusion. The one large dataset found shows FAQPage pages slightly behind, and no controlled test exists.
+- That Google, OpenAI or Perplexity weight FAQs specially. None of them says so; Google says no special markup is needed.
+- That internal links earn AI citations. Sell them on discovery and user journeys, as `mos-geo-internal-links` does.
+- Any "FAQ sections get 3.2x (or 55 to 85%, or 65%) more AI citations" figure. These circulate without published methodology (for example Presenc AI, May 2026, which calls its own numbers "directional" and gives no sample size) and are not cited.
+
+### How to pitch it
+
+A homepage FAQ answers the questions buyers and AI assistants ask about you, in your words, on the page you control most, with a link to the proof behind each answer. We do not promise rankings, rich results or citations from it.
