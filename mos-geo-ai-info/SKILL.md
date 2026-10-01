@@ -14,7 +14,8 @@ description: >
   "AI instructions page", "ai-info page", "fact sheet for AI", "official information for AI
   assistants", "brief ChatGPT about our company", "make AI describe us correctly", "what should
   AI say about us", "/mos-geo-ai-info", or asks to add the AI info page step to a GEO brand audit.
-  NOT FOR testing what engines currently say about a brand (use mos-geo-brand-360), llms.txt
+  NOT FOR a fast unaudited draft from the user's own brain and site in the GPT's shape (use
+  mos-geo-ai-info-generator), testing what engines currently say about a brand (use mos-geo-brand-360), llms.txt
   files on their own, schema markup across a whole site, or LLM share buttons (use
   mos-geo-llm-buttons).
 ---

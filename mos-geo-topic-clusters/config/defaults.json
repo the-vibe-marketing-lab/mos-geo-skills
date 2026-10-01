@@ -1,0 +1,112 @@
+{
+  "_comment": "Defaults for mos-geo-topic-clusters. Override per run with --config <file> (a partial JSON merged over this one). Values marked PLACEHOLDER are untuned: tune them on a labelled set of keyword pairs before trusting them. Nothing client-specific belongs here: brand terms, extra suburbs and country filters go in the per-run --config file or on the command line.",
+
+  "input": {
+    "_comment": "Ahrefs exports list a keyword once per country, each with its own volume, position and URL. country: the Ahrefs Country code whose rows are used for demand, position and URL; null = the file's most common Country (printed by ingest); \"all\" keeps every country (demand then sums across countries, which mixes markets). volume_dedupe (sum, max or kept) only decides how rows that normalise to the same keyword combine.",
+    "ahrefs_volume_dedupe": "sum",
+    "country": null,
+    "_gsc_comment": "GSC lists jump links (/page/#section) as separate URLs. true merges them into the page so they don't count as cannibalisation.",
+    "gsc_merge_fragments": true
+  },
+
+  "brand": {
+    "_comment": "Own-brand keywords are pulled out before clustering and reported on their own. terms: per-run brand names, misspellings and product names (pass --brand-terms). use_host: also treat a keyword as own-brand when, with spaces removed, it contains the site's host name without its TLD. use_ahrefs_flag: Ahrefs 'Branded' rows that are not own-brand (usually competitor or third-party brands) form their own walled partition.",
+    "terms": [],
+    "use_host": true,
+    "use_ahrefs_flag": true
+  },
+
+  "local": {
+    "_comment": "Local keywords never share a cluster with non-local ones. A keyword is local when the Ahrefs Local flag is set or it contains one of these terms or places as whole words. Add suburbs and regions per run with --config.",
+    "terms": ["near me", "nearby", "near by", "open now", "closest"],
+    "places": ["sydney", "melbourne", "brisbane", "perth", "adelaide", "canberra", "hobart", "darwin", "gold coast", "newcastle", "wollongong", "geelong", "sunshine coast", "auckland", "wellington", "christchurch", "london", "manchester", "birmingham", "new york", "los angeles", "chicago", "toronto", "vancouver"]
+  },
+
+  "intent": {
+    "_comment": "Used when the export carries no intent flags (GSC), or when Ahrefs flags are mixed. informational and commercial never share a cluster; mixed can join either. Words match as whole words on the normalised keyword.",
+    "informational_words": ["how", "what", "why", "when", "who", "where", "which", "does", "did", "do", "is", "are", "can", "should", "guide", "tips", "ideas", "idea", "recipe", "recipes", "meaning", "definition", "benefits", "examples", "example", "tutorial", "learn", "explained", "list"],
+    "commercial_words": ["best", "top", "vs", "versus", "review", "reviews", "buy", "price", "prices", "pricing", "cost", "costs", "cheap", "cheapest", "deal", "deals", "discount", "coupon", "promo", "sale", "shop", "order", "delivery", "delivered", "alternative", "alternatives", "compare", "comparison", "hire", "service", "services", "for sale"],
+    "navigational_words": ["login", "log in", "sign in", "signin", "account", "contact", "phone number", "customer service"]
+  },
+
+  "stopwords": ["a", "an", "the", "and", "or", "of", "to", "in", "on", "at", "by", "for", "with", "from", "is", "are", "was", "were", "be", "do", "does", "did", "can", "i", "you", "my", "your", "it", "its", "this", "that", "what", "how", "why", "when", "who", "where", "which", "vs", "versus", "s"],
+
+  "embeddings": {
+    "_comment": "Recall only: embeddings propose neighbour pairs, they never decide a cluster. Auto order: OPENAI_API_KEY first, then VOYAGE_API_KEY, then none (lexical + shared-URL recall only; the README warns that synonyms may be missed). Override with --embeddings openai|voyage|none. Vectors are cached on disk by (provider, model, dimensions, text).",
+    "order": ["openai", "voyage"],
+    "openai": {"endpoint": "https://api.openai.com/v1/embeddings", "model": "text-embedding-3-small", "dimensions": 256, "price_per_m_tokens": 0.02, "key": "OPENAI_API_KEY"},
+    "voyage": {"endpoint": "https://api.voyageai.com/v1/embeddings", "model": "voyage-3.5-lite", "dimensions": 256, "price_per_m_tokens": 0.02, "key": "VOYAGE_API_KEY"},
+    "batch": 256,
+    "timeout": 60,
+    "max_retries": 5,
+    "retry_statuses": [408, 429, 500, 502, 503, 504, 529]
+  },
+
+  "recall": {
+    "_comment": "Candidate pairs per anchor keyword. PLACEHOLDER floors: cos_floor is for 256-dimension text-embedding-3-small vectors of short queries; lex_min_jaccard is over stemmed content tokens. Pairs whose content tokens are identical (plurals, word order, 's) become same-page edges in code and never cost a Jev call.",
+    "k_embed": 10,
+    "cos_floor": 0.5,
+    "k_lex": 6,
+    "lex_min_jaccard": 0.34,
+    "k_url": 6,
+    "max_per_anchor": 16,
+    "auto_same_identical_tokens": true
+  },
+
+  "jev": {
+    "endpoint": "https://api.typesafe.ai/v1/systemone",
+    "model": "jev-latest",
+    "_model_comment": "Pin the versioned id the response 'model' field reports (e.g. jev-1.13.0) once thresholds are tuned; the alias moves.",
+    "user_agent": "mos-geo-topic-clusters/1.0",
+    "workers": 6,
+    "max_workers": 6,
+    "timeout": 30,
+    "max_retries": 5,
+    "retry_statuses": [408, 429, 500, 502, 503, 504, 529],
+    "max_questions_per_request": 12,
+    "price_per_m_input_tokens": 0.042
+  },
+
+  "thresholds": {
+    "_comment": "PLACEHOLDER values: chosen by reading the first real runs, not tuned on labelled pairs. merge_min: average P(same-page) two groups need to merge. cannot_link_min_different: a pair Jev judges P(different) at or above this can never share a cluster. min_coverage: judged pairs needed between two groups, as a share of the smaller group's size, so one strong edge cannot chain two groups together. topic_min / topic_min_coverage: the same for rolling clusters up into topics, on P(related) + topic_same_weight x P(same-page) of judged pairs across two clusters. verify_min_cluster: clusters this size or larger get every member re-judged against the cluster head. singleton_min_demand: a keyword left alone becomes its own cluster (one page) at or above this demand, else it goes to Unclustered.",
+    "merge_min": 0.5,
+    "cannot_link_min_different": 0.5,
+    "min_coverage": 0.5,
+    "topic_min": 0.8,
+    "topic_min_coverage": 0.5,
+    "topic_same_weight": 1.0,
+    "verify_min_cluster": 3,
+    "singleton_min_demand": {"ahrefs": 100, "gsc": 30}
+  },
+
+  "serp": {
+    "_comment": "Optional, off by default (--serp stage). DataForSEO Google organic top 10, live endpoint. Uncertain edges (P(same-page) inside uncertain_band) are decided by shared URLs: >= merge_min_shared merges, < split_below splits, in between keeps Jev's answer. Cluster heads in the same topic that share >= merge_min_shared URLs are merged. Platform domains are removed before counting. location_code 2036 = Australia: override per run.",
+    "endpoint": "https://api.dataforseo.com/v3/serp/google/organic/live/regular",
+    "location_code": 2036,
+    "language_code": "en",
+    "depth": 10,
+    "uncertain_band": [0.35, 0.65],
+    "merge_min_shared": 4,
+    "split_below": 3,
+    "heads_per_topic": 6,
+    "max_serps": 300,
+    "est_cost_per_serp": 0.002,
+    "workers": 6,
+    "timeout": 90,
+    "max_retries": 3,
+    "retry_statuses": [408, 429, 500, 502, 503, 504],
+    "platform_domains": ["reddit.com", "youtube.com", "amazon.com", "amazon.com.au", "amazon.co.uk", "wikipedia.org", "facebook.com", "instagram.com", "tiktok.com", "pinterest.com", "pinterest.com.au", "quora.com", "linkedin.com", "x.com", "twitter.com", "ebay.com", "ebay.com.au", "yelp.com", "tripadvisor.com", "tripadvisor.com.au", "medium.com"]
+  },
+
+  "scoring": {
+    "_comment": "All maths in code. PLACEHOLDER: cannibalisation rule from the research (second URL holds >= min share and sits within max_position_gap), ctr_curve is a generic organic CTR-by-position assumption used for the opportunity score on Ahrefs data (GSC uses its real CTR).",
+    "owned_max_position": 3.99,
+    "striking_max_position": 20,
+    "target_position": 3,
+    "cannibal_min_share": 0.15,
+    "cannibal_max_position_gap": 5,
+    "home_overload_min_clusters": 3,
+    "pillar_weights": {"demand": 0.6, "connectivity": 0.4},
+    "ctr_curve": {"1": 0.28, "2": 0.15, "3": 0.10, "4": 0.07, "5": 0.05, "6": 0.04, "7": 0.03, "8": 0.025, "9": 0.02, "10": 0.018, "20": 0.01, "100": 0.002}
+  }
+}
