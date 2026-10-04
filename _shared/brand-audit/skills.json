@@ -21,15 +21,6 @@
       "needs": "Client website URL (uses Brand Truth Review corrections when present)"
     },
     {
-      "skill": "mos-geo-ai-info-generator",
-      "category": "Brand Optimisation",
-      "what_it_does": "Fast AI Info Page draft in the exact shape of Steve Toth's GPT, written from the brand's own brain, site crawl and a short interview; a lint gate fails any missing section or any number not in those inputs.",
-      "run": "/mos-geo-ai-info-generator",
-      "output": "campaigns/geo/YYYY-MM/ai-info-draft/",
-      "feeds_tab": "None yet (page.md, page.html and handover.md live in the run folder)",
-      "needs": "Brand website URL; a MarketingOS brain if there is one"
-    },
-    {
       "skill": "mos-geo-homepage-faqs",
       "category": "Brand Optimisation",
       "what_it_does": "12 to 20 homepage FAQs written for AI assistants to quote: one self-contained sentence per answer, entity first, every fact from the brand's own site, each linked to the internal page that backs it up, with FAQPage schema and a client approval tab.",

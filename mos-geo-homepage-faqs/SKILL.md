@@ -14,8 +14,7 @@ description: >
   homepage. USE WHEN the user says "homepage FAQs", "LLM-friendly FAQs", "FAQ generator", "FAQs
   for AI", "AI-friendly FAQs", "Steve Toth FAQ GPT", "the homepage FAQ GPT", "write FAQs for
   our homepage", "FAQ block for AI search", "/mos-geo-homepage-faqs", or asks to add the
-  homepage FAQ step to a GEO brand audit. NOT FOR an AI Info Page (use mos-geo-ai-info for the
-  audited client version, mos-geo-ai-info-generator for the fast draft), testing what AI
+  homepage FAQ step to a GEO brand audit. NOT FOR an AI Info Page (use mos-geo-ai-info), testing what AI
   engines currently say about a brand (use mos-geo-brand-360), a site-wide internal link audit
   (use mos-geo-internal-links), or schema briefs across a site (use
   mos-geo-schema-optimisation).
@@ -29,8 +28,7 @@ shows no sources, guesses tool names and writes every brand in the same US regis
 skill keeps the formula exactly, feeds it only from sourced inputs, and proves it with a script.
 
 **Which skill?** This one writes the FAQ block for a homepage (and an FAQ page). For a full
-fact sheet about the brand, use `/mos-geo-ai-info` (audited, client approval) or
-`/mos-geo-ai-info-generator` (fast draft). Running either of those first this month gives
+fact sheet about the brand, use `/mos-geo-ai-info`. Running it first this month gives
 better FAQs for free, because stage 2 reads them.
 
 ## Hard rules
