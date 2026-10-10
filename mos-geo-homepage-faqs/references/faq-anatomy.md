@@ -1,22 +1,44 @@
 # Anatomy of Steve Toth's homepage FAQ GPT
 
-A dissection of what the "LLM-Friendly Homepage FAQ Generator" custom GPT writes (the raw
-sample is `source-sample-steve-toth-gpt.md`). The skill keeps the GPT's answer shape exactly
-and changes what feeds it: every fact comes from the brand's own site, the month's audit
-files, the interview and cited third-party sources, and a script proves it.
+An analysis of two observed TVML runs of the LLM-Friendly Homepage FAQ Generator.
+The October 1 historical sample is in `source-sample-steve-toth-gpt.md`. A fresh October 10
+live run produced different structure. These observations inform an independent skill;
+they are not recovered private instructions. Treat the single-sentence formula below as
+our editorial design, not an invariant of the GPT.
+
+| Observable behaviour | October 1 saved sample | October 10 live run |
+|---|---|---|
+| FAQ count | 20 | 15 |
+| Answer length | One sentence each | Two sentences each, 38 to 51 whitespace-delimited words |
+| Opening entity | Brand or MarketingOS | Full brand name in all 15 |
+| Question mix | Identity, product, capabilities, fit, proof | Mostly Can/Does benefit questions, plus beginner fit and free joining |
+| Sources | Described generally, no page links per FAQ | Three general website/Skool links, no page evidence per FAQ |
+| Supporting notes | Research preamble and claims closing note | Research preamble, theme/evidence table, claims closing note |
+| Homepage selection | No ranked subset | Eight recommended question numbers |
+| Price | Excluded | A free-to-join question with premium access qualified |
+
+The live run confirms entity-first answers and cautious outcome framing, but disproves a
+fixed sentence count, question count, source-free format or permanent price exclusion.
+The GPT says it reviewed public discussions; we cannot verify its research process from
+that assertion alone. Its theme table is a summary, not claim-level evidence.
+
+This skill adds passage-level evidence review, consistent spelling, appropriate internal
+links, explicit release/access qualifications and a checked export. It chooses 12 to 20
+questions, a top-eight homepage subset and single-sentence answers as its own defaults.
+It has not demonstrated a causal increase in AI citations.
 
 Credit, for anyone who asks: the GPT is Steve Toth's (SEO Notebook / Notebook Agency). This
 skill is modelled on its output.
 
 ## The three-part envelope
 
-The GPT wraps its FAQs in two notes. They are its audit trail, so the skill keeps both, as
-files rather than chat.
+Both observed runs include research and claims notes. The skill records these as research
+notes and a handover; actual source passages form the evidence trail.
 
 | Part | What the GPT does | Where the skill puts it |
 |---|---|---|
 | Research preamble | Says how thin the independent evidence is, names the same-name entity it avoided, lists the source types it trusted and the themes it found | The public `## Summary` of `data/research.md`, rendered at the top of `research-note.md` (the rest of research.md stays private) |
-| FAQ set | 20 questions and answers | `faqs.md` |
+| FAQ set | A researched set; count varies between runs | `faqs.md` |
 | Closing note | Explains why outcome claims were framed as method, not result | The bottom of `research-note.md` |
 
 Write the preamble honestly. If third-party evidence is sparse, say so in one sentence. Never
@@ -24,7 +46,7 @@ pad it with invented testimonial themes.
 
 ## The answer formula
 
-Every one of the sample's 20 answers follows these rules. `lint` checks the ones marked (L).
+The historical sample suggests this editorial formula; the live run uses two sentences. All ranges and lint rules below are our design choices. `lint` checks the ones marked (L).
 
 1. **Exactly one sentence.** (L) No second sentence, no semicolon chains.
 2. **Opens with the full entity name as the subject.** (L) The brand name, or a product name
@@ -60,7 +82,7 @@ answer and the answer is never reworded to fit a link. See SKILL.md stage 6b.
 
 ## Coverage buckets
 
-The GPT's hidden selection logic. Counts are from the 20-FAQ sample.
+Observed coverage in one 20-FAQ sample. These counts inform our design, not a claim about hidden GPT instructions.
 
 | Bucket | Sample count | Job for an LLM |
 |---|---|---|
@@ -74,8 +96,8 @@ The GPT's hidden selection logic. Counts are from the 20-FAQ sample.
 
 Question patterns and slot templates for each bucket are in `question-bank.md`.
 
-**Deliberately absent:** price, member count, competitors and location. They are volatile or
-unverifiable. The skill keeps that exclusion, and never names a same-name entity either:
+**Default exclusions in this skill:** price, member counts and competitor comparisons. The
+live GPT includes free joining, so these are our defaults rather than inferred GPT rules, and never names a same-name entity either:
 disambiguate through the identity answer's own specifics (founder, city, domain). It adds a founder question only when the
 founder is a verifiable public entity and the interview says yes.
 
@@ -90,17 +112,17 @@ methods for improving how brands appear in AI search.`
 One sentence, entity first, key terms restated, acronym expanded once, capability verb, a
 noun list and a purpose clause, 29 words.
 
-## Where the GPT goes wrong (what the skill fixes)
+## Limits observed in the samples and our improvements
 
 | GPT weakness | Evidence in the sample | Fix |
 |---|---|---|
-| No sources shown | Themes are asserted in the preamble, never tied to pages | Every FAQ cites its source URL(s) in its comment; that list is the evidence ledger, and `evidence` says first-party, third-party or mixed |
+| Weak source mapping | The live run links three general sources, but no FAQ to a supporting passage | Every FAQ indexes its source URLs; passage review records supporting evidence, with first-party/third-party labels |
 | Guessable facts | Tool names and "enterprise and small-business environments" with no visible source | Provenance lint fails any number or capitalised name not in the input bundle |
-| Wrong locale | US spelling for an Australian brand | Brand locale, checked by `lint` |
+| Locale mismatch | US spelling for an Australian brand in this sample | Brand locale, checked by `lint` |
 | Repetition | Three answers make nearly the same point | Near-duplicate question check (fail) and answer overlap warning |
-| No homepage fit | 20 FAQs is long for a homepage | Ranked set: top 8 on the homepage, the rest for an FAQ page |
+| Variable homepage fit | The historical sample has no subset; the live run recommends eight | Ranked set: top 8 on the homepage, the rest for an FAQ page |
 | Dead-end answers | No links | One verified internal link per answer where a page backs it up |
-| One register for every brand | Same voice for any brand | Interview captures tone and never-say terms |
+| Voice untested | Two runs of the same brand cannot establish behaviour for other brands | Interview captures tone and never-say terms |
 
 ## Things that are not true, so never say them
 

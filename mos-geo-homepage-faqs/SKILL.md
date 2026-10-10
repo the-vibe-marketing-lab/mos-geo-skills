@@ -1,31 +1,23 @@
 ---
 name: mos-geo-homepage-faqs
 description: >
-  Turn a brand name and its website URL into 12 to 20 LLM-friendly homepage FAQs, in the shape
-  of Steve Toth's "LLM-Friendly Homepage FAQ Generator" custom GPT: every answer is one
-  sentence that opens with the brand's full name, so ChatGPT, Claude, Perplexity or Gemini can
-  lift any single answer and still know who it is about. It crawls the brand's own site,
-  reuses this month's AI Info Page and Brand 360 files, researches third-party mentions and
-  same-name entities, asks one short interview round only for gaps (tone, locale, never-say
-  list), cites source URLs on every FAQ, adds at most one verified internal link per answer,
-  and a script gate fails any number or tool name that is not in the brand's public inputs. Outputs faqs.md, a
-  paste-ready faqs.html accordion, FAQPage JSON-LD, a research note, a developer handover and
-  a Homepage FAQs approval tab in the GEO brand audit workbook, with the top 8 marked for the
-  homepage. USE WHEN the user says "homepage FAQs", "LLM-friendly FAQs", "FAQ generator", "FAQs
-  for AI", "AI-friendly FAQs", "Steve Toth FAQ GPT", "the homepage FAQ GPT", "write FAQs for
-  our homepage", "FAQ block for AI search", "/mos-geo-homepage-faqs", or asks to add the
-  homepage FAQ step to a GEO brand audit. NOT FOR an AI Info Page (use mos-geo-ai-info), testing what AI
-  engines currently say about a brand (use mos-geo-brand-360), a site-wide internal link audit
-  (use mos-geo-internal-links), or schema briefs across a site (use
-  mos-geo-schema-optimisation).
+  Research and write sourced, entity-first homepage FAQs for a brand or the Homepage FAQs
+  step of a GEO Brand Audit. Produces ranked copy, an HTML accordion, matching FAQPage
+  JSON-LD, a developer handover and an approval workbook tab. Use for homepage FAQ
+  generation or improving an existing FAQ block; use the other pack skills for a full
+  AI Info Page, AI visibility testing or a site-wide schema audit.
 ---
 
 # Homepage FAQs
 
-Steve Toth's homepage FAQ GPT, as a skill. The GPT's trick is the answer formula: one
-sentence, brand name first, capability verbs, no volatile facts. Its weakness is that it
-shows no sources, guesses tool names and writes every brand in the same US register. This
-skill keeps the formula exactly, feeds it only from sourced inputs, and proves it with a script.
+An independent implementation inspired by observed outputs of Steve Toth's homepage FAQ
+GPT (SEO Notebook). The October 1 sample uses 20 one-sentence answers; the October 10 live
+run produced 15 two-sentence answers, all brand-first, with general sources and eight
+homepage recommendations. This skill deliberately uses shorter, one-sentence answers.
+These observations do not recover private instructions or prove a universal GPT formula. This skill adds source review, locale, links and Brand Audit approval.
+It does not require access to the GPT. Install the whole mos-geo-skills pack: the helper uses
+the sibling AI Info crawler and shared workbook template. Python 3.10+ is required;
+openpyxl is needed for the workbook, and Scrapling is optional.
 
 **Which skill?** This one writes the FAQ block for a homepage (and an FAQ page). For a full
 fact sheet about the brand, use `/mos-geo-ai-info`. Running it first this month gives
@@ -34,7 +26,10 @@ better FAQs for free, because stage 2 reads them.
 ## Hard rules
 
 1. **Never invent.** Every number and every capitalised tool, product or platform name must
-   appear in the public bundle (`data/public-bundle.md`). `lint` fails the run otherwise. No source, no FAQ.
+   appear in the public bundle (`data/public-bundle.md`). `lint` fails the run otherwise. This checks presence, not factual entailment: read the
+   actual cited passage for each clause, including uncapitalised service and outcome claims.
+   No supporting passage, no FAQ. Save the review in `data/evidence-review.md` with the
+   question, source URL, short supporting excerpt, retrieval date and any limitation.
 2. **One sentence, entity first.** Each answer is one sentence of 20 to 55 words that opens
    with the brand or a product name. Never `Yes`, `No`, `It`, `We`, `Our` or `You`. Full
    formula: `references/faq-anatomy.md`.
@@ -42,14 +37,15 @@ better FAQs for free, because stage 2 reads them.
    gets you cited, will rank, guarantees, best, #1.
 4. **No volatile facts.** No prices, member counts, numbers or dates unless the user asks and
    `--allow-volatile` is passed.
-5. **Provenance lint is the gate.** Nothing is handed over until `lint --final` prints
-   `Result: PASS`. It is a floor, not proof: spot-check each named tool against its source.
+5. **Provenance lint is the gate.** Nothing is handed over until source review is complete
+   and `lint --final` prints `Result: PASS`. Render requires its receipt for the current
+   copy, inputs, research and links; any edit requires lint again. A pass is a mechanical
+   check, not verification that every claim is true.
 6. **Links never rewrite answers.** A link anchors on words already in the answer. If no
    phrase fits, the answer ships without a link.
-7. **Public data only.** Only what the brand publishes, or would say publicly. Anything
+7. **Public data only.** Only published or explicitly approved information. Anything
    private from a brain, and everything on the never-say list, stays out (`--forbid`).
-8. **Brand locale.** Spell for the brand's market (en-AU, en-GB, en-US). The GPT wrote US
-   spelling for an Australian brand.
+8. **Brand locale.** Spell for the brand's market (en-AU, en-GB, en-US). The observed GPT outputs mixed spelling conventions; use a consistent local register.
 
 ## Pipeline
 
@@ -63,7 +59,7 @@ every subcommand: `$F <sub> --help`.
 | 2 | Reuse audit context | `$F gather --run-dir [--brain] [--include]` | `data/input-bundle.md` exists |
 | 2b | Brand + voice interview | Claude, one round | `data/interview.md` written, `gather` re-run |
 | 3 | Research + disambiguation | Claude, WebSearch | `data/research.md` written, with a public `## Summary`; `gather` re-run |
-| 4 | Sources are the ledger | none | no separate file: each FAQ's `sources:` is its evidence |
+| 4 | Source review | Read cited passages | `data/evidence-review.md` supports every claim; FAQ metadata indexes its sources |
 | 5 | Question set | Claude, `references/question-bank.md` | 12 to 20 questions picked from about 30 |
 | 6 | Write | Claude, `references/faq-anatomy.md` | `faqs.md` written, every FAQ tagged with its sources |
 | 6b | Internal links | `$F links --run-dir`, then Claude | links written inline in `faqs.md` |
@@ -120,8 +116,8 @@ numbered list.
    publicly named.
 
 "Skip" on any question means the suggested default is used and recorded as a default in
-`research-note.md`. The formula never changes: voice changes word choice and warmth, not
-structure. Write answers to `data/interview.md`, then re-run `gather`. If the bundle answers
+`research-note.md`. This skill's compact format stays consistent: voice changes word choice and warmth, not
+structure. The original GPT varies between runs. Write answers to `data/interview.md`, then re-run `gather`. If the bundle answers
 everything, ask nothing.
 
 ### 3. Research and disambiguation
@@ -143,7 +139,12 @@ Never invent a testimonial theme to fill a gap. Re-run `gather` afterwards.
 ### 4. Sources are the ledger
 
 There is no separate ledger file. Each FAQ's `sources:` list in its metadata comment is the
-evidence ledger, and `lint` fails any FAQ without one.
+source index, and `lint` fails any FAQ without one. `data/evidence-review.md` records the
+passage-level check; a URL alone does not prove an answer. Label brand-owned profiles on
+third-party platforms first-party. An audit draft, interview assumption or AI-generated
+research summary cannot independently corroborate a claim; follow it to a public source
+or record explicit client approval. Preserve unreleased, premium and conditional status
+rather than turning a roadmap item into an available feature.
 
 ### 5 and 6. Pick questions, then write faqs.md
 
@@ -193,6 +194,12 @@ answer overlap, voice slips and thin link coverage. Fix and re-run until `Result
 `$F render --run-dir "$RUN" --url https://<domain>/` writes `faqs.html` (a `<details>` accordion, no external assets), `faqpage.jsonld`,
 `research-note.md` (the research `## Summary`, cited sources and claims policy) and `handover.md`. `$F workbook --run-dir
 "$RUN"` adds the Homepage FAQs approval tab and an Initiatives row to the month's workbook.
+
+Pass the same `--forbid` terms to lint and render. If copy, source bundles, links, research
+or the checker changes, rerun final lint before rendering. Confirm the homepage HTML and
+JSON-LD contain the same questions and answers and FAQ-page-only questions are absent
+from homepage schema. Workbook approval precedes publishing; generating these files does
+not authorise a live site edit.
 
 ### Final message to the user
 

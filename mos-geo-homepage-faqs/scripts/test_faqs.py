@@ -315,7 +315,14 @@ class RenderWorkbookTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def lint(self, final=True, forbid=None):
+        (self.run / f.PUBLIC_BUNDLE).write_text(BUNDLE, encoding="utf-8")
+        return f.cmd_lint(Namespace(run_dir=str(self.run), faqs=None, bundle=None, brand=BRAND,
+                                    products=[PRODUCT], locale="en-AU", forbid=forbid, allow_volatile=False,
+                                    final=final, count=20))
+
     def test_render(self):
+        self.assertEqual(self.lint(), 0)
         f.cmd_render(Namespace(run_dir=str(self.run), url="https://acme.example", brand=None, heading=None,
                                forbid=None))
         page = (self.run / f.FAQS_HTML).read_text(encoding="utf-8")
@@ -336,6 +343,7 @@ class RenderWorkbookTest(unittest.TestCase):
         (self.run / "data" / "research.md").write_text(
             "## Summary\nFounder profile seen at https://www.zoominfo.com/p/jane and in Globex press.\n\n"
             "## Working notes\nEmployer: Initech.\n", encoding="utf-8")
+        self.assertEqual(self.lint(), 0)
         args = Namespace(run_dir=str(self.run), url=HOME, brand=None, heading=None, forbid=["Globex"])
         self.assertEqual(f.cmd_render(args), 1)
         note = (self.run / f.NOTE).read_text(encoding="utf-8")
@@ -344,6 +352,40 @@ class RenderWorkbookTest(unittest.TestCase):
         args.forbid = ["Initech"]
         self.assertEqual(f.cmd_render(args), 0)
         self.assertEqual(f.rendered_leaks(self.run, ["Globex"]), [(f.NOTE, "Globex")])
+
+    def test_export_rejects_missing_nonfinal_failed_and_stale_lint(self):
+        args = Namespace(run_dir=str(self.run), url=HOME, brand=None, heading=None, forbid=None)
+        self.assertEqual(f.cmd_render(args), 1)
+        self.assertFalse((self.run / f.FAQS_HTML).exists())
+        self.assertEqual(self.lint(final=False), 0)
+        self.assertEqual(f.cmd_render(args), 1)
+        self.assertEqual(self.lint(), 0)
+        self.assertEqual(f.cmd_render(args), 0)
+        (self.run / f.FAQS_MD).write_text(with_answer(0, "Yes. A second sentence."), encoding="utf-8")
+        self.assertEqual(f.cmd_render(args), 1)
+        self.assertEqual(self.lint(), 1)
+        self.assertFalse((self.run / f.DATA / "lint-receipt.json").exists())
+
+    def test_export_rejects_changed_evidence_links_and_research(self):
+        args = Namespace(run_dir=str(self.run), url=HOME, brand=None, heading=None, forbid=None)
+        for name in [f.PUBLIC_BUNDLE, f.INVENTORY, f.LINKS_JSON, f.RESEARCH]:
+            with self.subTest(name=name):
+                self.assertEqual(self.lint(), 0)
+                path = self.run / name
+                before = path.read_bytes() if path.exists() else None
+                path.write_bytes((before or b"") + b"\nchanged\n")
+                self.assertEqual(f.cmd_render(args), 1)
+                if before is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(before)
+
+    def test_export_preserves_never_say_policy(self):
+        self.assertEqual(self.lint(forbid=["Secret client"]), 0)
+        args = Namespace(run_dir=str(self.run), url=HOME, brand=None, heading=None, forbid=None)
+        self.assertEqual(f.cmd_render(args), 1)
+        args.forbid = ["Secret client"]
+        self.assertEqual(f.cmd_render(args), 0)
 
     def make_book(self):
         import openpyxl

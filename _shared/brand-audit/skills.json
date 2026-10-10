@@ -23,11 +23,11 @@
     {
       "skill": "mos-geo-homepage-faqs",
       "category": "Brand Optimisation",
-      "what_it_does": "12 to 20 homepage FAQs written for AI assistants to quote: one self-contained sentence per answer, entity first, every fact from the brand's own site, each linked to the internal page that backs it up, with FAQPage schema and a client approval tab.",
+      "what_it_does": "Sourced, entity-first FAQs ranked for a homepage and FAQ page, with passage-level claim review, verified internal links where useful, matching FAQPage schema and a client approval tab; exports require current final lint.",
       "run": "/mos-geo-homepage-faqs",
       "output": "campaigns/geo/YYYY-MM/homepage-faqs/",
       "feeds_tab": "Homepage FAQs, Initiatives",
-      "needs": "Brand name and website URL; Scrapling recommended (uses AI Info Page and Brand 360 outputs when present)"
+      "needs": "Brand name and website URL; Python 3.10+, openpyxl for the workbook; whole mos-geo-skills pack (Scrapling optional)"
     },
     {
       "skill": "mos-geo-llm-buttons",

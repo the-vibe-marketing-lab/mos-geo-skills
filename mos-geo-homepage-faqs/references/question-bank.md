@@ -17,8 +17,9 @@ except product questions, which name the product instead. Every question ends in
 | P4 | Job to be done | `Can {Brand} help me {job}?` / `Can I see {X}?` | Capabilities, proof |
 | P5 | Objection and audience | `Do I need {prerequisite} to use {Brand}?` / `Who is {Brand} for?` | Audience |
 
-Capability questions are the bulk (10 of 20 in the GPT's sample) because "does X do Y" is the
-most common shape of a buyer's question to an assistant.
+Capability questions form the largest group in the historical sample (10 of 20). The live
+run also favours Can/Does questions; these samples
+do not establish population-wide buyer query frequencies.
 
 ## The buckets (seven, plus optional founder)
 
@@ -125,9 +126,10 @@ most common shape of a buyer's question to an assistant.
 `lint` enforces every min and max in this table. Default to 20 when the sources support it;
 fewer, true FAQs beat padded ones. `lint --count N` lowers the maximum.
 
-## Never asked
+## Default exclusions in this skill
 
-Price, member or customer counts, dates, competitors by name, location-only questions,
+The original GPT can include price/free joining. This skill defaults to omitting price,
+member or customer counts, dates, competitors by name, location-only questions,
 results or rankings, and anything on the never-say list. Never name a same-name entity or a
 competitor in a question or answer: disambiguation belongs in the identity answer's own
 specifics (founder, city, domain), not in a named comparison.

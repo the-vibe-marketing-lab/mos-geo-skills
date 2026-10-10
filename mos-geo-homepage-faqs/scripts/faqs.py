@@ -982,7 +982,38 @@ def cmd_lint(args) -> int:
     out = run / DATA / "lint.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    receipt = run / DATA / "lint-receipt.json"
+    if not r.fails and args.final and page.resolve() == (run / FAQS_MD).resolve() and bundle_p.resolve() == (run / PUBLIC_BUNDLE).resolve():
+        receipt.write_text(json.dumps({"version": 1, "brand": args.brand, "forbid": opts["forbid"],
+                                       "inputs": lint_inputs(run)}, indent=2) + "\n", encoding="utf-8")
+    elif receipt.exists():
+        receipt.unlink()
     return 1 if r.fails else 0
+
+
+def lint_inputs(run: Path) -> dict:
+    """Bind an export to the exact copy, evidence, links and checker that passed final lint."""
+    paths = [FAQS_MD, PUBLIC_BUNDLE, BUNDLE, INVENTORY, LINKS_JSON, CANDIDATES, RESEARCH,
+             "data/evidence-review.md"]
+    result = {name: hashlib.sha256((run / name).read_bytes()).hexdigest() if (run / name).is_file() else None
+              for name in paths}
+    result["checker"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    return result
+
+
+def render_gate(run: Path, brand: str, forbid: list[str]) -> bool:
+    receipt = run / DATA / "lint-receipt.json"
+    try:
+        saved = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    if saved.get("version") != 1 or saved.get("brand") != brand or saved.get("inputs") != lint_inputs(run):
+        print("FAIL export requires a current passing `lint --final` on faqs.md and data/public-bundle.md; run lint again")
+        return False
+    if not set(saved.get("forbid", [])).issubset(forbid):
+        print("FAIL render must preserve every --forbid term used by final lint")
+        return False
+    return True
 
 
 RENDERED = [FAQS_HTML, "faq-page.html", JSONLD, HANDOVER, NOTE]
@@ -1121,9 +1152,10 @@ def faq_jsonld(items: list[tuple[str, str]], url: str) -> dict:
 
 HANDOVER_TMPL = """# Homepage FAQs: handover for {brand}
 
-Generated {date} by mos-geo-homepage-faqs. Every answer passed `faqs.py lint`: one sentence,
-brand-first, every number and named tool traced to the brand's own inputs, every link checked
-against the crawl.
+Generated {date} by mos-geo-homepage-faqs. The current copy passed `faqs.py lint --final`:
+answer shape, name and number presence, and internal links checked against the saved crawl.
+This mechanical check does not establish that a cited page supports each complete claim;
+review the cited passages and client verdicts before publishing.
 
 ## Files
 
@@ -1183,8 +1215,13 @@ def research_note(run: Path, brand: str, faqs: list[dict]) -> str:
              "", "Sources cited:", ""] + [f"- {s}" for s in sources]
     lines += ["", "## Claims policy", "",
               "Answers describe capabilities (teaches, helps, shows, focuses on), never outcomes. No prices, "
-              "counts or dates, no superlatives, no guarantees. Every number and named tool is in the "
-              "public bundle (`data/public-bundle.md`)."]
+              "superlatives or guarantees. Lint checks answer shape and name/number presence in the "
+              "public bundle; it does not establish support for every complete claim. See "
+              "`data/evidence-review.md` for source review and the workbook for client approval.",
+              "", "## Origin", "",
+              "Independent implementation inspired by the observed output of Steve Toth's "
+              "LLM-Friendly Homepage FAQ Generator (SEO Notebook). The saved sample is a historical "
+              "run, not the GPT's private instructions; a fresh live comparison may be unavailable."]
     return "\n".join(lines) + "\n"
 
 
@@ -1196,6 +1233,8 @@ def cmd_render(args) -> int:
     run = Path(args.run_dir)
     title, faqs = parse_faqs((run / FAQS_MD).read_text(encoding="utf-8"))
     brand = args.brand or brand_from_title(title) or "the brand"
+    if not render_gate(run, brand, split_list(args.forbid)):
+        return 1
     extra = load_links_json(run)
     home, rest = placement_split(faqs, extra)
     heading = args.heading or f"{brand}: frequently asked questions"
