@@ -1,0 +1,50 @@
+{
+  "skill_name": "mos-geo-review-sentiment",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I've already pulled 60 Koala (koala.com, AU mattress/furniture brand) reviews from Trustpilot and ProductReview into /mnt/c/Users/richa/Desktop/mos-geo-skills/.claude/worktrees/mos-geo-review-sentiment/mos-geo-review-sentiment-workspace/inputs/koala/reviews.jsonl. Give me the overall brand sentiment report, a word cloud, and a full ranked report on the areas Koala needs to fix. Don't scrape anything new.",
+      "expected_output": "Sentiment report with computed headline numbers, positive/negative word clouds (PNG and/or HTML), ranked fix report with verbatim quotes, owners and fixes.",
+      "files": [],
+      "assertions": [
+        "Headline average rating stated as 2.73 (or 2.7), matching the 60 reviews",
+        "Separate positive and negative word cloud files are produced",
+        "Word cloud terms are mostly multi-word phrases, not single words",
+        "Fix report ranks issues with a review count or share for each",
+        "Every quote in the fix report appears verbatim in reviews.jsonl",
+        "Report states the sample size and that it is a capped/limited sample",
+        "Every quote under an issue in the fix report is actually about that issue"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Find which third-party review sites Bondi Sands (bondisands.com.au, Australian tanning brand) has profiles on, with review counts, ratings and what it would cost to scrape each one through Apify. Don't scrape any reviews yet, I want to pick which sites first.",
+      "expected_output": "A table of discovered review profiles with review count, rating, latest review and per-platform scrape cost estimate, ending with a request for the user to pick; no review scraping performed.",
+      "files": [],
+      "assertions": [
+        "No reviews were scraped (no review dataset produced)",
+        "Picker/findings table lists at least 3 review platforms including Trustpilot or ProductReview",
+        "Each listed platform has a scrape cost estimate in dollars",
+        "Each listed platform shows a review count or an explicit unknown marker",
+        "Final message hands the platform choice to the user",
+        "Paid spend recorded and at or under $0.05",
+        "Picker lists regional Trustpilot profiles beyond the AU one (e.g. .co.uk or .eu) with their review counts"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "we're mid GEO audit for a client, Acme Widgets (acme.example). reviews are in /mnt/c/Users/richa/Desktop/mos-geo-skills/.claude/worktrees/mos-geo-review-sentiment/mos-geo-review-sentiment-workspace/inputs/acme/reviews.jsonl (trustpilot, google maps, reddit). what are customers complaining about most, what should they fix first, and can you make a word cloud of it",
+      "expected_output": "Ranked fix list with counts/shares computed from data, Reddit excluded from star average, word clouds, honest small-sample framing.",
+      "files": [],
+      "assertions": [
+        "Reddit is excluded from the star-rating average",
+        "A word cloud file is produced",
+        "Complaints are ranked with a count or share for each",
+        "Every quote in the outputs appears verbatim in reviews.jsonl",
+        "Each top issue names an owner or team and a concrete fix",
+        "The hinge/hand-injury safety issue is ranked first in the fix list",
+        "Every quote under an issue in the fix report is actually about that issue"
+      ]
+    }
+  ]
+}
