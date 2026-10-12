@@ -92,8 +92,8 @@ mkdir -p "$RUN"
 $F doctor
 ```
 
-Same rules as every mos-geo skill: `campaigns/geo/YYYY-MM/homepublishing/pages/` in a one-brand
-brain, a brand folder in an agency brain, `outputs/geo/YYYY-MM/<brand>/homepublishing/pages/` with
+Same rules as every mos-geo skill: `campaigns/geo/YYYY-MM/homepage-faqs/` in a one-brand
+brain, a brand folder in an agency brain, `outputs/geo/YYYY-MM/<brand>/homepage-faqs/` with
 no brain, and `-2`, `-3` for a repeat run. Never write a run folder into this pack. If
 `doctor` says Scrapling is missing, show its one-line install and carry on; `crawl` falls
 back to the `mos-geo-ai-info` crawler.
