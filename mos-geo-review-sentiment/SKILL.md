@@ -12,7 +12,7 @@ description: >
   aspect taxonomy (TypeSafe Jev, or Claude in session) and computes every number in code. Adds a
   Review Fixes tab and Initiatives to the GEO brand audit workbook.
   USE WHEN the user says "review sentiment", "brand sentiment", "review analysis", "analyse our
-  reviews", "what are customers saying", "what do customers say about [brand]", "Trustpilot
+  reviews", "what are customers saying", "what do customers say about [brand]", "what do customers think of [brand]", "check the review sites", "Trustpilot
   analysis", "Google reviews analysis", "ProductReview analysis", "G2 reviews", "review audit",
   "word cloud of reviews", "review word cloud", "what are people complaining about", "fix our
   reviews", "unreplied reviews", "/mos-geo-review-sentiment", or asks for the deep version of
