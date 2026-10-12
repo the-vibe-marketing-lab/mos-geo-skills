@@ -1,0 +1,7 @@
+[
+ {"recordType": "review", "id": "pr-1", "title": null, "body": "Mattress sagged after a year.", "rating": 2,
+  "submittedAt": "2026-10-06T05:37:41Z", "author": {"id": "a1", "displayName": "PR Person"},
+  "comments": [{"isBrandResponse": true, "body": "Sorry to hear this, please contact us.", "submittedAt": "2026-10-07T00:00:00Z"}],
+  "sourceListing": {"detailsUrl": "https://www.productreview.com.au/listings/acme-widget", "rating": 4.1, "numberOfReviews": 300}},
+ {"recordType": "listing", "id": "listing-1"}
+]

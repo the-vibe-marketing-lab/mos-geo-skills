@@ -1,0 +1,14 @@
+{
+  "brand": "Acme Widgets",
+  "aspects": [
+    {"id": "delivery", "label": "Delivery", "description": "How long the order took to arrive, tracking, and the courier.", "owner": "ops", "metric": "Share of reviews mentioning late delivery, per month"},
+    {"id": "build_quality", "label": "Build quality", "description": "How well the product is made: materials, finish, parts breaking.", "owner": "product"},
+    {"id": "customer_support", "label": "Customer support", "description": "Speed and helpfulness of replies by email, chat or phone.", "owner": "support"},
+    {"id": "refunds", "label": "Refunds and returns", "description": "Getting money back, return labels and return costs.", "owner": "ops"},
+    {"id": "price_value", "label": "Price and value", "description": "Whether the price feels fair for what you get.", "owner": "marketing"},
+    {"id": "ease_of_setup", "label": "Ease of setup", "description": "Unboxing, assembly and setup instructions.", "owner": "product"},
+    {"id": "warranty", "label": "Warranty", "description": "Warranty claims and how they are handled.", "owner": "support"},
+    {"id": "website_checkout", "label": "Website and checkout", "description": "Ordering online, payment and checkout problems.", "owner": "marketing"}
+  ],
+  "locked_at": "2026-10-12 12:00:00"
+}

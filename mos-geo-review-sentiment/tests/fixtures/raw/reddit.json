@@ -1,0 +1,9 @@
+[
+ {"id": "t3_abc", "dataType": "post", "title": "Is Acme Widgets any good?", "body": "Thinking of buying one.",
+  "postUrl": "https://www.reddit.com/r/test/comments/abc/is_acme_widgets_any_good", "createdAt": "2026-10-01T00:00:00.000Z", "authorName": "redditor1"},
+ {"id": "c1", "dataType": "comment", "body": "Mine broke after a week, avoid Acme Widgets.",
+  "url": "https://www.reddit.com/r/test/comments/abc/x/c1/", "commentCreatedAt": "2026-10-02T00:00:00.000Z", "authorName": "redditor2"},
+ {"id": "c2", "dataType": "comment", "body": "Unrelated chat about mattresses.",
+  "url": "https://www.reddit.com/r/test/comments/abc/x/c2/", "commentCreatedAt": "2026-10-02T00:00:00.000Z", "authorName": "redditor3"},
+ {"dataType": "community", "name": "r/test"}
+]

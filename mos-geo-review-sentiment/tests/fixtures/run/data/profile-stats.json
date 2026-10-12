@@ -1,0 +1,5 @@
+{"as_of": "2026-10-12", "profiles": [
+ {"id": "trustpilot-1", "platform": "trustpilot", "url": "https://www.trustpilot.com/review/acme.example", "read": "read via urllib", "name": "Acme Widgets", "rating": 3.4, "reviews": 120, "latest": "2026-10-01", "last_12m": 40, "match": "match"},
+ {"id": "google_maps-1", "platform": "google_maps", "url": "https://www.google.com/maps/place/Acme+Widgets", "read": "not readable without a scrape", "match": "unknown", "dates": []},
+ {"id": "reddit-1", "platform": "reddit", "url": "https://www.reddit.com/search/?q=%22Acme+Widgets%22", "read": "not readable without a scrape", "match": "unknown", "dates": []}
+]}

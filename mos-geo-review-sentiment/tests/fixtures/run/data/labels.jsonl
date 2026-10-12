@@ -1,0 +1,60 @@
+{"id": "b4111754b6fa", "aspects": {"customer_support": -2, "refunds": -2}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "6777ab759604", "aspects": {"delivery": 2, "ease_of_setup": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "73235cd67246", "aspects": {"refunds": -2, "warranty": -2}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "8f6357fb8b95", "aspects": {"refunds": -2, "build_quality": -2}, "severity": "safety_legal", "churn": true, "source": "fixture"}
+{"id": "88d8d5361107", "aspects": {"build_quality": 2, "customer_support": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "39385f9c4bdf", "aspects": {"warranty": -2, "delivery": -1}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "6b7f6bd96e61", "aspects": {"delivery": 2, "refunds": -2}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "8fb4b2010f96", "aspects": {"delivery": -1, "build_quality": -2}, "severity": "safety_legal", "churn": true, "source": "fixture"}
+{"id": "9f49a9c9a807", "aspects": {"price_value": 2, "build_quality": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "c0553d94ed29", "aspects": {"website_checkout": -1, "refunds": -2}, "severity": "cost_money", "churn": false, "source": "fixture"}
+{"id": "7db97b53e3c7", "aspects": {"price_value": 2, "build_quality": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "b33db5041936", "aspects": {"delivery": -2, "customer_support": -1}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "2dac610e9a22", "aspects": {"price_value": 1, "build_quality": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "8c0736b936d8", "aspects": {"ease_of_setup": 2, "build_quality": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "324e63bd8aa4", "aspects": {"price_value": 2, "refunds": -2}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "96ffbf459baa", "aspects": {"build_quality": 2, "ease_of_setup": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "d73017981bd5", "aspects": {"price_value": 1, "website_checkout": -1}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "9b7397a5c093", "aspects": {"delivery": -1}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "81df050e8ffa", "aspects": {"build_quality": 1, "delivery": -1}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "8c24e0882e4c", "aspects": {"customer_support": 2, "warranty": -2}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "7408f1840ebd", "aspects": {"warranty": -2, "refunds": -2}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "d5ab837d74f6", "aspects": {"customer_support": -1, "build_quality": -1}, "severity": "minor", "churn": true, "source": "fixture"}
+{"id": "b8a9c61ff77b", "aspects": {"build_quality": 2, "delivery": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "e4f77faf4231", "aspects": {"customer_support": 2, "build_quality": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "0d0013c509d0", "aspects": {"price_value": 1, "refunds": -2}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "130a5bc482e5", "aspects": {"refunds": -2, "customer_support": -2}, "severity": "cost_money", "churn": false, "source": "fixture"}
+{"id": "30ae140c2bb8", "aspects": {"ease_of_setup": 1, "delivery": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "1d378fcb2801", "aspects": {"price_value": 2, "ease_of_setup": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "800001345717", "aspects": {"build_quality": 1, "delivery": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "0d06273ae79b", "aspects": {"ease_of_setup": 1, "build_quality": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "3794cd434be5", "aspects": {"price_value": 1, "customer_support": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "5fa557c1979c", "aspects": {"delivery": -2}, "severity": "cost_money", "churn": false, "source": "fixture"}
+{"id": "19f8d03f098a", "aspects": {"price_value": 2, "ease_of_setup": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "a455a36f5e17", "aspects": {"build_quality": 2, "price_value": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "5cbed300a346", "aspects": {"refunds": -2}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "6277899b39bd", "aspects": {"build_quality": -2, "delivery": -2}, "severity": "safety_legal", "churn": true, "source": "fixture"}
+{"id": "f383c3bffcb3", "aspects": {"ease_of_setup": 1, "refunds": -2}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "40f928d90503", "aspects": {"warranty": -2, "delivery": -2}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "8ce2a3227a80", "aspects": {"customer_support": 2, "delivery": -2}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "5f3aa7848910", "aspects": {"build_quality": 2, "ease_of_setup": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "d63745cbdd03", "aspects": {"price_value": 2, "ease_of_setup": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "0caa6444c683", "aspects": {"build_quality": 1, "customer_support": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "5ddf71bb63e9", "aspects": {"price_value": 1, "build_quality": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "b463220316ec", "aspects": {"delivery": 2, "build_quality": -1}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "cad709b0f3c2", "aspects": {"build_quality": 2, "warranty": -2}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "f088fec608c9", "aspects": {"build_quality": 2, "ease_of_setup": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "06343b92372c", "aspects": {"website_checkout": -1, "warranty": -2}, "severity": "cost_money", "churn": false, "source": "fixture"}
+{"id": "0ee6e35d13bb", "aspects": {"refunds": -2, "customer_support": -2}, "severity": "cost_money", "churn": false, "source": "fixture"}
+{"id": "a9c3786366cb", "aspects": {"price_value": 2, "build_quality": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "d8697bc03543", "aspects": {"delivery": -1}, "severity": "minor", "churn": false, "source": "fixture"}
+{"id": "71591ce14a2b", "aspects": {"delivery": -2, "customer_support": -1}, "severity": "cost_money", "churn": false, "source": "fixture"}
+{"id": "8a8d85b62d18", "aspects": {"price_value": 1, "ease_of_setup": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "b80c08664455", "aspects": {"customer_support": 2, "ease_of_setup": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "224b29b30e75", "aspects": {"warranty": -2, "refunds": -2}, "severity": "cost_money", "churn": true, "source": "fixture"}
+{"id": "f42f1d029dde", "aspects": {"build_quality": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "d9cda81de080", "aspects": {"build_quality": 1, "price_value": 1}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "6a0800b4a911", "aspects": {"website_checkout": -1, "refunds": -2}, "severity": "cost_money", "churn": false, "source": "fixture"}
+{"id": "c8bdaeb5e98f", "aspects": {"build_quality": -2, "delivery": -2}, "severity": "safety_legal", "churn": false, "source": "fixture"}
+{"id": "17a0a1d53c5d", "aspects": {"price_value": 2, "customer_support": 2}, "severity": "none", "churn": false, "source": "fixture"}
+{"id": "3ebb64493031", "aspects": {"build_quality": -2, "delivery": -2}, "severity": "safety_legal", "churn": true, "source": "fixture"}
