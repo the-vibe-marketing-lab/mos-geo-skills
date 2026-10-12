@@ -43,11 +43,21 @@ Star-only reviews (no text) count toward ratings and reply rates, not toward asp
 - **Praise**: only aspects with more positive than negative mentions, ranked by net share
   ((positive - negative) / mentions). The headline and the table show positive and negative counts
   side by side ("7 positive / 3 negative"), so a top complaint can never read as a strength.
-- **Quotes** per issue: up to 3. Each excerpt starts at the sentence that best matches the aspect
-  (its label, description and optional `keywords`) and carries a negative word, then runs on while
-  it fits; cuts are marked "…". Excerpts that state the complaint themselves rank first, then the
-  strongest feeling, fewest other complaints, newest. A 4 to 5 star review is used only when its
-  excerpt shows the complaint.
+- **Quotes** per issue: up to 3. A review qualifies only if it is labelled negative for the aspect
+  AND one of its sentences matches this aspect's words (label, description, optional `keywords`)
+  better than any other aspect the review is labelled with, with a negative word in it. The
+  excerpt starts at that sentence and runs on while it fits, stopping before a sentence about a
+  different issue; cuts are marked "…". Order: strongest feeling, fewest other complaints, newest.
+  In priority order, a review already quoted under another issue is used again only when there is
+  no other candidate. An issue with no qualifying sentence shows no quote rather than a wrong one.
+- **Safety and legal**: a review labelled `safety_legal` is tied to an aspect only through the
+  sentence with the injury or legal word (hurt, injury, burn, rash, Fair Trading, ACCC, lawyer ...).
+  Any aspect with one or more tied reviews ranks first, marked "Safety/legal: ranked first
+  regardless of score". Safety or legal reviews that tie to no aspect are quoted under "Read first"
+  at the top of the fix report, with a note when the text names no injury or legal step at all
+  (likely an over-label).
+- **Sample caption**: "the newest N reviews per platform" for scraped runs; "a user-supplied sample
+  of N reviews; selection method unknown" for `import` runs.
 - **Denominators**: always both, "60 labelled reviews (55 name an aspect)".
 - **Small counts**: under 3 reviews is an individual report, never a pattern. The template writes
   "one negative review" / "two negative reviews", titles default to "<aspect>: single mentions",

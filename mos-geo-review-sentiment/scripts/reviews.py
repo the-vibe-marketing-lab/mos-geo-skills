@@ -305,6 +305,8 @@ def fetch_page(url: str, mode: str = "auto") -> tuple[int, str, str, str]:
         got = fetch_scrapling(url, browser)
         if got and got[0] == 200 and got[1]:
             return got[0], got[1], got[2], "scrapling-browser" if browser else "scrapling"
+        if got and got[0] in (404, 410):  # a definite "not here" beats a bot block
+            st = got[0]
     return st, body, final, "urllib"
 
 
@@ -360,10 +362,11 @@ def brain_mode(brain: Path) -> str:
     return m.group(1) if m else "in-house"
 
 
-def run_dir_for(brand: str, day: str, start: Path) -> Path:
+def run_dir_for(brand: str, day: str, start: Path, new: bool = False) -> Path:
     """campaigns/geo/YYYY-MM/review-sentiment/ in an in-house or client brain;
-    an agency brain (or no brain) adds a brand folder. A second run in the same
-    month gets review-sentiment-2, -3 ... so nothing is overwritten."""
+    an agency brain (or no brain) adds a brand folder. The same brand in the
+    same month reuses its folder (re-runs resume); `new` (or a folder that
+    belongs to another brand) moves on to review-sentiment-2, -3 ..."""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         sys.exit(f"--date must be YYYY-MM-DD, got {day}")
     slug = slugify(brand)
@@ -376,13 +379,15 @@ def run_dir_for(brand: str, day: str, start: Path) -> Path:
         month = start.resolve() / "outputs" / "geo" / day[:7] / slug
     target, n = month / SKILL_FOLDER, 2
     while target.exists() and any(target.iterdir()):
+        if not new and slugify(run_meta(target).get("brand", "")) in ("", slug):
+            return target
         target = month / f"{SKILL_FOLDER}-{n}"
         n += 1
     return target
 
 
 def cmd_path(args) -> int:
-    print(run_dir_for(args.brand, args.date or today(), Path(args.start or ".")))
+    print(run_dir_for(args.brand, args.date or today(), Path(args.start or "."), args.new))
     return 0
 
 
@@ -743,7 +748,9 @@ def _productreview(item: dict) -> dict | None:
     reply = next((c for c in item.get("comments") or []
                   if pick(c, "isBrandResponse", "isBrand", "author.isBrand", "author.isBrandRepresentative")),
                  None)
-    return {"review_url": listing.get("detailsUrl") or "", "rating": item.get("rating"),
+    rid = str(item.get("id") or "")
+    url = f"https://www.productreview.com.au/reviews/{rid}" if re.fullmatch(r"[0-9a-f-]{36}", rid) else ""
+    return {"review_url": url or listing.get("detailsUrl") or "", "rating": item.get("rating"),
             "date": item.get("submittedAt") or item.get("firstPublishedAt"), "title": item.get("title"),
             "text": item.get("body"), "author": pick(item, "author.displayName", "author.id"),
             "owner_reply": pick(reply or {}, "body", "text"),
@@ -867,44 +874,125 @@ def site_links(page: str) -> list[str]:
     return [html.unescape(u) for u in links if u.startswith("http")]
 
 
-def brand_site_candidates(domain: str, platforms: list[dict], scrapling: str) -> tuple[list[dict], str]:
+MULTI_SUFFIXES = ("com.au", "net.au", "org.au", "co.uk", "org.uk", "co.nz", "com.br", "co.za", "com.sg", "co.jp")
+TLD_COUNTRY = {"au": "AU", "uk": "GB", "nz": "NZ", "ca": "CA", "eu": "EU", "de": "DE", "fr": "FR", "ie": "IE",
+               "us": "US", "sg": "SG", "jp": "JP", "za": "ZA", "br": "BR", "nl": "NL", "es": "ES", "it": "IT"}
+
+
+def registrable(host: str) -> tuple[str, str]:
+    """('bondisands', 'co.uk') for 'www.bondisands.co.uk'; ('koala', 'com') for 'au.koala.com'."""
+    host = host.lower().removeprefix("www.")
+    suffix = next((x for x in MULTI_SUFFIXES if host.endswith("." + x)), host.rsplit(".", 1)[-1])
+    labels = host[: -len(suffix) - 1].split(".")
+    return labels[-1], suffix
+
+
+def country_of(host: str, hreflang: str = "") -> str:
+    """Market for a domain: hreflang region first, then a country subdomain, then the TLD."""
+    m = re.search(r"-([a-z]{2})$", hreflang.lower())
+    if m:
+        return "GB" if m.group(1) == "gb" else m.group(1).upper()
+    host = host.lower().removeprefix("www.")
+    sub = host.split(".")[0]
+    if sub in TLD_COUNTRY and host.count(".") >= 2 and not any(host.endswith(x) for x in MULTI_SUFFIXES):
+        return TLD_COUNTRY[sub]
+    return TLD_COUNTRY.get(registrable(host)[1].split(".")[-1], "global")
+
+
+def regional_domains(page: str, domain: str) -> dict:
+    """The brand's other regional sites (bondisands.co.uk next to bondisands.com.au), from hreflang
+    alternates and links, keyed host -> country."""
+    root = registrable(domain)[0]
+    found: dict = {}
+    for tag in re.findall(r"<link[^>]+hreflang[^>]*>", page, re.I):
+        href = re.search(r'href=["\']([^"\']+)', tag)
+        lang = re.search(r'hreflang=["\']([^"\']+)', tag)
+        if href and lang and lang.group(1).lower() != "x-default":
+            host = domain_of(href.group(1))
+            if host and registrable(host)[0] == root:
+                found.setdefault(host, country_of(host, lang.group(1)))
+    bare = re.findall(r"https?://(?:[a-z0-9-]+\.)*" + re.escape(root) + r"\.[a-z.]{2,12}", page, re.I)
+    for url in site_links(page) + bare:  # store pickers often hold the URL as plain text
+        host = domain_of(url.rstrip("."))
+        if host and registrable(host)[0] == root:
+            found.setdefault(host, country_of(host))
+    found.pop(domain_of(domain), None)
+    return found
+
+
+def regional_trustpilot(regions: dict) -> list[dict]:
+    return [{"platform": "trustpilot", "url": f"https://www.trustpilot.com/review/{host}", "source": "regional-site",
+             "country": country} for host, country in sorted(regions.items())]
+
+
+def brand_site_candidates(domain: str, platforms: list[dict], scrapling: str) -> tuple[list[dict], str, dict]:
     status, page, final, via = fetch_page(f"https://{domain}/", scrapling)
     if status != 200 or not page:
-        return [], f"brand site not readable (HTTP {status})"
+        return [], f"brand site not readable (HTTP {status})", {}
     out = []
     for url in site_links(page):
         p = match_platform(url, platforms)
         if p:
             out.append({"platform": p["id"], "url": url, "source": "brand-site"})
-    return out, f"brand site read via {via} ({final})"
+    regions = regional_domains(page, domain)
+    return out + regional_trustpilot(regions), f"brand site read via {via} ({final})", regions
 
 
 def search_queries(brand: str, platforms: list[dict], found: set) -> dict:
-    return {p["site_query"].format(brand=brand): p["id"] for p in platforms
-            if p.get("site_query") and p["id"] not in found}
+    """One site: query per platform still missing, plus one open query that also
+    shows which retailers hold the brand's reviews (mapped to None)."""
+    queries = {p["site_query"].format(brand=brand): p["id"] for p in platforms
+               if p.get("site_query") and p["id"] not in found}
+    queries[f'"{brand}" reviews'] = None
+    return queries
+
+
+def search_cost(n_queries: int) -> float:
+    spec = load_config("actors.json")["discovery"]
+    return n_queries * int(spec.get("pages_per_query") or 1) * float(spec["price_per_query_usd"])
+
+
+def retailer_hits(items: list) -> dict:
+    retailers = set(load_config("platforms.json").get("retailers", {}).get("domains", []))
+    hits = Counter()
+    for page in items:
+        for res in page.get("organicResults") or []:
+            host = domain_of(res.get("url", ""))
+            if host in retailers or any(host.endswith("." + r) for r in retailers):
+                hits[host] += 1
+    return dict(hits.most_common())
 
 
 def search_candidates(client: Apify, queries: dict, country: str, platforms: list[dict],
-                      raw_dir: Path) -> tuple[list[dict], dict]:
+                      raw_dir: Path, brand: str = "") -> tuple[list[dict], dict, dict]:
     spec = load_config("actors.json")["discovery"]
-    payload = fill_template(spec["input"], {"queries": "\n".join(queries), "country": country.lower()})
-    cap = max(len(queries) * float(spec["price_per_query_usd"]) * 1.5 + 0.02,
-              float(spec.get("charge_cap_floor_usd") or 0))
+    payload = fill_template(spec["input"], {"queries": "\n".join(queries), "country": country.lower(),
+                                            "pages": int(spec.get("pages_per_query") or 1)})
+    cap = max(search_cost(len(queries)) * 1.5 + 0.02, float(spec.get("charge_cap_floor_usd") or 0))
     try:
         items, run = client.run(spec["actor"], payload, None, cap)
     except RuntimeError as e:
-        return [], run_record("discovery", spec["actor"], None, 0, str(e))
+        return [], run_record("discovery", spec["actor"], None, 0, str(e)), {}
     write_json(raw_dir / "discovery-search.json", items)
+    return parse_search(items, queries, platforms, brand), run_record("discovery", spec["actor"], run, len(items)), \
+        retailer_hits(items)
+
+
+def parse_search(items: list, queries: dict, platforms: list[dict], brand: str) -> list[dict]:
+    """Profile candidates from Google results. Later results pages drift to other
+    brands, so a result must name the brand in its URL or title."""
+    words = [w for w in re.findall(r"[a-z0-9]+", brand.lower()) if len(w) > 1]
     out = []
     for page in items:
         pid = queries.get((page.get("searchQuery") or {}).get("term", ""))
         for res in (page.get("organicResults") or [])[:10]:
             p = match_platform(res.get("url", ""), platforms)
-            if p and (pid is None or p["id"] == pid):
+            hay = f"{res.get('url', '')} {res.get('title', '')}".lower()
+            if p and (pid is None or p["id"] == pid) and all(w in hay for w in words):
                 out.append({"platform": p["id"], "url": res["url"], "source": "google-search",
                             "snippet": clip(res.get("description") or "", 300), "title": res.get("title", ""),
                             "snippet_stats": snippet_stats(res)})
-    return out, run_record("discovery", spec["actor"], run, len(items))
+    return out
 
 
 def snippet_stats(res: dict) -> dict:
@@ -946,6 +1034,8 @@ def number_candidates(cands: list[dict]) -> list[dict]:
             continue
         seen.add(key)
         per[c["platform"]] += 1
+        if c["platform"] == "trustpilot" and not c.get("country"):
+            c = dict(c, country=country_of(key.split("/review/")[-1]))
         out.append({"id": f"{c['platform']}-{per[c['platform']]}", **c, "url": key})
     return out
 
@@ -958,22 +1048,26 @@ def cmd_discover(args) -> int:
     update_meta(run, brand=args.brand, domain=domain, country=args.country.upper(), industry=args.industry or "",
                 created_at=run_meta(run).get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S"),
                 salt=run_meta(run).get("salt") or hashlib.sha256(os.urandom(16)).hexdigest()[:16])
-    cands = predictable_candidates(args.brand, domain, platforms)
-    linked, site_note = brand_site_candidates(domain, everything, args.scrapling)
+    cands = [dict(c, country=country_of(domain)) if c["platform"] == "trustpilot" else c
+             for c in predictable_candidates(args.brand, domain, platforms)]
+    linked, site_note, regions = brand_site_candidates(domain, everything, args.scrapling)
+    retailers: dict = {}
     cands += linked
     cands = [c for c in cands if not dead_link(c, args.scrapling)]
     found = {c["platform"] for c in cands if c["source"] != "predictable" or c["platform"] == "trustpilot"}
     queries = search_queries(args.brand, platforms, found)
-    print(f"{len(cands)} candidate(s) from predictable URLs and the brand site; {site_note}")
+    print(f"{len(cands)} candidate(s) from predictable URLs and the brand site; {site_note}"
+          + (f"; regional sites: {', '.join(f'{h} ({c})' for h, c in sorted(regions.items()))}" if regions else ""))
     if queries and not args.no_search:
         if args.dry_run:
-            print(f"dry-run: would run 1 Google search with {len(queries)} queries "
-                  f"(~${len(queries) * load_config('actors.json')['discovery']['price_per_query_usd']:.3f}):")
+            pages = load_config("actors.json")["discovery"].get("pages_per_query") or 1
+            print(f"dry-run: would run 1 Google search with {len(queries)} queries x up to {pages} pages "
+                  f"(at most ~${search_cost(len(queries)):.3f}):")
             print("\n".join(f"  {q}" for q in queries))
         else:
             env = load_env(args.env_file)
-            more, rec = search_candidates(Apify(env.get("APIFY_TOKEN", "")), queries, args.country, everything,
-                                          run / DATA / "raw")
+            more, rec, retailers = search_candidates(Apify(env.get("APIFY_TOKEN", "")), queries, args.country,
+                                                     everything, run / DATA / "raw", args.brand)
             cands += more
             log_cost(run, rec)
             print(f"Google search: {len(more)} candidate(s), ${rec.get('cost_usd') or 0:.4f}"
@@ -981,7 +1075,9 @@ def cmd_discover(args) -> int:
     add_maps_search(args.brand, cands)
     out = number_candidates(cands)
     write_json(run / DATA / "candidates.json", {"brand": args.brand, "domain": domain, "country": args.country.upper(),
-                                                "industry": args.industry or "", "site": site_note, "candidates": out})
+                                                "industry": args.industry or "", "site": site_note,
+                                                "regional_sites": regions, "retailers": retailers,
+                                                "candidates": out})
     for c in out:
         print(f"  {c['id']:<16} {c['source']:<13} {c['url']}")
     print(f"Wrote {run / DATA / 'candidates.json'}. Next: stats.")
@@ -1037,31 +1133,40 @@ def jsonld_stats(page: str) -> dict:
 
 def regex_stats(page: str) -> dict:
     rating = re.search(r'"ratingValue"\s*:\s*"?([0-5](?:\.\d+)?)', page)
+    # Dates only from objects typed as reviews, not every date on the page.
     count = re.search(r'"(?:reviewCount|ratingCount|numberOfReviews)"\s*:\s*"?([\d,]+)', page)
-    dates = [parse_date(d) for d in re.findall(r'"(?:datePublished|publishedDate|submittedAt)"\s*:\s*"([^"]+)"', page)]
+    dates = [parse_date(d) for d in re.findall(
+        r'"@type"\s*:\s*"Review"[^{}]{0,600}?"datePublished"\s*:\s*"([^"]+)"', page)]
     title = re.search(r"<title[^>]*>(.*?)</title>", page, re.S | re.I)
     return {"rating": num(rating.group(1)) if rating else None, "reviews": num(count.group(1)) if count else None,
             "dates": [d for d in dates if d], "name": html.unescape(title.group(1).strip()) if title else None}
 
 
 def merge_stats(*parts: dict) -> dict:
+    """First non-empty value wins. Dates come from ONE source only (the first
+    that has review dates), so a page's other listings never leak in."""
     out: dict = {"dates": []}
     for part in parts:
         for k, v in part.items():
             if k == "dates":
-                out["dates"] += v or []
+                out["dates"] = out["dates"] or list(v or [])
             elif out.get(k) is None and v not in (None, ""):
                 out[k] = v
     return out
 
 
-def recency(dates: list[str], ref: str) -> dict:
-    dates = sorted({d for d in dates if d}, reverse=True)
+def recency(dates: list[str], ref: str, total=None) -> dict:
+    """Latest review and reviews in the last 12 months, from the review dates
+    visible on the page. Never more than the profile's own review count."""
+    dates = sorted((d for d in dates if d), reverse=True)
+    if isinstance(total, (int, float)) and total >= 0:
+        dates = dates[:int(total)]
     if not dates:
-        return {"latest": None, "last_12m": None}
+        return {"latest": None, "last_12m": 0 if total == 0 else None}
     within = [d for d in dates if months_between(d, ref) <= 12]
     shown = len(dates)
-    exact = len(within) < shown  # an older review is visible, so the page covered the whole year
+    # Exact when an older review is visible (the page covered the whole year) or every review is shown.
+    exact = len(within) < shown or (isinstance(total, (int, float)) and shown >= total)
     return {"latest": dates[0], "last_12m": len(within) if exact else f">={len(within)}"}
 
 
@@ -1078,7 +1183,8 @@ def entity_match(stats: dict, page: str, brand: str, domain: str) -> str:
 
 
 def profile_stats(cand: dict, brand: str, domain: str, ref: str, scrapling: str) -> dict:
-    base = {"id": cand["id"], "platform": cand["platform"], "url": cand["url"], "note": cand.get("note", "")}
+    base = {"id": cand["id"], "platform": cand["platform"], "url": cand["url"], "note": cand.get("note", ""),
+            "country": cand.get("country", "")}
     snip = cand.get("snippet_stats") or {}
     if cand["platform"] in ("google_maps", "reddit"):
         return {**base, **snip, "read": "not readable without a scrape", "match": "unknown", "dates": []}
@@ -1087,7 +1193,7 @@ def profile_stats(cand: dict, brand: str, domain: str, ref: str, scrapling: str)
         return {**base, **snip, "read": f"blocked (HTTP {status})" + (", Google snippet" if snip else ""),
                 "match": "unknown", "dates": []}
     parsed = merge_stats(trustpilot_stats(page), jsonld_stats(page), regex_stats(page), snip)
-    rec = recency(parsed.get("dates") or [], ref)
+    rec = recency(parsed.get("dates") or [], ref, parsed.get("reviews"))
     return {**base, "final_url": final, "read": f"read via {via}", "name": parsed.get("name"),
             "rating": parsed.get("rating"), "reviews": parsed.get("reviews"), **rec,
             "match": entity_match(parsed, page, brand, domain)}
@@ -1147,7 +1253,11 @@ def picker_rows(stats: list[dict], cap: int | None) -> list[dict]:
         p = plats.get(s["platform"], {})
         spec = actors.get(s["platform"])
         n, cost = est_cost(spec, s.get("reviews"), cap)
+        if str(s.get("read", "")).endswith("(HTTP 404)"):
+            continue  # a guessed profile that does not exist
         rows.append({"id": s["id"], "platform": p.get("label", s["platform"]), "url": s["url"],
+                     "country": s.get("country") or "".join(c for c in p.get("countries", ["*"]) if c != "*"
+                                                            and len(p.get("countries")) == 1),
                      "reviews": s.get("reviews"), "rating": s.get("rating") if p.get("stars", True) else None,
                      "last_12m": s.get("last_12m"), "latest": s.get("latest"), "est_reviews": n, "est_cost_usd": cost,
                      "scrapable": bool(spec and spec.get("last_smoke_tested")), "ai_citation": p.get("ai_citation", ""),
@@ -1165,18 +1275,27 @@ def fmt_num(v, digits=0) -> str:
     return f"{v:,.{digits}f}"
 
 
-def picker_markdown(rows: list[dict], cap_label: str) -> str:
+def retailer_note(retailers: dict) -> str:
+    if not retailers:
+        return ""
+    names = ", ".join(list(retailers)[:6])
+    return (f"\n**Retailers also host reviews for this brand** (seen in search: {names}). Retailer and "
+            "marketplace reviews are out of scope for v1, so for a brand sold mainly through retailers these "
+            "profiles may hold only a small share of its reviews. Say so in the report.\n")
+
+
+def picker_markdown(rows: list[dict], cap_label: str, retailers: dict | None = None) -> str:
     table = md_table(
-        ["Pick id", "Platform", "Reviews", "Avg rating", "Last 12 months", "Latest review", "Will scrape",
+        ["Pick id", "Platform", "Country", "Reviews", "Avg rating", "Last 12 months", "Latest review", "Will scrape",
          "Est. cost (USD)", "AI citation note", "Check"],
-        [[r["id"], f"[{r['platform']}]({r['url']})", fmt_num(r["reviews"]), fmt_num(r["rating"], 1),
+        [[r["id"], f"[{r['platform']}]({r['url']})", r.get("country") or "", fmt_num(r["reviews"]), fmt_num(r["rating"], 1),
           fmt_num(r["last_12m"]), r["latest"] or "?", fmt_num(r["est_reviews"]),
           f"${r['est_cost_usd']:.3f}" if r["est_cost_usd"] is not None else "no actor",
           r["ai_citation"], " ".join(x for x in (r["flag"], r["note"]) if x)] for r in rows])
     return (f"# Review profiles found\n\nCap: {cap_label} reviews per platform, newest first. "
             "Costs are Apify store prices (FREE tier) plus each actor's start fee; paid plans pay less. "
             "`?` = the page could not be read for free. Reddit is discussion, not reviews: no stars.\n\n"
-            f"{table}\n")
+            f"{table}\n" + retailer_note(retailers or {}))
 
 
 def cmd_estimate(args) -> int:
@@ -1184,9 +1303,10 @@ def cmd_estimate(args) -> int:
     stats = (read_json(run / DATA / "profile-stats.json") or sys.exit("run `stats` first"))["profiles"]
     cap = None if str(args.max_per_platform).lower() == "all" else int(args.max_per_platform)
     rows = picker_rows(stats, cap)
-    md = picker_markdown(rows, "all" if cap is None else str(cap))
+    retailers = (read_json(run / DATA / "candidates.json") or {}).get("retailers") or {}
+    md = picker_markdown(rows, "all" if cap is None else str(cap), retailers)
     (run / "picker.md").write_text(md, encoding="utf-8")
-    write_json(run / DATA / "picker.json", {"cap": cap, "rows": rows})
+    write_json(run / DATA / "picker.json", {"cap": cap, "rows": rows, "retailers": retailers})
     update_meta(run, max_per_platform=cap)
     print(md)
     print(f"Wrote {run / 'picker.md'} and data/picker.json. Show this table, then let the user pick.")
@@ -1279,6 +1399,69 @@ def finish_scrape(run: Path, results: dict, append: bool) -> int:
     if failed:
         print(f"Failed: {', '.join(failed)}. The others are saved; retry those with --pick ... --append.")
     return 0
+
+
+# ---------------------------------------------------------------- import --
+
+def imported_row(row: dict, salt: str) -> tuple[dict | None, str]:
+    """A user-supplied review -> the common schema, or (None, why not)."""
+    platform = str(row.get("platform") or "").strip().lower()
+    if platform not in platform_index():
+        return None, f"unknown platform {row.get('platform')!r} (ids in config/platforms.json)"
+    rating = num(row.get("rating"))
+    if rating is not None and not 1 <= rating <= 5:
+        return None, f"rating {rating} is not 1 to 5"
+    text = " ".join(str(row.get("text") or "").split())
+    if not text and rating is None:
+        return None, "needs text or a rating"
+    date = parse_date(row.get("date"))
+    if row.get("date") and not date:
+        return None, f"unreadable date {row.get('date')!r}"
+    author = str(row.get("author") or row.get("author_name") or "")
+    rec = {"platform": platform, "profile_url": row.get("profile_url") or "", "review_url": row.get("review_url") or "",
+           "rating": rating, "date": date, "title": " ".join(str(row.get("title") or "").split()), "text": text,
+           "owner_reply": " ".join(str(row.get("owner_reply") or "").split()),
+           "reply_date": parse_date(row.get("reply_date")), "lang": row.get("lang") or "",
+           "author_hash": row.get("author_hash") or author_hash(author, platform, salt)}
+    rec["id"] = str(row.get("id") or review_id(rec))
+    return {f: rec.get(f) for f in SCHEMA_FIELDS}, ""
+
+
+def read_rows(path: Path) -> list[dict]:
+    if path.suffix.lower() == ".csv":
+        with path.open(encoding="utf-8-sig", newline="") as fh:
+            return list(csv.DictReader(fh))
+    return read_jsonl(path)
+
+
+def cmd_import(args) -> int:
+    """Start from reviews the user already has: validate, hash any author names,
+    dedupe, and record honestly that nothing was scraped."""
+    run = Path(args.run_dir)
+    if (run / DATA / "reviews.jsonl").is_file() and not args.force:
+        sys.exit("this run already has reviews; pass --force to replace them")
+    salt = run_meta(run).get("salt") or hashlib.sha256(os.urandom(16)).hexdigest()[:16]
+    good, errs = [], []
+    for n, row in enumerate(read_rows(Path(args.file)), 1):
+        rec, why = imported_row(row, salt)
+        if rec:
+            good.append(rec)
+        else:
+            errs.append(f"row {n}: {why}")
+    for e in errs[:20]:
+        print(f"  - {e}")
+    if not good:
+        sys.exit("no valid reviews to import")
+    kept = dedupe(good)
+    write_jsonl(run / DATA / "reviews.jsonl", kept)
+    dates = sorted(r["date"] for r in kept if r.get("date"))
+    update_meta(run, brand=args.brand, domain=clean_domain(args.domain or ""), source="user-supplied",
+                supplied_file=Path(args.file).name, salt=salt, max_per_platform=None, profiles=[],
+                scraped_at=(dates[-1] if dates else today()) + " 00:00:00",
+                created_at=run_meta(run).get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S"))
+    print(f"Imported {len(kept)} reviews ({len(good) - len(kept)} duplicates, {len(errs)} rejected) into "
+          f"{run / DATA / 'reviews.jsonl'}. Marked as a user-supplied sample: no picker, no scrape, no cost.")
+    return 0 if not errs else 1
 
 
 # -------------------------------------------------------------- taxonomy --
@@ -1784,35 +1967,118 @@ def issue_snippet(text: str, terms: set, negative: bool = True, limit: int = 320
                                                   scored[i][0], scored[i][1], -i))
     hits, cues = scored[best]
     states = hits > 0 and (cues > 0 or not negative)
-    start = best if hits else 0
+    return excerpt_from(sents, best if hits else 0, limit), states
+
+
+def excerpt_from(sents: list[str], start: int, limit: int = 320, stop: set | None = None) -> str:
+    """Verbatim: sentence `start` and the ones after it while they fit, never
+    running into a sentence in `stop` (one about a different issue); cuts marked '…'."""
     out, i = sents[start], start + 1
-    while i < len(sents) and len(out) + len(sents[i]) + 1 <= limit:
+    while i < len(sents) and i not in (stop or set()) and len(out) + len(sents[i]) + 1 <= limit:
         out, i = f"{out} {sents[i]}", i + 1
     more = i < len(sents)
     if len(out) > limit:
         out, more = out[:limit].rsplit(" ", 1)[0], True
-    return ("… " if start else "") + out + (" …" if more else ""), states
+    return ("… " if start else "") + out + (" …" if more else "")
 
 
-def pick_quotes(negs: list[dict], labels: dict, aspect: dict, n: int = 3) -> list[dict]:
-    """Quotes whose own excerpt states the complaint come first; then the
-    strongest feeling about this aspect, fewest other complaints, newest. A 4 to 5
-    star review is only used when its excerpt shows the complaint."""
-    terms, cands = aspect_terms(aspect), []
-    for r in negs:
-        snippet, states = issue_snippet(r.get("text") or "", terms)
-        if not snippet or ((r.get("rating") or 0) >= 4 and not states):
+def fitting_sentence(sents: list[str], aspect_id: str, review_aspects: list[str], terms: dict,
+                     needs_cue: bool) -> int | None:
+    """The sentence that is about THIS aspect: it matches this aspect's words
+    better than any other aspect the review is labelled with, and (for a
+    complaint) carries a negative word. None when no sentence qualifies."""
+    best, best_key = None, None
+    for i, sent in enumerate(sents):
+        hits, cues = sentence_score(sent, terms[aspect_id], True)
+        rivals = [sentence_score(sent, terms[k], False)[0] for k in review_aspects if k != aspect_id and k in terms]
+        if hits == 0 or hits <= max(rivals, default=0) or (needs_cue and cues == 0):
             continue
+        key = (cues > 0, hits, -i)
+        if best_key is None or key > best_key:
+            best, best_key = i, key
+    return best
+
+
+def other_aspect_wins(sentence: str, aspect_id: str, review_aspects: list[str], terms: dict) -> bool:
+    mine = sentence_score(sentence, terms[aspect_id], False)[0]
+    return any(sentence_score(sentence, terms[k], False)[0] > mine for k in review_aspects
+               if k != aspect_id and k in terms)
+
+
+def quote_candidates(negs: list[dict], labels: dict, aspect_id: str, terms: dict) -> list[dict]:
+    """Every review labelled negative for this aspect whose own words isolate it,
+    strongest feeling first, then fewest other complaints, then newest. A 4 to 5
+    star review only qualifies through a sentence that carries the complaint."""
+    cands = []
+    for r in negs:
+        sents = [" ".join(x.split()) for x in split_sentences(r.get("text") or "")]
         lab = labels[r["id"]]["aspects"]
-        others = sum(1 for k, v in lab.items() if k != aspect["id"] and v < 0)
-        cands.append(((not states, lab.get(aspect["id"], 0), others,
-                       -int((r.get("date") or "0").replace("-", "") or 0)), r["id"], snippet, states))
-    cands.sort(key=lambda c: c[0])
-    return [{"id": rid, "snippet": snip, "states_issue": st} for _, rid, snip, st in cands[:n]]
+        i = fitting_sentence(sents, aspect_id, list(lab), terms, needs_cue=True)
+        if i is None:
+            continue
+        others = sum(1 for k, v in lab.items() if k != aspect_id and v < 0)
+        key = (lab.get(aspect_id, 0), others, -int((r.get("date") or "0").replace("-", "") or 0))
+        stop = {j for j, x in enumerate(sents) if other_aspect_wins(x, aspect_id, list(lab), terms)}
+        cands.append({"key": key, "id": r["id"], "snippet": excerpt_from(sents, i, stop=stop), "states_issue": True})
+    return [{k: v for k, v in c.items() if k != "key"} for c in sorted(cands, key=lambda c: c["key"])]
+
+
+def assign_quotes(issues: list[dict], n: int = 3) -> None:
+    """In priority order, give each issue up to n quotes, never reusing a review
+    already quoted under another issue unless it is the only candidate."""
+    used: set = set()
+    for f in issues:
+        cands = f.pop("_candidates")
+        picks = [c for c in cands if c["id"] not in used][:n] or cands[:1]
+        used.update(c["id"] for c in picks)
+        f["quotes"] = picks
+
+
+SAFETY_CUES = re.compile(
+    r"\b(injur\w*|hurt\w*|cut (?:my|his|her|their)|burn\w*|bleed\w*|blood|rash\w*|allerg\w*|fire|smok\w*|sharp|"
+    r"unsafe|danger\w*|hazard\w*|collaps\w*|(?:my|his|her) back|hospital|doctor|legal\w*|lawyer\w*|accc|"
+    r"consumer law|fair trading|tribunal|ncat|vcat|sue|court)\b", re.I)
+
+
+def safety_aspects(r: dict, labels: dict, terms: dict) -> set:
+    """Severity is per review, so it is tied to an aspect only through the
+    sentence that carries the injury or legal word: the labelled aspect that
+    sentence matches best. A review can tie to no aspect at all."""
+    if labels.get(r["id"], {}).get("severity") != "safety_legal":
+        return set()
+    labelled = [k for k in labels[r["id"]].get("aspects", {}) if k in terms]
+    out = set()
+    for sent in split_sentences(r.get("text") or ""):
+        if not SAFETY_CUES.search(sent):
+            continue
+        scores = {k: sentence_score(sent, terms[k], False)[0] for k in labelled}
+        top = max(scores.values(), default=0)
+        out |= {k for k, v in scores.items() if v == top and v > 0}
+    return out
+
+
+def safety_quote(r: dict) -> str:
+    """The sentence with the injury or legal word; or a plain note when the text has none."""
+    sents = [" ".join(x.split()) for x in split_sentences(r.get("text") or "")]
+    i = next((n for n, x in enumerate(sents) if SAFETY_CUES.search(x)), None)
+    if i is None:
+        return quote_line(r) + "\n\n(Labelled safety or legal, but the text names no injury, risk or legal step: " \
+                               "likely an over-label. Check it.)"
+    return quote_line(r, excerpt_from(sents, i))
+
+
+def unattributed_safety(reviews: list[dict], labels: dict, terms: dict) -> list[str]:
+    return [r["id"] for r in reviews if labels.get(r["id"], {}).get("severity") == "safety_legal"
+            and not safety_aspects(r, labels, terms)]
+
+
+def is_safety(negs: list[dict], labels: dict, aspect_id: str, terms: dict) -> int:
+    return sum(aspect_id in safety_aspects(r, labels, terms) for r in negs)
 
 
 def fixes(reviews: list[dict], labels: dict, tax: dict, sc: dict, as_of: str) -> list[dict]:
     labelled = sum(1 for r in reviews if r["id"] in labels) or 1
+    terms = {a["id"]: aspect_terms(a) for a in tax["aspects"]}
     out = []
     for a in tax["aspects"]:
         negs = [r for r in reviews if r["id"] in labels
@@ -1823,10 +2089,14 @@ def fixes(reviews: list[dict], labels: dict, tax: dict, sc: dict, as_of: str) ->
         out.append({"id": a["id"], "label": a["label"], "owner": a.get("owner"), "negative": len(negs),
                     "share": comp["volume_share"], "components": comp, "priority": priority_score(**comp),
                     "trend": trend(negs, as_of, sc), "churn": sum(labels[r["id"]].get("churn", False) for r in negs),
-                    "quotes": pick_quotes(negs, labels, a)})
-    out.sort(key=lambda f: -f["priority"])
+                    "safety_reviews": is_safety(negs, labels, a["id"], terms),
+                    "_candidates": quote_candidates(negs, labels, a["id"], terms)})
+    # Safety or legal issues go first whatever their score: a priority formula must never bury them.
+    out.sort(key=lambda f: (f["safety_reviews"] == 0, -f["priority"]))
     for i, f in enumerate(out, 1):
         f["rank"] = i
+        f["safety_first"] = f["safety_reviews"] > 0
+    assign_quotes(out)
     return out
 
 
@@ -1871,6 +2141,7 @@ def build_aggregate(reviews, labels, tax, sc, as_of, stats, meta) -> dict:
                  "platforms": sorted({r["platform"] for r in reviews}),
                  "excluded_from_stars": sorted({r["platform"] for r in reviews if not has_stars(r["platform"])}),
                  "max_per_platform": meta.get("max_per_platform"),
+                 "source": meta.get("source") or "scraped",
                  "listing_link_platforms": sorted({r["platform"] for r in reviews
                                                    if r.get("review_url") and r["review_url"] == r.get("profile_url")}), "spot_check": meta.get("spot_check"),
                  "label_sources": dict(Counter(l.get("source", "?") for l in labels.values()))},
@@ -1885,6 +2156,7 @@ def build_aggregate(reviews, labels, tax, sc, as_of, stats, meta) -> dict:
         "praised": [a["id"] for a in praised],
         "fixes": fixes(reviews, labels, tax, sc, as_of),
         "unreplied_negatives": [r["id"] for r in unreplied_negatives(reviews)],
+        "safety_unattributed": unattributed_safety(reviews, labels, {a["id"]: aspect_terms(a) for a in tax["aspects"]}),
         "scoring": {k: v for k, v in sc.items() if not k.startswith("_")},
     }
 
@@ -2244,9 +2516,14 @@ def headline_lines(agg: dict, tax_names: dict) -> list[str]:
              f"replies; {pct(rep['negative_reply_rate'] or 0, 1) if rep['negative_reply_rate'] is not None else 'n/a'} "
              f"of 1 to 2 star reviews"
              + (f"; median {rep['median_reply_days']:.0f} days to reply" if rep["median_reply_days"] is not None else "")]
-    if top_fix:
-        lines.append(f"- **Biggest complaint:** {top_fix['label']} ({top_fix['negative']} negative reviews, "
-                     f"{top_fix['share'] * 100:.0f}% of reviews with text, trend {top_fix['trend']['direction']})")
+    if top_fix and top_fix.get("safety_first"):
+        lines.append(f"- **First to fix ({SAFETY_LABEL.lower()}):** {top_fix['label']} "
+                     f"({few(top_fix['safety_reviews'], 'reviews', 'one review', 'two reviews')} at safety or legal level)")
+    top_score = max((f for f in agg["fixes"]), key=lambda f: f["priority"], default=None)
+    if top_score:
+        count = few(top_score["negative"], "negative reviews", "one negative review", "two negative reviews")
+        lines.append(f"- **Biggest complaint:** {top_score['label']} ({count}, {top_score['share'] * 100:.0f}% of "
+                     f"reviews with text, trend {top_score['trend']['direction']})")
     if praise:
         lines.append(f"- **Most praised:** {praise['label']} ({praise['positive']} positive / {praise['negative']} "
                      "negative mentions)")
@@ -2265,11 +2542,21 @@ def distribution_table(agg: dict) -> str:
     return md_table(["Stars", "Reviews", "Share", ""], rows)
 
 
+def sample_caption(meta: dict) -> str:
+    """How the reviews were chosen. A user-supplied file is never described as 'newest N'."""
+    if meta.get("source") == "user-supplied":
+        return f"a user-supplied sample of {meta['reviews']} reviews; selection method unknown"
+    cap = meta.get("max_per_platform")
+    return f"the newest {cap} reviews per platform" if cap else "every review on each picked profile"
+
+
 def monthly_caveat(agg: dict) -> str:
-    cap, floor = agg["meta"].get("max_per_platform"), agg["scoring"].get("monthly_min_reviews", 5)
-    sample = f"the newest {cap} reviews per platform" if cap else "every review on each picked profile"
+    floor = agg["scoring"].get("monthly_min_reviews", 5)
+    meta = agg["meta"]
+    why = ("we do not know how it was chosen" if meta.get("source") == "user-supplied"
+           else "busy months fill the cap and older months thin out")
     dropped = agg.get("monthly_dropped", 0)
-    return (f"The sample is {sample}, so busy months fill the cap and older months thin out: month-to-month "
+    return (f"The sample is {sample_caption(meta)}, so {why}: month-to-month "
             f"movement here is not a trend. Months with fewer than {floor} reviews are left out"
             + (f" ({dropped} month(s))." if dropped else "."))
 
@@ -2315,7 +2602,8 @@ def praised_md(agg: dict, reviews: dict, labels: dict, tax: dict) -> str:
 
 def complaints_md(agg: dict) -> str:
     rows = [[f["rank"], f["label"], f["negative"], f"{f['share'] * 100:.0f}%", f["trend"]["direction"],
-             f"{f['priority']:.3f}", f["owner"]] for f in agg["fixes"][:5]]
+             f"{f['priority']:.3f}" + (" (safety/legal: first regardless)" if f.get("safety_first") else ""),
+             f["owner"]] for f in agg["fixes"][:5]]
     return md_table(["Rank", "Aspect", "Negative reviews", "Share", "Trend", "Priority", "Owner"], rows) \
         if rows else "_No complaints found._"
 
@@ -2329,6 +2617,14 @@ def listing_link_note(agg: dict) -> list[str]:
             "individual review (the scraper returns no per-review link); search the listing for the quoted words."]
 
 
+def retailer_methods_note(run: Path) -> list[str]:
+    retailers = (read_json(Path(run) / DATA / "candidates.json") or {}).get("retailers") or {}
+    if not retailers:
+        return []
+    return [f"- **Out of scope:** retailer reviews ({', '.join(list(retailers)[:6])} appeared in search). If the "
+            "brand sells mainly through retailers, most of its product reviews may be there, not in this sample."]
+
+
 def methods_md(agg: dict, run: Path) -> str:
     meta, sc = agg["meta"], agg["scoring"]
     cost = read_json(run / DATA / "run-cost.json", {}).get("total_usd")
@@ -2339,8 +2635,10 @@ def methods_md(agg: dict, run: Path) -> str:
     w = sc["visibility_weights"]
     return "\n".join([
         f"- **Sample:** {meta['reviews']} reviews from {', '.join(plabel(p) for p in meta['platforms'])}, dated {rng[0]} to {rng[1]}, "
-        f"newest first, capped at {cap if cap else 'all'} per platform. Profile totals are in the platform table; "
-        "where we analysed fewer than the profile shows, the cap or the platform's own limit is the reason.",
+        + (f"{sample_caption(meta)}. Nothing was scraped for this run." if meta.get("source") == "user-supplied"
+           else f"newest first, capped at {cap if cap else 'all'} per platform. Profile totals are in the platform "
+                "table; where we analysed fewer than the profile shows, the cap or the platform's own limit is the "
+                "reason."),
         f"- **Excluded:** {meta['unlabelled_no_text']} star-only reviews with no text count toward ratings but not "
         f"aspects. {', '.join(plabel(p) for p in meta['excluded_from_stars']) or 'No platform'} kept out of star averages (no stars). "
         "Reddit results that did not name the brand were dropped.",
@@ -2351,6 +2649,7 @@ def methods_md(agg: dict, run: Path) -> str:
            else "Spot check: not recorded yet."),
         "- **Every number is computed in code** (`reviews.py aggregate`); no model did any maths.",
         *listing_link_note(agg),
+        *retailer_methods_note(run),
         "- **Fix priority** = volume share × average severity × recency weight × visibility weight × (1 + share "
         f"unreplied). Severity weights: {weights_text(sc['severity_weights'])}; reviews from the last "
         f"{sc['recency']['recent_months']} months count {sc['recency']['recent_weight']}×; visibility weights: "
@@ -2391,6 +2690,13 @@ DEFAULT_GEO_ACTION = ("Reply publicly to the unreplied reviews on this issue, th
                       "(FAQ or policy page) so engines have the brand's own account to cite.")
 
 
+SAFETY_LABEL = "Safety/legal: ranked first regardless of score"
+
+
+def safety_count(f: dict) -> str:
+    return few(f["safety_reviews"], "reviews describe", "one review describes", "two reviews describe")
+
+
 def default_problem(f: dict) -> str:
     return f"{f['label']}: " + ("recurring complaint" if f["negative"] >= 3 else "single mentions")
 
@@ -2401,6 +2707,8 @@ def fix_section(f: dict, reviews: dict, note: dict, tax_aspect: dict) -> str:
     owner = note.get("owner") or f["owner"]
     return "\n".join([
         f"## {f['rank']}. {note.get('problem') or default_problem(f)}\n",
+        *([f"- **{SAFETY_LABEL}** ({safety_count(f)} an injury, a physical risk or a legal issue.)"]
+          if f.get("safety_first") else []),
         f"- **Aspect:** {f['label']}. **Owner:** {owner}.",
         f"- **How many:** {few(f['negative'], 'negative reviews', 'one negative review', 'two negative reviews')}, "
         f"{f['share'] * 100:.0f}% of reviews with text"
@@ -2412,7 +2720,8 @@ def fix_section(f: dict, reviews: dict, note: dict, tax_aspect: dict) -> str:
         f"- **Priority score:** {f['priority']:.3f} = {c['volume_share']:.3f} share × {c['avg_severity']:.2f} "
         f"severity × {c['recency_weight']:.2f} recency × {c['visibility_weight']:.2f} visibility × "
         f"(1 + {c['unreplied_share']:.2f} unreplied).",
-        "", "**What customers said:**", "", quotes or "_No quotable text._", "",
+        "", "**What customers said:**", "", quotes or "_No excerpt isolates this issue from the other complaints in "
+        "the same reviews; read them in `unreplied-negatives.csv`._", "",
         f"- **Likely root cause (a hypothesis to check, not a finding):** "
         f"{note.get('root_cause') or 'Not diagnosed yet. Read the quotes with the owner before deciding.'}",
         f"- **Fix:** {note.get('fix') or 'To agree with the owner.'}",
@@ -2434,6 +2743,12 @@ def fix_report_md(agg: dict, reviews: dict, tax: dict, notes: dict) -> str:
             "hypotheses from the review text, not confirmed findings.\n"]
     body = [fix_section(f, reviews, (notes.get("issues") or {}).get(f["id"], {}), aspects.get(f["id"], {}))
             for f in agg["fixes"]]
+    loose = [rid for rid in agg.get("safety_unattributed", []) if rid in reviews]
+    if loose:
+        body.insert(0, "## Read first: safety or legal reports not tied to an issue\n\n"
+                       f"{few(len(loose), 'reviews were', 'One review was', 'Two reviews were')} labelled at safety or "
+                       "legal level, but no sentence ties the injury or legal point to one aspect. Read them before "
+                       "the list below.\n\n" + "\n\n".join(safety_quote(reviews[rid]) for rid in loose) + "\n")
     return "\n".join(head + (body or ["_No complaints found._\n"]))
 
 
@@ -2528,7 +2843,8 @@ def fix_rows(agg: dict, reviews: dict, notes: dict) -> list[list]:
         note = (notes.get("issues") or {}).get(f["id"], {})
         first = f["quotes"][0] if f["quotes"] else None
         q = reviews.get(first["id"]) if first else None
-        rows.append([f["rank"], f["label"], note.get("problem") or default_problem(f),
+        rows.append([f["rank"], f["label"], ("[Safety/legal: ranked first regardless of score] " if f.get("safety_first")
+                                             else "") + (note.get("problem") or default_problem(f)),
                      f["negative"], round(f["share"], 3), f"{f['trend']['direction']} ({f['trend']['recent']} vs "
                      f"{f['trend']['previous']})", f["priority"], note.get("owner") or f["owner"],
                      note.get("fix") or "To agree with the owner", note.get("geo_action") or DEFAULT_GEO_ACTION,
@@ -2633,7 +2949,7 @@ def cmd_workbook(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{path,preflight,discover,stats,estimate,scrape,"
+    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{path,preflight,discover,stats,estimate,scrape,import,"
                                                                 "taxonomy,label,aggregate,wordcloud,report,workbook}")
 
     def add(name, fn, help_text, run=True):
@@ -2647,6 +2963,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--brand", required=True)
     p.add_argument("--date", help="YYYY-MM-DD (default today)")
     p.add_argument("--start", help="folder to resolve from (default: current folder)")
+    p.add_argument("--new", action="store_true", help="start a fresh run folder instead of reusing this month's")
 
     p = add("preflight", cmd_preflight, "check APIFY_TOKEN and pinned actors; --smoke runs 5 reviews each", run=False)
     p.add_argument("--env-file")
@@ -2681,6 +2998,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--append", action="store_true", help="keep reviews already in data/reviews.jsonl")
     p.add_argument("--env-file")
     p.add_argument("--dry-run", action="store_true")
+
+    p = add("import", cmd_import, "start from a reviews file the user supplies (JSONL or CSV), no scrape")
+    p.add_argument("--file", required=True, help="reviews.jsonl or .csv in the common schema (author names are hashed)")
+    p.add_argument("--brand", required=True)
+    p.add_argument("--domain", default="")
+    p.add_argument("--force", action="store_true", help="replace reviews already in this run")
 
     p = add("taxonomy", cmd_taxonomy, "`sample` reviews for Claude to propose aspects; `lock` the approved set")
     p.add_argument("action", choices=("sample", "lock"))

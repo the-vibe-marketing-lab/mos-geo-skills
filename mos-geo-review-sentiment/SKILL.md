@@ -62,7 +62,21 @@ RUN=$($R path --brand "<brand>")
 
 It follows the pack convention: `campaigns/geo/YYYY-MM/review-sentiment/` inside a client or
 in-house brain (agency brains add a brand folder; no brain gives `outputs/geo/YYYY-MM/<brand>/`),
-with `brand-audit-master.xlsx` one level up. A second run in a month gets `review-sentiment-2`.
+with `brand-audit-master.xlsx` one level up. Running `path` again for the same brand in the same
+month returns the same folder, so a session can resume; pass `--new` for a fresh
+`review-sentiment-2`.
+
+**The user already has the reviews?** Skip stages 1 to 4 and import them (JSONL or CSV in the
+common schema from `references/report-spec.md`; an `author` column is hashed, never stored):
+
+```bash
+$R import --run-dir "$RUN" --file <their file> --brand "<brand>" --domain <domain>
+```
+
+It rejects rows with an unknown platform, a rating outside 1 to 5, an unreadable date or no text
+and no rating, dedupes, and records the run as a user-supplied sample. Every report then says
+"user-supplied sample of N reviews; selection method unknown", never "newest N per platform".
+Continue at stage 5.
 Run folders hold client data: never commit them into this pack.
 
 ## Stage 0: Inputs and preflight
@@ -96,8 +110,15 @@ $R discover --run-dir "$RUN" --brand "<brand>" --domain <domain> --country AU --
 ```
 
 Order: predictable URLs (Trustpilot by domain, Reddit search), then every review-site link and
-`sameAs` entry on the brand's home page, then **one** Apify Google search run with a `site:` query
-for each platform still missing (about $0.003 a query). `--no-search` skips the paid step.
+`sameAs` entry on the brand's home page. The home page is also read for the brand's **regional
+sites** (hreflang alternates, footer links and store-picker URLs, e.g. `.co.uk`, `.eu`, `.com`);
+each becomes its own Trustpilot row with its country. Then **one** Apify Google search run: a
+`site:` query for each platform still missing plus one open `"<brand>" reviews` query, each reading
+up to 3 results pages (`pages_per_query` in `config/actors.json`; about $0.0045 a page on the FREE
+tier, and the dry run prints the maximum first). Results that do not name the brand are dropped.
+The open query also counts **retailer** results (Amazon, Priceline, Boots and the rest in
+`config/platforms.json`): retailer reviews are out of scope for v1, and the picker and the report
+say so when retailers show up. `--no-search` skips the paid step.
 `--include-employer` adds Glassdoor and Indeed (reported separately). If the user knows a profile
 URL the search missed, add it to `data/candidates.json` by hand before `stats`.
 
@@ -201,7 +222,9 @@ uv run --with wordcloud --with matplotlib python $SKILL/scripts/reviews.py wordc
 ```
 
 `aggregate` writes `data/aggregate.json`: rating spread, monthly trend, platform table, reply rate
-and median reply time, aspect volumes, and the fix priority for every negative aspect:
+and median reply time, aspect volumes, and the fix priority for every negative aspect (an aspect
+with a safety or legal report tied to it ranks first regardless of its score; a safety or legal
+review that ties to no aspect is listed at the top of the fix report to read first):
 
 `priority = volume share × average severity × recency weight × visibility weight × (1 + share unreplied)`
 

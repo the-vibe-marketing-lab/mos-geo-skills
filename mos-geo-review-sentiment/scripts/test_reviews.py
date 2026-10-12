@@ -203,16 +203,16 @@ class Framing(unittest.TestCase):
         self.assertTrue(snip.startswith("… The delivery was three weeks late"))
         self.assertIn(snip.lstrip("… ").rstrip(" …"), text)  # still verbatim
 
-    def test_quotes_rank_stating_snippets_and_skip_happy_reviews(self):
+    def test_quotes_need_a_sentence_about_the_aspect_and_skip_happy_reviews(self):
+        terms = {"delivery": rv.aspect_terms(self.aspect)}
         negs = [{"id": "happy", "rating": 5.0, "date": "2026-10-01",
                  "text": "Best purchase ever. The colour is perfect."},
                 {"id": "vague", "rating": 1.0, "date": "2026-10-02", "text": "Terrible company, avoid them."},
                 {"id": "clear", "rating": 2.0, "date": "2026-01-01",
                  "text": "Nice fabric. Delivery was late twice and the courier never called."}]
         labels = {r["id"]: {"aspects": {"delivery": -2}} for r in negs}
-        quotes = rv.pick_quotes(negs, labels, self.aspect)
-        self.assertEqual([q["id"] for q in quotes], ["clear", "vague"])  # 5 star dropped, stating first
-        self.assertTrue(quotes[0]["states_issue"])
+        quotes = rv.quote_candidates(negs, labels, "delivery", terms)
+        self.assertEqual([q["id"] for q in quotes], ["clear"])  # no excerpt about delivery in the other two
         self.assertTrue(quotes[0]["snippet"].startswith("… Delivery was late"))
 
     def test_praise_never_ranks_a_net_complaint(self):
@@ -340,6 +340,108 @@ class Path_(unittest.TestCase):
             got = rv.run_dir_for("Acme Widgets", "2026-10-12", Path(tmp))
             self.assertEqual(got, Path(tmp).resolve() / "outputs/geo/2026-10/acme-widgets/review-sentiment")
 
+    def test_rerun_reuses_the_folder_unless_new(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = rv.run_dir_for("Acme Widgets", "2026-10-12", Path(tmp))
+            rv.update_meta(first, brand="Acme Widgets")
+            self.assertEqual(rv.run_dir_for("Acme Widgets", "2026-10-20", Path(tmp)), first)
+            self.assertEqual(rv.run_dir_for("Acme Widgets", "2026-10-20", Path(tmp), new=True).name,
+                             "review-sentiment-2")
+
+
+class Iteration2(unittest.TestCase):
+    tax = {"aspects": [
+        {"id": "checkout", "label": "Website and checkout", "description": "Ordering online, payment, checkout errors."},
+        {"id": "refunds", "label": "Refunds and returns", "description": "Getting money back, return labels."},
+        {"id": "delivery", "label": "Delivery", "description": "Late or missed delivery days and couriers."},
+        {"id": "build", "label": "Build quality", "description": "Hinges, panels and parts that break."}]}
+    terms = {a["id"]: rv.aspect_terms(a) for a in tax["aspects"]}
+
+    def test_multi_aspect_review_quotes_go_to_the_matching_sentence_only(self):
+        r = {"id": "m", "rating": 1.0, "date": "2026-09-01",
+             "text": "Delivery was three weeks late. The refund never arrived after six weeks."}
+        labels = {"m": {"aspects": {"delivery": -2, "refunds": -2, "checkout": -1}}}
+        d = rv.quote_candidates([r], labels, "delivery", self.terms)
+        f = rv.quote_candidates([r], labels, "refunds", self.terms)
+        c = rv.quote_candidates([r], labels, "checkout", self.terms)
+        self.assertEqual(d[0]["snippet"], "Delivery was three weeks late. …")  # stops before the refund sentence
+        self.assertTrue(f[0]["snippet"].startswith("… The refund never arrived"))
+        self.assertEqual(c, [])  # labelled checkout, but no sentence about checkout: no refund quote under it
+
+    def test_a_review_is_not_quoted_twice_when_another_candidate_exists(self):
+        a = {"id": "a", "snippet": "x", "states_issue": True}
+        b = {"id": "b", "snippet": "y", "states_issue": True}
+        issues = [{"_candidates": [a, b]}, {"_candidates": [a, b]}, {"_candidates": [a]}]
+        rv.assign_quotes(issues, n=1)
+        self.assertEqual([[q["id"] for q in f["quotes"]] for f in issues], [["a"], ["b"], ["a"]])
+
+    def test_safety_issue_ranks_first_regardless_of_score(self):
+        old = [{"id": f"h{i}", "platform": "trustpilot", "rating": 1.0, "date": "2025-11-0%d" % (i + 1),
+                "owner_reply": "Sorry", "text": "The hinge snapped and cut my hand."} for i in range(5)]
+        new = [{"id": f"d{i}", "platform": "trustpilot", "rating": 1.0, "date": "2026-09-01",
+                "text": "Delivery was late again."} for i in range(20)]
+        labels = {r["id"]: {"aspects": {"build": -2}, "severity": "safety_legal"} for r in old}
+        labels.update({r["id"]: {"aspects": {"delivery": -2}, "severity": "minor"} for r in new})
+        out = rv.fixes(old + new, labels, self.tax, rv.load_config("scoring.json"), "2026-10-12")
+        self.assertEqual([f["id"] for f in out], ["build", "delivery"])
+        self.assertGreater(out[1]["priority"], out[0]["priority"])  # the score alone would put it second
+        self.assertTrue(out[0]["safety_first"])
+        section = rv.fix_section(out[0], {r["id"]: r for r in old}, {}, {})
+        self.assertIn("Safety/legal: ranked first regardless of score", section)
+
+    def test_import_marks_a_user_supplied_sample(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, src = Path(tmp) / "run", Path(tmp) / "mine.jsonl"
+            rows = [{"platform": "trustpilot", "rating": 2, "date": "2026-09-01", "text": "Late.", "author": "Jo Bloggs"},
+                    {"platform": "nowhere", "rating": 5, "text": "x"},
+                    {"platform": "reddit", "text": "Anyone tried Acme?", "date": "01/09/2026"}]
+            rv.write_jsonl(src, rows)
+            with mock.patch("builtins.print"):
+                code = rv.cmd_import(Namespace(run_dir=str(run), file=str(src), brand="Acme", domain="acme.example",
+                                               force=False))
+            self.assertEqual(code, 1)  # one row rejected, the rest imported
+            saved = (run / "data" / "reviews.jsonl").read_text(encoding="utf-8")
+            self.assertEqual(len(saved.splitlines()), 2)
+            self.assertNotIn("Jo Bloggs", saved)
+            meta = rv.run_meta(run)
+            self.assertEqual(meta["source"], "user-supplied")
+            caption = rv.sample_caption({"source": "user-supplied", "reviews": 2})
+            self.assertEqual(caption, "a user-supplied sample of 2 reviews; selection method unknown")
+            agg = {"meta": {"source": "user-supplied", "reviews": 2}, "scoring": {}, "monthly": []}
+            self.assertNotIn("newest", rv.monthly_caveat(agg))
+
+    def test_recency_never_exceeds_the_review_count(self):
+        dates = ["2026-10-01", "2026-09-01", "2026-08-01"]  # other listings' dates on the page
+        self.assertEqual(rv.recency(dates, "2026-10-12", 1)["last_12m"], 1)  # never 3 on a 1-review listing
+        page = ('"submittedAt":"2026-10-01","submittedAt":"2026-09-01",'
+                '{"@type":"Review","url":"u","datePublished":"2026-08-01T00:00:00Z"}')
+        self.assertEqual(rv.regex_stats(page)["dates"], ["2026-08-01"])
+        merged = rv.merge_stats({"dates": ["2026-08-01"]}, {"dates": ["2026-10-01", "2026-09-01"]})
+        self.assertEqual(merged["dates"], ["2026-08-01"])  # one source of dates only
+
+    def test_regional_sites_become_trustpilot_rows_with_a_country(self):
+        page = ('<link rel="alternate" hreflang="en-gb" href="https://www.bondisands.co.uk/">'
+                '<link rel="alternate" hreflang="en-au" href="https://www.bondisands.com.au/">'
+                '<link rel="alternate" hreflang="x-default" href="https://bondisands.com/">'
+                '<a href="https://bondisands.eu/shop">EU</a><a href="https://other.com/">x</a>')
+        regions = rv.regional_domains(page, "bondisands.com.au")
+        self.assertEqual(regions, {"bondisands.co.uk": "GB", "bondisands.com": "global", "bondisands.eu": "EU"})
+        rows = rv.regional_trustpilot(regions)
+        self.assertIn({"platform": "trustpilot", "url": "https://www.trustpilot.com/review/bondisands.co.uk",
+                       "source": "regional-site", "country": "GB"}, rows)
+        self.assertEqual(rv.country_of("au.koala.com"), "AU")
+
+    def test_search_reads_pages_and_flags_retailers(self):
+        queries = rv.search_queries("Acme", [], set())
+        self.assertIn('"Acme" reviews', queries)
+        pages = rv.load_config("actors.json")["discovery"]["pages_per_query"]
+        self.assertAlmostEqual(rv.search_cost(2), 2 * pages * 0.0045)
+        items = [{"organicResults": [{"url": "https://www.amazon.com.au/dp/B01"},
+                                     {"url": "https://www.priceline.com.au/acme"}, {"url": "https://acme.example/"}]}]
+        hits = rv.retailer_hits(items)
+        self.assertEqual(set(hits), {"amazon.com.au", "priceline.com.au"})
+        self.assertIn("out of scope", rv.picker_markdown([], "500", hits))
+
 
 class OfflinePipeline(unittest.TestCase):
     """The committed fixture (62 synthetic reviews, 3 platforms, pre-made labels) through
@@ -363,8 +465,10 @@ class OfflinePipeline(unittest.TestCase):
         self.assertEqual(agg["meta"]["reviews"], 62)
         self.assertEqual(agg["meta"]["excluded_from_stars"], ["reddit"])
         self.assertEqual(agg["headline"]["rated"], 52)  # 62 minus 10 Reddit
-        ranks = [f["priority"] for f in agg["fixes"]]
-        self.assertEqual(ranks, sorted(ranks, reverse=True))
+        safety = [f for f in agg["fixes"] if f["safety_first"]]
+        self.assertEqual(agg["fixes"][:len(safety)], safety)  # the fixture's hinge injury goes first
+        rest = [f["priority"] for f in agg["fixes"] if not f["safety_first"]]
+        self.assertEqual(rest, sorted(rest, reverse=True))
         self.assertEqual(self.quiet(rv.cmd_report), 0)
         for name in (rv.REPORT, rv.FIX_REPORT, rv.UNREPLIED):
             self.assertTrue((self.run_dir / name).is_file(), name)

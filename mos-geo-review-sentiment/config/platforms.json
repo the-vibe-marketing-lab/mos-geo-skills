@@ -2,115 +2,364 @@
   "_comment": "Platform registry for discovery. `domains`: hosts that count as this platform. `profile_pattern`: regex a URL must match to be a review profile (not a blog post or help page). `predictable`: URL templates tried first ({domain}, {domain_root}, {slug}); `site_query`: the Google query used when nothing predictable or linked was found. `countries`/`industries`: when the platform is offered (\"*\" = always). `stars`: false means discussion only, kept out of the star average. `opt_in`: only offered with --include-employer. `ai_citation`: filled ONLY from a sourced line in _shared/geo-evidence.md section 11; leave it empty otherwise.",
   "platforms": [
     {
-      "id": "google_maps", "label": "Google Maps", "domains": ["google.com", "maps.google.com", "goo.gl", "maps.app.goo.gl"],
+      "id": "google_maps",
+      "label": "Google Maps",
+      "domains": [
+        "google.com",
+        "maps.google.com",
+        "goo.gl",
+        "maps.app.goo.gl"
+      ],
       "profile_pattern": "(google\\.[a-z.]+/maps|maps\\.app\\.goo\\.gl|goo\\.gl/maps)",
-      "predictable": [], "site_query": null,
-      "countries": ["*"], "industries": ["*"], "stars": true, "replies": true, "opt_in": false,
+      "predictable": [],
+      "site_query": null,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "*"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "trustpilot", "label": "Trustpilot", "domains": ["trustpilot.com"],
+      "id": "trustpilot",
+      "label": "Trustpilot",
+      "domains": [
+        "trustpilot.com"
+      ],
       "profile_pattern": "trustpilot\\.com/review/[^/?#]+",
-      "predictable": ["https://www.trustpilot.com/review/{domain}", "https://www.trustpilot.com/review/www.{domain}"],
+      "predictable": [
+        "https://www.trustpilot.com/review/{domain}",
+        "https://www.trustpilot.com/review/www.{domain}"
+      ],
       "site_query": "site:trustpilot.com/review \"{brand}\"",
-      "countries": ["*"], "industries": ["*"], "stars": true, "replies": true, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "*"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "productreview", "label": "ProductReview.com.au", "domains": ["productreview.com.au"],
+      "id": "productreview",
+      "label": "ProductReview.com.au",
+      "domains": [
+        "productreview.com.au"
+      ],
       "profile_pattern": "productreview\\.com\\.au/listings/[^/?#]+",
-      "predictable": ["https://www.productreview.com.au/listings/{slug}"],
+      "predictable": [
+        "https://www.productreview.com.au/listings/{slug}"
+      ],
       "site_query": "site:productreview.com.au/listings \"{brand}\"",
-      "countries": ["AU"], "industries": ["*"], "stars": true, "replies": true, "opt_in": false,
+      "countries": [
+        "AU"
+      ],
+      "industries": [
+        "*"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "g2", "label": "G2", "domains": ["g2.com"],
+      "id": "g2",
+      "label": "G2",
+      "domains": [
+        "g2.com"
+      ],
       "profile_pattern": "g2\\.com/products/[^/?#]+(/reviews)?",
-      "predictable": ["https://www.g2.com/products/{slug}/reviews"],
+      "predictable": [
+        "https://www.g2.com/products/{slug}/reviews"
+      ],
       "site_query": "site:g2.com/products \"{brand}\" reviews",
-      "countries": ["*"], "industries": ["saas", "software", "b2b"], "stars": true, "replies": true, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "saas",
+        "software",
+        "b2b"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": "In Perplexity's top 5 cited domains (Peec AI, 30M sources, US, Mar 2026; geo-evidence s11)"
     },
     {
-      "id": "capterra", "label": "Capterra", "domains": ["capterra.com", "capterra.com.au"],
+      "id": "capterra",
+      "label": "Capterra",
+      "domains": [
+        "capterra.com",
+        "capterra.com.au"
+      ],
       "profile_pattern": "capterra\\.com(\\.au)?/(p|software)/[0-9]+/[^/?#]+",
       "predictable": [],
       "site_query": "site:capterra.com \"{brand}\" reviews",
-      "countries": ["*"], "industries": ["saas", "software", "b2b"], "stars": true, "replies": true, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "saas",
+        "software",
+        "b2b"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "trustradius", "label": "TrustRadius", "domains": ["trustradius.com"],
+      "id": "trustradius",
+      "label": "TrustRadius",
+      "domains": [
+        "trustradius.com"
+      ],
       "profile_pattern": "trustradius\\.com/products/[^/?#]+(/reviews)?",
-      "predictable": ["https://www.trustradius.com/products/{slug}/reviews"],
+      "predictable": [
+        "https://www.trustradius.com/products/{slug}/reviews"
+      ],
       "site_query": "site:trustradius.com/products \"{brand}\"",
-      "countries": ["*"], "industries": ["saas", "software", "b2b"], "stars": true, "replies": false, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "saas",
+        "software",
+        "b2b"
+      ],
+      "stars": true,
+      "replies": false,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "yelp", "label": "Yelp", "domains": ["yelp.com", "yelp.com.au"],
+      "id": "yelp",
+      "label": "Yelp",
+      "domains": [
+        "yelp.com",
+        "yelp.com.au"
+      ],
       "profile_pattern": "yelp\\.com(\\.au)?/biz/[^/?#]+",
       "predictable": [],
       "site_query": "site:yelp.com/biz \"{brand}\"",
-      "countries": ["US", "CA", "GB"], "industries": ["local", "hospitality", "retail"], "stars": true, "replies": true, "opt_in": false,
+      "countries": [
+        "US",
+        "CA",
+        "GB"
+      ],
+      "industries": [
+        "local",
+        "hospitality",
+        "retail"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": "In Google AI Mode's top 5 cited domains (Peec AI, Mar 2026; geo-evidence s11)"
     },
     {
-      "id": "facebook", "label": "Facebook", "domains": ["facebook.com"],
+      "id": "facebook",
+      "label": "Facebook",
+      "domains": [
+        "facebook.com"
+      ],
       "profile_pattern": "facebook\\.com/[^/?#]+/?(reviews)?",
       "predictable": [],
       "site_query": null,
-      "countries": ["*"], "industries": ["local", "hospitality", "retail", "ecommerce"], "stars": false, "replies": true, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "local",
+        "hospitality",
+        "retail",
+        "ecommerce"
+      ],
+      "stars": false,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": "In the top 5 cited domains for Google AI Overviews and AI Mode (Peec AI, Mar 2026; geo-evidence s11)"
     },
     {
-      "id": "app_store", "label": "App Store", "domains": ["apps.apple.com"],
+      "id": "app_store",
+      "label": "App Store",
+      "domains": [
+        "apps.apple.com"
+      ],
       "profile_pattern": "apps\\.apple\\.com/[a-z]{2}/app/[^?#]+",
       "predictable": [],
       "site_query": "site:apps.apple.com \"{brand}\"",
-      "countries": ["*"], "industries": ["app", "saas", "software", "fintech"], "stars": true, "replies": true, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "app",
+        "saas",
+        "software",
+        "fintech"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "google_play", "label": "Google Play", "domains": ["play.google.com"],
+      "id": "google_play",
+      "label": "Google Play",
+      "domains": [
+        "play.google.com"
+      ],
       "profile_pattern": "play\\.google\\.com/store/apps/details\\?id=[^&#]+",
       "predictable": [],
       "site_query": "site:play.google.com/store/apps \"{brand}\"",
-      "countries": ["*"], "industries": ["app", "saas", "software", "fintech"], "stars": true, "replies": true, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "app",
+        "saas",
+        "software",
+        "fintech"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "amazon", "label": "Amazon", "domains": ["amazon.com", "amazon.com.au"],
+      "id": "amazon",
+      "label": "Amazon",
+      "domains": [
+        "amazon.com",
+        "amazon.com.au"
+      ],
       "profile_pattern": "amazon\\.com(\\.au)?/.*(dp|product-reviews)/[A-Z0-9]{10}",
       "predictable": [],
       "site_query": null,
-      "countries": ["*"], "industries": ["ecommerce", "retail"], "stars": true, "replies": false, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "ecommerce",
+        "retail"
+      ],
+      "stars": true,
+      "replies": false,
+      "opt_in": false,
       "ai_citation": ""
     },
     {
-      "id": "reddit", "label": "Reddit", "domains": ["reddit.com"],
+      "id": "reddit",
+      "label": "Reddit",
+      "domains": [
+        "reddit.com"
+      ],
       "profile_pattern": "reddit\\.com/(search|r/[^/]+)",
-      "predictable": ["https://www.reddit.com/search/?q={brand_q}"],
+      "predictable": [
+        "https://www.reddit.com/search/?q={brand_q}"
+      ],
       "site_query": null,
-      "countries": ["*"], "industries": ["*"], "stars": false, "replies": false, "opt_in": false,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "*"
+      ],
+      "stars": false,
+      "replies": false,
+      "opt_in": false,
       "ai_citation": "In the top 5 cited domains on ChatGPT, Perplexity, Gemini, AI Overviews and AI Mode (Peec AI, Mar 2026; Semrush, Nov 2025; geo-evidence s11)"
     },
     {
-      "id": "glassdoor", "label": "Glassdoor (employer)", "domains": ["glassdoor.com", "glassdoor.com.au"],
+      "id": "glassdoor",
+      "label": "Glassdoor (employer)",
+      "domains": [
+        "glassdoor.com",
+        "glassdoor.com.au"
+      ],
       "profile_pattern": "glassdoor\\.com(\\.au)?/Reviews/[^?#]+",
       "predictable": [],
       "site_query": "site:glassdoor.com/Reviews \"{brand}\"",
-      "countries": ["*"], "industries": ["*"], "stars": true, "replies": true, "opt_in": true,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "*"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": true,
       "ai_citation": ""
     },
     {
-      "id": "indeed", "label": "Indeed (employer)", "domains": ["indeed.com", "au.indeed.com"],
+      "id": "indeed",
+      "label": "Indeed (employer)",
+      "domains": [
+        "indeed.com",
+        "au.indeed.com"
+      ],
       "profile_pattern": "indeed\\.com/cmp/[^/?#]+",
       "predictable": [],
       "site_query": "site:indeed.com/cmp \"{brand}\" reviews",
-      "countries": ["*"], "industries": ["*"], "stars": true, "replies": false, "opt_in": true,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "*"
+      ],
+      "stars": true,
+      "replies": false,
+      "opt_in": true,
       "ai_citation": ""
     }
-  ]
+  ],
+  "retailers": {
+    "_comment": "Retailer and marketplace domains that often hold most product reviews. Out of scope for v1: discovery only counts them so the picker can say so.",
+    "domains": [
+      "amazon.com",
+      "amazon.com.au",
+      "amazon.co.uk",
+      "ebay.com",
+      "ebay.com.au",
+      "walmart.com",
+      "target.com",
+      "target.com.au",
+      "bestbuy.com",
+      "priceline.com.au",
+      "chemistwarehouse.com.au",
+      "myer.com.au",
+      "davidjones.com",
+      "bunnings.com.au",
+      "jbhifi.com.au",
+      "harveynorman.com.au",
+      "kmart.com.au",
+      "bigw.com.au",
+      "catch.com.au",
+      "theiconic.com.au",
+      "adorebeauty.com.au",
+      "mecca.com",
+      "sephora.com",
+      "sephora.com.au",
+      "boots.com",
+      "superdrug.com",
+      "ulta.com",
+      "woolworths.com.au",
+      "coles.com.au",
+      "officeworks.com.au",
+      "temple-webster.com.au",
+      "templeandwebster.com.au",
+      "johnlewis.com",
+      "argos.co.uk",
+      "currys.co.uk",
+      "costco.com"
+    ]
+  }
 }

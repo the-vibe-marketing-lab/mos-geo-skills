@@ -188,7 +188,7 @@
     "actor": "apify/google-search-scraper",
     "input": {
       "queries": "{queries}",
-      "maxPagesPerQuery": 1,
+      "maxPagesPerQuery": "{pages}",
       "countryCode": "{country}",
       "languageCode": "en",
       "mobileResults": false,
@@ -199,7 +199,8 @@
     "price_event": "search-page-scraped",
     "last_smoke_tested": null,
     "charge_cap_floor_usd": 0.5,
-    "notes": "Apify refuses a run cost cap below $0.50 for this actor; maxPagesPerQuery 1 is what limits spend (one results page per query)."
+    "notes": "Apify refuses a run cost cap below $0.50 for this actor; maxPagesPerQuery 1 is what limits spend (one results page per query). Each query reads up to pages_per_query results pages (default 3, about $0.0045 each on the FREE tier); the dry run shows the total first.",
+    "pages_per_query": 3
   },
   "_smoke_log": "2026-10-12: all six core actors passed a 5-review smoke test (Capterra needs a cap of at least 10). Measured per-run start fees: Trustpilot $0.04, ProductReview $0.09, G2 and Capterra ~$0.005, Google Maps ~$0.002, Reddit ~$0.02. Reddit keyword search returns off-topic posts; reviews.py drops any that do not name the brand."
 }
