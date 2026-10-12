@@ -2075,9 +2075,12 @@ def safety_reports(reviews: list[dict], labels: dict, terms: dict) -> list[dict]
         if hit:
             i, kind = hit
             pool = [k for k in labelled.get("aspects", {}) if k in terms]
-            scores = {k: sentence_score(sents[i], terms[k], False)[0] for k in pool}
+            rest = sents[i]
+            for pat in SAFETY_PATTERNS.values():  # "Fair Trading" must not match a "fair price" aspect
+                rest = pat.sub(" ", rest)
+            scores = {k: sentence_score(rest, terms[k], False)[0] for k in pool}
             if not any(scores.values()):  # the review's labels miss it: match against the whole taxonomy
-                scores = {k: sentence_score(sents[i], terms[k], False)[0] for k in terms}
+                scores = {k: sentence_score(rest, terms[k], False)[0] for k in terms}
             best = max(scores, key=scores.get, default=None)
             entry.update(kind=kind, snippet=excerpt_from(sents, i, limit=260),
                          aspect=best if best and scores[best] > 0 else None)

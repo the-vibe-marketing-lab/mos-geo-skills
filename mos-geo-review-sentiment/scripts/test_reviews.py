@@ -405,6 +405,12 @@ class Iteration2(unittest.TestCase):
         for text, kind in expected.items():
             self.assertEqual(rv.safety_hit(text), kind, text)
 
+    def test_regulator_words_do_not_pick_an_aspect(self):
+        terms = dict(self.terms, fees={"fair", "price"})
+        r = {"id": "f", "rating": 1.0, "date": "2026-08-01", "text": "I have raised a case with Fair Trading."}
+        (entry,) = rv.safety_reports([r], {"f": {"aspects": {}, "severity": "safety_legal"}}, terms)
+        self.assertEqual((entry["kind"], entry["aspect"]), ("legal", None))
+
     def test_over_labels_are_flagged_not_dropped(self):
         r = {"id": "o", "rating": 1.0, "date": "2026-01-01", "text": "Worst couch ever, the cushions sag."}
         reports = rv.safety_reports([r], {"o": {"aspects": {"build": -2}, "severity": "safety_legal"}}, self.terms)
