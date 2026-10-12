@@ -39,6 +39,15 @@
       "needs": "Apify token (about $0.50 to $3 a run at 500 reviews per platform); TypeSafe API key optional (Claude labels in session without it)"
     },
     {
+      "skill": "mos-geo-homepage-faqs",
+      "category": "Brand Optimisation",
+      "what_it_does": "Sourced FAQs in brand voice using existing buyer/Dealbreaker questions, with answer gaps retained, relevant page placement, passage-level review, verified internal links, matching FAQPage schema and client approval; exports require current final lint.",
+      "run": "/mos-geo-homepage-faqs",
+      "output": "campaigns/geo/YYYY-MM/homepage-faqs/",
+      "feeds_tab": "Homepage FAQs, Initiatives",
+      "needs": "Brand name and website URL; Python 3.10+, openpyxl for the workbook; whole mos-geo-skills pack (Scrapling optional)"
+    },
+    {
       "skill": "mos-geo-llm-buttons",
       "category": "Content Strategy",
       "what_it_does": "Client-ready LLM share buttons package: brief, code reference and an in-brand demo of 'ask ChatGPT / Claude / Perplexity about this page' buttons.",
@@ -55,6 +64,15 @@
       "output": "campaigns/geo/YYYY-MM/mos-geo-internal-links/",
       "feeds_tab": "None yet (audit and recommendations live in the run folder)",
       "needs": "Screaming Frog Internal HTML + All Inlinks exports and stored HTML (GSC columns optional); TypeSafe API key for judge/place"
+    },
+    {
+      "skill": "mos-geo-topic-clusters",
+      "category": "Content Strategy",
+      "what_it_does": "Keyword clusters (one cluster = one page) rolled up into topics with a pillar, each mapped to the page ranking today, with status (Owned, Striking, Cannibalised, Lost ...), opportunity score, home-page overload and a cannibalisation list; pairs judged by TypeSafe Jev, clusters and numbers built in code.",
+      "run": "/mos-geo-topic-clusters",
+      "output": "campaigns/geo/YYYY-MM/mos-geo-topic-clusters/",
+      "feeds_tab": "None yet (xlsx and README live in the run folder)",
+      "needs": "Ahrefs Organic Keywords export or GSC page+query export; TypeSafe API key; OpenAI or Voyage key optional (embeddings); DataForSEO optional (SERP overlap)"
     },
     {
       "skill": "mos-geo-schema-scraper",

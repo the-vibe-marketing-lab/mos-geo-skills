@@ -33,7 +33,7 @@ Star-only reviews (no text) count toward ratings and reply rates, not toward asp
   `volume share × average severity × recency weight × visibility weight × (1 + share unreplied)`.
   Volume share = negative mentions / reviews with text. Severity weights, the recency window and
   weight, and visibility weights are in `config/scoring.json`. Visibility weight is above 1.0 only
-  for platforms with a sourced line in `_shared/geo-evidence.md` section 11.
+  for platforms with a sourced line in `_shared/geo-evidence.md` section 12.
 - **Trend** per issue: negative mentions in the last 3 months against the 3 before;
   rising / falling / flat with a 20% band, but only when both windows have at least 10 mentions
   (`trend.min_mentions`). Below that the report says "too few to call".
@@ -95,7 +95,7 @@ never "reviewers are" or "a cluster"; Australian spelling; no em dashes; no hype
 Frontmatter, then: headline (rating, net sentiment, replies, biggest complaint, most praised, the
 unreplied count), rating spread, trend by month with a sparkline, the platform table (analysed
 against the profile total), top 5 praised aspects with a clean example, top 5 complaints, the word
-clouds, "Why this matters for AI answers" (fixed wording, sourced to `geo-evidence.md` section 11),
+clouds, "Why this matters for AI answers" (fixed wording, sourced to `geo-evidence.md` section 12),
 and a methods note: sample, date range, cap, exclusions, labelling source, spot-check result, which
 platforms' quotes link to the listing page rather than the individual review (ProductReview and
 Capterra, whose scrapers return no per-review link), the priority formula with its weights, and the

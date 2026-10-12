@@ -37,7 +37,7 @@ site, and the complaints worth fixing first. It is the deep version of Brand 360
 4. **Quotes are verbatim**, with a link to the public review. Root causes are written as
    hypotheses. No reviewer name is ever stored (authors are a salted hash).
 5. **No GEO claim without a source.** The only claims about AI engines citing review sites are the
-   ones in `_shared/geo-evidence.md` section 11. Do not add others in prose.
+   ones in `_shared/geo-evidence.md` section 12. Do not add others in prose.
 
 ## Pipeline
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Platform registry for discovery. `domains`: hosts that count as this platform. `profile_pattern`: regex a URL must match to be a review profile (not a blog post or help page). `predictable`: URL templates tried first ({domain}, {domain_root}, {slug}); `site_query`: the Google query used when nothing predictable or linked was found. `countries`/`industries`: when the platform is offered (\"*\" = always). `stars`: false means discussion only, kept out of the star average. `opt_in`: only offered with --include-employer. `ai_citation`: filled ONLY from a sourced line in _shared/geo-evidence.md section 11; leave it empty otherwise.",
+  "_comment": "Platform registry for discovery. `domains`: hosts that count as this platform. `profile_pattern`: regex a URL must match to be a review profile (not a blog post or help page). `predictable`: URL templates tried first ({domain}, {domain_root}, {slug}); `site_query`: the Google query used when nothing predictable or linked was found. `countries`/`industries`: when the platform is offered (\"*\" = always). `stars`: false means discussion only, kept out of the star average. `opt_in`: only offered with --include-employer. `ai_citation`: filled ONLY from a sourced line in _shared/geo-evidence.md section 12; leave it empty otherwise.",
   "platforms": [
     {
       "id": "google_maps",

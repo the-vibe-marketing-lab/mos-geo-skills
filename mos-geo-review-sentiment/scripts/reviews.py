@@ -2460,7 +2460,7 @@ SPARK = "▁▂▃▄▅▆▇█"
 GEO_NOTE = ("AI assistants draw on third-party pages when they describe a brand. In two large citation studies, "
             "Reddit was among the five most-cited domains on every engine measured, and G2, Yelp and Facebook "
             "appeared in the top five for some engines (Peec AI, March 2026; Semrush, November 2025; sources in "
-            "`_shared/geo-evidence.md` section 11). Neither study measured Trustpilot, ProductReview or Google "
+            "`_shared/geo-evidence.md` section 12). Neither study measured Trustpilot, ProductReview or Google "
             "Maps reviews, so this report makes no claim about how often those are cited. What is safe to say: "
             "a complaint repeated on a public page an engine reads can end up in its answer, and a public reply "
             "or an on-site answer gives the engine a second source to draw on.")
