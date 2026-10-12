@@ -1,24 +1,16 @@
 ---
 name: mos-geo-review-sentiment
 description: >
-  Read every third-party review a brand has and turn it into three things a client can act on: a
-  sentiment report (star rating, rating spread, monthly trend, per-platform table, reply rate and
-  reply speed), word clouds of the phrases customers actually use (praise and complaints shown
-  separately, interactive version with quotes), and a fix report that ranks the complaints by how
-  much they hurt, each with verbatim quotes and links, an owner, a fix, a GEO action and a metric to
-  watch. Finds the profiles itself (Trustpilot, Google Maps, ProductReview, G2, Capterra, Reddit,
-  Facebook and more), shows a picker with review counts and cost before anything is scraped, pulls
-  only what the user picks through pinned Apify actors, labels every review against an approved
-  aspect taxonomy (TypeSafe Jev, or Claude in session) and computes every number in code. Adds a
-  Review Fixes tab and Initiatives to the GEO brand audit workbook.
-  USE WHEN the user says "review sentiment", "brand sentiment", "review analysis", "analyse our
-  reviews", "what are customers saying", "what do customers say about [brand]", "what do customers think of [brand]", "check the review sites", "Trustpilot
-  analysis", "Google reviews analysis", "ProductReview analysis", "G2 reviews", "review audit",
-  "word cloud of reviews", "review word cloud", "what are people complaining about", "fix our
-  reviews", "unreplied reviews", "/mos-geo-review-sentiment", or asks for the deep version of
-  Brand 360's sentiment section. NOT FOR testing what AI engines say about a brand (use
-  mos-geo-brand-360), sentiment write-ups for a single product page or PDP, or writing replies to
-  reviews (out of scope for v1; this skill lists the unreplied ones).
+  Brand review sentiment from third-party review sites: what customers think of a company and which
+  complaints to fix first. Use this skill whenever someone names a brand or client and wants its
+  reviews read, counted or summarised: Trustpilot, Google Maps, ProductReview, G2, Capterra, Reddit
+  or Facebook, or a review export they already have (CSV/JSON). Typical asks: overall sentiment,
+  "what do customers think of X", ranked recurring complaints, a fix list, praise vs complaint word
+  clouds for a client deck, the review-sentiment piece of a GEO brand audit, or going deeper when
+  Brand 360 called sentiment "mixed". Any business type. Pick it over pm-customer-sentiment-analysis,
+  Apify, Research or web search when the subject is a brand's review profiles. Not for:
+  what AI engines say about the brand (mos-geo-brand-360), Amazon or retailer reviews, one product's
+  PDP sentiment, review replies, review schema or review-request flows.
 ---
 
 # Review Sentiment
