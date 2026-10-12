@@ -167,11 +167,79 @@ class Scoring(unittest.TestCase):
                 {"platform": "reddit", "rating": 1.0}]
         self.assertEqual(rv.star_average(rows), (4.0, 2))
 
-    def test_trend_direction(self):
+    def test_trend_direction_needs_ten_each_side(self):
         sc = rv.load_config("scoring.json")
-        recent = [{"date": "2026-09-01"}] * 4 + [{"date": "2026-05-01"}]
-        self.assertEqual(rv.trend(recent, "2026-10-12", sc)["direction"], "rising")
-        self.assertEqual(rv.trend([{"date": "2026-05-01"}] * 3, "2026-10-12", sc)["direction"], "falling")
+        rising = [{"date": "2026-09-01"}] * 15 + [{"date": "2026-05-01"}] * 10
+        self.assertEqual(rv.trend(rising, "2026-10-12", sc)["direction"], "rising")
+        falling = [{"date": "2026-09-01"}] * 10 + [{"date": "2026-05-01"}] * 15
+        self.assertEqual(rv.trend(falling, "2026-10-12", sc)["direction"], "falling")
+        flat = [{"date": "2026-09-01"}] * 10 + [{"date": "2026-05-01"}] * 11
+        self.assertEqual(rv.trend(flat, "2026-10-12", sc)["direction"], "flat")
+        few = [{"date": "2026-09-01"}] * 12 + [{"date": "2026-05-01"}] * 9  # 9 on one side
+        self.assertEqual(rv.trend(few, "2026-10-12", sc)["direction"], "too few to call")
+        self.assertEqual(rv.trend([{"date": "2026-09-01"}] * 4, "2026-10-12", sc)["direction"], "too few to call")
+
+    def test_monthly_drops_thin_months_and_says_why(self):
+        rows = [{"id": str(i), "platform": "trustpilot", "rating": 5.0, "date": "2026-09-0%d" % (i % 9 + 1)}
+                for i in range(6)] + [{"id": "x", "platform": "trustpilot", "rating": 1.0, "date": "2025-01-01"}]
+        months = rv.monthly(rows, {}, 5)
+        self.assertEqual([m["month"] for m in months], ["2026-09"])
+        agg = {"meta": {"max_per_platform": 30}, "scoring": {"monthly_min_reviews": 5}, "monthly": months,
+               "monthly_dropped": 1}
+        text = rv.monthly_table(agg)
+        self.assertIn("newest 30 reviews per platform", text)
+        self.assertIn("not a trend", text)
+        self.assertNotIn("2025-01", text)
+
+
+class Framing(unittest.TestCase):
+    aspect = {"id": "delivery", "label": "Delivery", "description": "Late or missed delivery days and couriers."}
+
+    def test_snippet_starts_at_the_sentence_about_the_aspect(self):
+        text = ("Lovely couch and great colours. We were thrilled at first. The delivery was three weeks late "
+                "and nobody told us. Would not buy again.")
+        snip, states = rv.issue_snippet(text, rv.aspect_terms(self.aspect))
+        self.assertTrue(states)
+        self.assertTrue(snip.startswith("… The delivery was three weeks late"))
+        self.assertIn(snip.lstrip("… ").rstrip(" …"), text)  # still verbatim
+
+    def test_quotes_rank_stating_snippets_and_skip_happy_reviews(self):
+        negs = [{"id": "happy", "rating": 5.0, "date": "2026-10-01",
+                 "text": "Best purchase ever. The colour is perfect."},
+                {"id": "vague", "rating": 1.0, "date": "2026-10-02", "text": "Terrible company, avoid them."},
+                {"id": "clear", "rating": 2.0, "date": "2026-01-01",
+                 "text": "Nice fabric. Delivery was late twice and the courier never called."}]
+        labels = {r["id"]: {"aspects": {"delivery": -2}} for r in negs}
+        quotes = rv.pick_quotes(negs, labels, self.aspect)
+        self.assertEqual([q["id"] for q in quotes], ["clear", "vague"])  # 5 star dropped, stating first
+        self.assertTrue(quotes[0]["states_issue"])
+        self.assertTrue(quotes[0]["snippet"].startswith("… Delivery was late"))
+
+    def test_praise_never_ranks_a_net_complaint(self):
+        tax = {"aspects": [{"id": "support", "label": "Support"}, {"id": "assembly", "label": "Assembly"}]}
+        reviews = [{"id": f"s{i}", "platform": "trustpilot", "rating": 1.0, "date": "2026-09-01", "text": "x"}
+                   for i in range(24)] + \
+                  [{"id": f"p{i}", "platform": "trustpilot", "rating": 5.0, "date": "2026-09-01", "text": "x"}
+                   for i in range(8)]
+        labels = {f"s{i}": {"id": f"s{i}", "aspects": {"support": -2}, "severity": "minor"} for i in range(24)}
+        labels.update({f"p{i}": {"id": f"p{i}", "aspects": {"support": 2, "assembly": 2}, "severity": "none"}
+                       for i in range(8)})
+        agg = rv.build_aggregate(reviews, labels, tax, rv.load_config("scoring.json"), "2026-10-12", {},
+                                 {"brand": "Acme", "max_per_platform": 30})
+        self.assertEqual(agg["praised"], ["assembly"])  # support has 8 positive but 24 negative
+        lines = rv.headline_lines(agg, {})
+        praised = next(line for line in lines if "Most praised" in line)
+        self.assertIn("Assembly (8 positive / 0 negative mentions)", praised)
+        net = next(line for line in lines if "Net sentiment" in line)
+        self.assertIn("32 labelled reviews (32 name an aspect)", net)
+
+    def test_small_counts_never_read_as_a_pattern(self):
+        self.assertEqual(rv.few(1, "negative reviews", "one negative review"), "one negative review")
+        self.assertEqual(rv.few(5, "negative reviews"), "5 negative reviews")
+        agg = {"fixes": [{"id": "warranty", "negative": 2}]}
+        notes = {"issues": {"warranty": {"root_cause": "Complaints cluster on one product line."}}}
+        self.assertTrue(rv.pattern_word_warnings(agg, notes))
+        self.assertEqual(rv.default_problem({"label": "Warranty", "negative": 1}), "Warranty: single mentions")
 
 
 class Phrases(unittest.TestCase):

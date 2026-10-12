@@ -35,9 +35,24 @@ Star-only reviews (no text) count toward ratings and reply rates, not toward asp
   weight, and visibility weights are in `config/scoring.json`. Visibility weight is above 1.0 only
   for platforms with a sourced line in `_shared/geo-evidence.md` section 11.
 - **Trend** per issue: negative mentions in the last 3 months against the 3 before;
-  rising / falling / flat with a 20% band.
-- **Quotes** per issue: up to 3, strongest feeling about that aspect first, then the reviews with
-  the fewest other complaints, then the newest.
+  rising / falling / flat with a 20% band, but only when both windows have at least 10 mentions
+  (`trend.min_mentions`). Below that the report says "too few to call".
+- **Monthly table**: months with fewer than 5 reviews (`monthly_min_reviews`) are left out, and a
+  line above the table says the sample is the newest N per platform, so month-to-month movement is
+  not a trend.
+- **Praise**: only aspects with more positive than negative mentions, ranked by net share
+  ((positive - negative) / mentions). The headline and the table show positive and negative counts
+  side by side ("7 positive / 3 negative"), so a top complaint can never read as a strength.
+- **Quotes** per issue: up to 3. Each excerpt starts at the sentence that best matches the aspect
+  (its label, description and optional `keywords`) and carries a negative word, then runs on while
+  it fits; cuts are marked "…". Excerpts that state the complaint themselves rank first, then the
+  strongest feeling, fewest other complaints, newest. A 4 to 5 star review is used only when its
+  excerpt shows the complaint.
+- **Denominators**: always both, "60 labelled reviews (55 name an aspect)".
+- **Small counts**: under 3 reviews is an individual report, never a pattern. The template writes
+  "one negative review" / "two negative reviews", titles default to "<aspect>: single mentions",
+  and `report` warns when a fix note uses pattern words ("cluster", "many", "reviewers are",
+  "recurring", "several", "common") for an issue with fewer than 3 reviews.
 
 ## `data/fix-notes.json` (Claude writes this, stage 7)
 
@@ -58,7 +73,8 @@ Star-only reviews (no text) count toward ratings and reply rates, not toward asp
 ```
 
 Write it for the top 5 issues at least. Rules: every claim comes from the quotes or the numbers;
-root causes are labelled guesses; Australian spelling; no em dashes; no hype words ("game-changer",
+root causes are labelled guesses; fewer than 3 reviews is "one reviewer" or "single mentions",
+never "reviewers are" or "a cluster"; Australian spelling; no em dashes; no hype words ("game-changer",
 "unlock", "skyrocket"); never promise AI citations. Missing notes fall back to neutral defaults and
 `report` lists which issues still need them.
 
@@ -68,8 +84,10 @@ Frontmatter, then: headline (rating, net sentiment, replies, biggest complaint, 
 unreplied count), rating spread, trend by month with a sparkline, the platform table (analysed
 against the profile total), top 5 praised aspects with a clean example, top 5 complaints, the word
 clouds, "Why this matters for AI answers" (fixed wording, sourced to `geo-evidence.md` section 11),
-and a methods note: sample, date range, cap, exclusions, labelling source, spot-check result, the
-priority formula with its weights, and the Apify and labelling cost from the run records.
+and a methods note: sample, date range, cap, exclusions, labelling source, spot-check result, which
+platforms' quotes link to the listing page rather than the individual review (ProductReview and
+Capterra, whose scrapers return no per-review link), the priority formula with its weights, and the
+Apify and labelling cost from the run records.
 
 ## `fix-report.md`
 

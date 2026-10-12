@@ -2,11 +2,37 @@
   "_comment": "Fix priority, computed in code and stated in the report. priority = volume_share x avg_severity x recency_weight x visibility_weight x (1 + unreplied_share). Change a weight here and re-run `aggregate`: no relabelling needed.",
   "negative_polarity_max": -1,
   "positive_polarity_min": 1,
-  "severity_weights": {"none": 1, "minor": 1, "cost_money": 2, "safety_legal": 3},
-  "recency": {"recent_months": 6, "recent_weight": 2, "older_weight": 1},
+  "severity_weights": {
+    "none": 1,
+    "minor": 1,
+    "cost_money": 2,
+    "safety_legal": 3
+  },
+  "recency": {
+    "recent_months": 6,
+    "recent_weight": 2,
+    "older_weight": 1
+  },
   "_visibility_comment": "Platforms AI engines are shown to cite get more weight. Only platforms with a sourced line in _shared/geo-evidence.md section 11 are above 1.0.",
-  "visibility_weights": {"reddit": 1.5, "g2": 1.25, "facebook": 1.25, "yelp": 1.25, "default": 1.0},
-  "trend": {"window_months": 3, "flat_band": 0.2},
-  "initiatives": {"top_issues": 5, "min_negative_mentions": 2},
-  "label_threshold": {"mention": 0.5}
+  "visibility_weights": {
+    "reddit": 1.5,
+    "g2": 1.25,
+    "facebook": 1.25,
+    "yelp": 1.25,
+    "default": 1.0
+  },
+  "trend": {
+    "window_months": 3,
+    "flat_band": 0.2,
+    "min_mentions": 10
+  },
+  "initiatives": {
+    "top_issues": 5,
+    "min_negative_mentions": 2
+  },
+  "label_threshold": {
+    "mention": 0.5
+  },
+  "_trend_comment": "Trend words need at least min_mentions negative mentions in BOTH windows; below that the report says 'too few to call'.",
+  "monthly_min_reviews": 5
 }

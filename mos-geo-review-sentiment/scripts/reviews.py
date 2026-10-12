@@ -1681,7 +1681,7 @@ def platform_table(reviews: list[dict], stats: dict) -> list[dict]:
     return rows
 
 
-def monthly(reviews: list[dict], labels: dict) -> list[dict]:
+def monthly(reviews: list[dict], labels: dict, min_reviews: int = 1) -> list[dict]:
     by = defaultdict(list)
     for r in reviews:
         if r.get("date"):
@@ -1689,6 +1689,8 @@ def monthly(reviews: list[dict], labels: dict) -> list[dict]:
     out = []
     for month in sorted(by):
         rs = by[month]
+        if len(rs) < min_reviews:
+            continue
         avg, rated = star_average(rs)
         out.append({"month": month, "reviews": len(rs), "rated": rated, "avg_rating": avg,
                     "net_sentiment": net_sentiment(rs, labels)["net"]})
@@ -1734,20 +1736,79 @@ def trend(negs: list[dict], as_of: str, sc: dict) -> dict:
     recent, prev = sum(a <= w for a in ages), sum(w < a <= 2 * w for a in ages)
     if not recent and not prev:
         direction = "none in the last 6 months"
+    elif min(recent, prev) < sc["trend"].get("min_mentions", 10):
+        direction = "too few to call"
     else:
         change = (recent - prev) / max(prev, 1)
         direction = "rising" if change > band else "falling" if change < -band else "flat"
     return {"recent": recent, "previous": prev, "window_months": w, "direction": direction}
 
 
-def pick_quotes(negs: list[dict], labels: dict, aspect: str, n: int = 3) -> list[str]:
-    """Quotes that are mostly about this aspect: the strongest feeling first,
-    then reviews with the fewest other complaints, then the newest."""
-    def key(r):
+NEG_CUES = set("""
+not no never nobody nothing nowhere none cannot can't won't didn't doesn't isn't wasn't don't couldn't wouldn't
+late later delay delayed waiting waited wait still poor bad worse worst terrible horrible awful disgusting
+disappointed disappointing frustrating frustrated rude ignored ignoring broken broke faulty defective damaged
+missing lost wrong complaint issue issues problem problems fault failed fail
+sagging sag smell pilling unacceptable avoid beware nightmare chase chased unanswered hold
+""".split())
+
+
+def aspect_terms(aspect: dict) -> set[str]:
+    """Stems (first 5 letters) of the content words in an aspect's label,
+    description and optional `keywords`: what a sentence about it would say."""
+    text = " ".join([aspect.get("label", ""), aspect.get("description", "")] + list(aspect.get("keywords") or []))
+    words = re.findall(r"[a-z]+", text.lower().replace("_", " "))
+    return {w[:5] for w in words if len(w) >= 4 and w not in STOPWORDS}
+
+
+def split_sentences(text: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[.!?…])\s+|\n+", text or "") if x.strip()]
+
+
+def sentence_score(sentence: str, terms: set, negative: bool) -> tuple[int, int]:
+    words = re.findall(r"[a-z']+", sentence.lower())
+    hits = sum(1 for w in words if len(w) >= 4 and w[:5] in terms)
+    cues = sum(1 for w in words if w in NEG_CUES) if negative else 0
+    return hits, cues
+
+
+def issue_snippet(text: str, terms: set, negative: bool = True, limit: int = 320) -> tuple[str, bool]:
+    """(verbatim excerpt, states_issue). The excerpt starts at the sentence that
+    best matches the aspect (and, for complaints, carries a negative cue), adds
+    the following sentences while they fit, and marks cuts with an ellipsis."""
+    sents = [" ".join(x.split()) for x in split_sentences(text)]
+    if not sents:
+        return "", False
+    scored = [sentence_score(x, terms, negative) for x in sents]
+    best = max(range(len(sents)), key=lambda i: (scored[i][0] > 0 and (scored[i][1] > 0 or not negative),
+                                                  scored[i][0], scored[i][1], -i))
+    hits, cues = scored[best]
+    states = hits > 0 and (cues > 0 or not negative)
+    start = best if hits else 0
+    out, i = sents[start], start + 1
+    while i < len(sents) and len(out) + len(sents[i]) + 1 <= limit:
+        out, i = f"{out} {sents[i]}", i + 1
+    more = i < len(sents)
+    if len(out) > limit:
+        out, more = out[:limit].rsplit(" ", 1)[0], True
+    return ("… " if start else "") + out + (" …" if more else ""), states
+
+
+def pick_quotes(negs: list[dict], labels: dict, aspect: dict, n: int = 3) -> list[dict]:
+    """Quotes whose own excerpt states the complaint come first; then the
+    strongest feeling about this aspect, fewest other complaints, newest. A 4 to 5
+    star review is only used when its excerpt shows the complaint."""
+    terms, cands = aspect_terms(aspect), []
+    for r in negs:
+        snippet, states = issue_snippet(r.get("text") or "", terms)
+        if not snippet or ((r.get("rating") or 0) >= 4 and not states):
+            continue
         lab = labels[r["id"]]["aspects"]
-        others = sum(1 for k, v in lab.items() if k != aspect and v < 0)
-        return (lab.get(aspect, 0), others, -int((r.get("date") or "0").replace("-", "") or 0))
-    return [r["id"] for r in sorted(negs, key=key)[:n]]
+        others = sum(1 for k, v in lab.items() if k != aspect["id"] and v < 0)
+        cands.append(((not states, lab.get(aspect["id"], 0), others,
+                       -int((r.get("date") or "0").replace("-", "") or 0)), r["id"], snippet, states))
+    cands.sort(key=lambda c: c[0])
+    return [{"id": rid, "snippet": snip, "states_issue": st} for _, rid, snip, st in cands[:n]]
 
 
 def fixes(reviews: list[dict], labels: dict, tax: dict, sc: dict, as_of: str) -> list[dict]:
@@ -1762,7 +1823,7 @@ def fixes(reviews: list[dict], labels: dict, tax: dict, sc: dict, as_of: str) ->
         out.append({"id": a["id"], "label": a["label"], "owner": a.get("owner"), "negative": len(negs),
                     "share": comp["volume_share"], "components": comp, "priority": priority_score(**comp),
                     "trend": trend(negs, as_of, sc), "churn": sum(labels[r["id"]].get("churn", False) for r in negs),
-                    "quotes": pick_quotes(negs, labels, a["id"])})
+                    "quotes": pick_quotes(negs, labels, a)})
     out.sort(key=lambda f: -f["priority"])
     for i, f in enumerate(out, 1):
         f["rank"] = i
@@ -1800,19 +1861,24 @@ def build_aggregate(reviews, labels, tax, sc, as_of, stats, meta) -> dict:
     dates = sorted(r["date"] for r in reviews if r.get("date"))
     dist = Counter(int(round(r["rating"])) for r in reviews if r.get("rating") is not None and has_stars(r["platform"]))
     aspects = aspect_counts(reviews, labels, tax, sc)
-    praised = sorted([a for a in aspects if a["positive"]], key=lambda a: (-a["positive"], a["label"]))[:5]
+    praised = sorted([a for a in aspects if a["positive"] > a["negative"]],
+                     key=lambda a: (-a["net"], -a["positive"], a["label"]))[:5]
     return {
         "meta": {"brand": meta.get("brand"), "domain": meta.get("domain"), "as_of": as_of, "reviews": len(reviews),
-                 "labelled": net["labelled"], "unlabelled_no_text": sum(not r.get("text") for r in reviews),
+                 "labelled": net["labelled"], "labelled_reviews": len([r for r in reviews if r["id"] in labels]),
+                 "unlabelled_no_text": sum(not r.get("text") for r in reviews),
                  "date_range": [dates[0], dates[-1]] if dates else None,
                  "platforms": sorted({r["platform"] for r in reviews}),
                  "excluded_from_stars": sorted({r["platform"] for r in reviews if not has_stars(r["platform"])}),
-                 "max_per_platform": meta.get("max_per_platform"), "spot_check": meta.get("spot_check"),
+                 "max_per_platform": meta.get("max_per_platform"),
+                 "listing_link_platforms": sorted({r["platform"] for r in reviews
+                                                   if r.get("review_url") and r["review_url"] == r.get("profile_url")}), "spot_check": meta.get("spot_check"),
                  "label_sources": dict(Counter(l.get("source", "?") for l in labels.values()))},
         "headline": {"avg_rating": avg, "rated": rated, "net_sentiment": net["net"], "positive": net["positive"],
                      "negative": net["negative"]},
         "rating_distribution": {str(s): dist.get(s, 0) for s in range(1, 6)},
-        "monthly": monthly(reviews, labels),
+        "monthly": monthly(reviews, labels, sc.get("monthly_min_reviews", 5)),
+        "monthly_dropped": sum(1 for m in monthly(reviews, labels) if m["reviews"] < sc.get("monthly_min_reviews", 5)),
         "platforms": platform_table(reviews, stats),
         "replies": reply_stats(reviews),
         "aspects": aspects,
@@ -2145,23 +2211,35 @@ def verbatim(text: str, limit: int = 320) -> str:
     return (cut[: end + 1] if end > limit // 3 else cut.rsplit(" ", 1)[0]) + " …"
 
 
-def quote_line(r: dict) -> str:
+def quote_line(r: dict, snippet: str | None = None) -> str:
     stars_txt = f"{r['rating']:.0f}★ " if r.get("rating") else ""
     label = platform_index().get(r["platform"], {}).get("label", r["platform"])
     link = r.get("review_url") or r.get("profile_url") or ""
     src = f"[{label}, {stars_txt}{r.get('date') or 'undated'}]({link})" if link else f"{label}, {r.get('date')}"
-    return f'> "{verbatim(r.get("text") or r.get("title") or "")}" ({src})'
+    return f'> "{snippet or verbatim(r.get("text") or r.get("title") or "")}" ({src})'
+
+
+def labelled_text(meta: dict) -> str:
+    """'60 labelled reviews (55 name an aspect)': both denominators, never just one."""
+    total = meta.get("labelled_reviews", meta["labelled"])
+    return f"{total} labelled reviews ({meta['labelled']} name an aspect)"
+
+
+def few(n: int, many: str, one: str = "one reviewer", two: str = "two reviewers") -> str:
+    """Counts under 3 are individual reports, never a pattern: say so in the words."""
+    return one if n == 1 else two if n == 2 else f"{n} {many}"
 
 
 def headline_lines(agg: dict, tax_names: dict) -> list[str]:
     h, rep, meta = agg["headline"], agg["replies"], agg["meta"]
     top_fix = agg["fixes"][0] if agg["fixes"] else None
     praise = next((a for a in agg["aspects"] if agg["praised"] and a["id"] == agg["praised"][0]), None)
+    labelled_note = labelled_text(meta)
     lines = [f"- **Average star rating:** {stars(h['avg_rating'])} from {h['rated']} rated reviews"
              + (f" ({', '.join(plabel(p) for p in meta['excluded_from_stars'])} excluded: no stars)"
                 if meta["excluded_from_stars"] else ""),
              f"- **Net sentiment:** {signed(h['net_sentiment'])} on a -1 to +1 scale ({h['positive']} positive, "
-             f"{h['negative']} negative of the {meta['labelled']} reviews that name at least one aspect)",
+             f"{h['negative']} negative; {labelled_note})",
              f"- **Owner replies:** {pct(rep['replied'], rep['eligible'])} of reviews on platforms that allow "
              f"replies; {pct(rep['negative_reply_rate'] or 0, 1) if rep['negative_reply_rate'] is not None else 'n/a'} "
              f"of 1 to 2 star reviews"
@@ -2170,7 +2248,10 @@ def headline_lines(agg: dict, tax_names: dict) -> list[str]:
         lines.append(f"- **Biggest complaint:** {top_fix['label']} ({top_fix['negative']} negative reviews, "
                      f"{top_fix['share'] * 100:.0f}% of reviews with text, trend {top_fix['trend']['direction']})")
     if praise:
-        lines.append(f"- **Most praised:** {praise['label']} ({praise['positive']} positive mentions)")
+        lines.append(f"- **Most praised:** {praise['label']} ({praise['positive']} positive / {praise['negative']} "
+                     "negative mentions)")
+    else:
+        lines.append("- **Most praised:** no aspect gets more praise than complaints in this sample")
     lines.append(f"- **Quick win:** {len(agg['unreplied_negatives'])} unreplied 1 to 2 star reviews "
                  f"(`{UNREPLIED}`)")
     return lines
@@ -2184,11 +2265,22 @@ def distribution_table(agg: dict) -> str:
     return md_table(["Stars", "Reviews", "Share", ""], rows)
 
 
+def monthly_caveat(agg: dict) -> str:
+    cap, floor = agg["meta"].get("max_per_platform"), agg["scoring"].get("monthly_min_reviews", 5)
+    sample = f"the newest {cap} reviews per platform" if cap else "every review on each picked profile"
+    dropped = agg.get("monthly_dropped", 0)
+    return (f"The sample is {sample}, so busy months fill the cap and older months thin out: month-to-month "
+            f"movement here is not a trend. Months with fewer than {floor} reviews are left out"
+            + (f" ({dropped} month(s))." if dropped else "."))
+
+
 def monthly_table(agg: dict) -> str:
     rows = [[m["month"], m["reviews"], stars(m["avg_rating"]), signed(m["net_sentiment"])] for m in agg["monthly"]]
     line = sparkline([m["avg_rating"] for m in agg["monthly"]])
-    return (f"Average rating by month: `{line}` (low to high within this range)\n\n" if line else "") + \
-        md_table(["Month", "Reviews", "Avg rating", "Net sentiment"], rows)
+    table = md_table(["Month", "Reviews", "Avg rating", "Net sentiment"], rows) if rows else \
+        "_No month has enough reviews to show._"
+    return monthly_caveat(agg) + "\n\n" + \
+        (f"Average rating by month: `{line}` (low to high within this range)\n\n" if line else "") + table
 
 
 def platform_md(agg: dict) -> str:
@@ -2202,20 +2294,23 @@ def platform_md(agg: dict) -> str:
 
 
 def praise_example(reviews: dict, labels: dict, aspect: str) -> dict | None:
-    """A clean example: strong praise for this aspect, no complaint in the same review, short."""
+    """A clean example: strong praise for this aspect, no complaint in the same review, highest rated."""
     cands = [r for r in reviews.values() if labels.get(r["id"], {}).get("aspects", {}).get(aspect, 0) >= 2
              and r.get("text")]
     clean = [r for r in cands if min(labels[r["id"]]["aspects"].values()) >= 0] or cands
     return min(clean, key=lambda r: (-(r.get("rating") or 0), len(r["text"])), default=None)
 
 
-def praised_md(agg: dict, reviews: dict, labels: dict) -> str:
+def praised_md(agg: dict, reviews: dict, labels: dict, tax: dict) -> str:
+    full = {a["id"]: a for a in tax["aspects"]}
     rows = []
     for aid in agg["praised"]:
         a = next(x for x in agg["aspects"] if x["id"] == aid)
         ex = praise_example(reviews, labels, aid)
-        rows.append([a["label"], a["positive"], a["mentions"], f'"{verbatim(ex["text"], 200)}"' if ex else ""])
-    return md_table(["Aspect", "Positive mentions", "All mentions", "Example"], rows) if rows else "_No praise found._"
+        snip = issue_snippet(ex["text"], aspect_terms(full.get(aid, a)), negative=False, limit=200)[0] if ex else ""
+        rows.append([a["label"], a["positive"], a["negative"], signed(a["net"]), f'"{snip}"' if ex else ""])
+    return md_table(["Aspect", "Positive", "Negative", "Net", "Example"], rows) if rows else \
+        "_No aspect gets more praise than complaints in this sample._"
 
 
 def complaints_md(agg: dict) -> str:
@@ -2223,6 +2318,15 @@ def complaints_md(agg: dict) -> str:
              f"{f['priority']:.3f}", f["owner"]] for f in agg["fixes"][:5]]
     return md_table(["Rank", "Aspect", "Negative reviews", "Share", "Trend", "Priority", "Owner"], rows) \
         if rows else "_No complaints found._"
+
+
+def listing_link_note(agg: dict) -> list[str]:
+    """Platforms whose actor gives no per-review link: quotes link to the listing."""
+    plats = agg["meta"].get("listing_link_platforms") or []
+    if not plats:
+        return []
+    return [f"- **Links:** {', '.join(plabel(p) for p in plats)} quotes link to the listing page, not the "
+            "individual review (the scraper returns no per-review link); search the listing for the quoted words."]
 
 
 def methods_md(agg: dict, run: Path) -> str:
@@ -2246,6 +2350,7 @@ def methods_md(agg: dict, run: Path) -> str:
         + (f"Spot check: {spot['agreed']}/{spot['total']} labels agreed ({spot['rate']:.0%})." if spot
            else "Spot check: not recorded yet."),
         "- **Every number is computed in code** (`reviews.py aggregate`); no model did any maths.",
+        *listing_link_note(agg),
         "- **Fix priority** = volume share × average severity × recency weight × visibility weight × (1 + share "
         f"unreplied). Severity weights: {weights_text(sc['severity_weights'])}; reviews from the last "
         f"{sc['recency']['recent_months']} months count {sc['recency']['recent_weight']}×; visibility weights: "
@@ -2270,7 +2375,8 @@ def report_md(agg: dict, run: Path, reviews: dict, labels: dict, tax: dict, note
               "## Rating spread\n", distribution_table(agg) + "\n",
               "## Trend by month\n", monthly_table(agg) + "\n",
               "## By platform\n", platform_md(agg) + "\n",
-              "## What customers praise\n", praised_md(agg, reviews, labels) + "\n",
+              "## What customers praise\n", "Aspects with more praise than complaints, ranked by net share "
+              "((positive - negative) / mentions).\n\n" + praised_md(agg, reviews, labels, tax) + "\n",
               "## What customers complain about\n", complaints_md(agg) + f"\n\nThe full list, with quotes, owners "
               f"and fixes, is in `{FIX_REPORT}`.\n",
               "## Word clouds\n", "Two- and three-word phrases, scored praise against complaints. Interactive "
@@ -2285,15 +2391,22 @@ DEFAULT_GEO_ACTION = ("Reply publicly to the unreplied reviews on this issue, th
                       "(FAQ or policy page) so engines have the brand's own account to cite.")
 
 
+def default_problem(f: dict) -> str:
+    return f"{f['label']}: " + ("recurring complaint" if f["negative"] >= 3 else "single mentions")
+
+
 def fix_section(f: dict, reviews: dict, note: dict, tax_aspect: dict) -> str:
     t, c = f["trend"], f["components"]
-    quotes = "\n\n".join(quote_line(reviews[q]) for q in f["quotes"] if q in reviews)
+    quotes = "\n\n".join(quote_line(reviews[q["id"]], q["snippet"]) for q in f["quotes"] if q["id"] in reviews)
     owner = note.get("owner") or f["owner"]
     return "\n".join([
-        f"## {f['rank']}. {note.get('problem') or f['label'] + ': recurring complaint'}\n",
+        f"## {f['rank']}. {note.get('problem') or default_problem(f)}\n",
         f"- **Aspect:** {f['label']}. **Owner:** {owner}.",
-        f"- **How many:** {f['negative']} negative reviews, {f['share'] * 100:.0f}% of reviews with text"
-        + (f"; {f['churn']} say they are leaving" if f["churn"] else "") + ".",
+        f"- **How many:** {few(f['negative'], 'negative reviews', 'one negative review', 'two negative reviews')}, "
+        f"{f['share'] * 100:.0f}% of reviews with text"
+        + (f"; {few(f['churn'], 'say they are leaving', 'one says they are leaving', 'two say they are leaving')}"
+           if f["churn"] else "") + "."
+        + (" Single mentions: read them as individual reports, not a pattern." if f["negative"] < 3 else ""),
         f"- **Trend:** {t['recent']} in the last {t['window_months']} months vs {t['previous']} in the "
         f"{t['window_months']} before ({t['direction']}).",
         f"- **Priority score:** {f['priority']:.3f} = {c['volume_share']:.3f} share × {c['avg_severity']:.2f} "
@@ -2314,7 +2427,7 @@ def fix_report_md(agg: dict, reviews: dict, tax: dict, notes: dict) -> str:
     head = [frontmatter([("title", f"{meta['brand']} - review fix report"), ("type", "campaign"),
                          ("date", meta["as_of"]), ("skill", SKILL_ID), ("status", "active")]),
             f"# {meta['brand']}: what to fix, in priority order\n",
-            f"{len(agg['fixes'])} issue(s) from {meta['labelled']} labelled reviews, as of {meta['as_of']}. "
+            f"{len(agg['fixes'])} issue(s) from {labelled_text(meta)}, as of {meta['as_of']}. "
             "Priority = volume share × average severity × recency weight × visibility weight × (1 + share "
             f"unreplied); weights in `config/scoring.json` (severity: {weights_text(sc['severity_weights'])}; last "
             f"{sc['recency']['recent_months']} months ×{sc['recency']['recent_weight']}). Root causes are "
@@ -2338,6 +2451,25 @@ def write_unreplied(path: Path, agg: dict, reviews: dict, labels: dict, names: d
     return len(agg["unreplied_negatives"])
 
 
+PATTERN_WORDS = re.compile(r"\b(reviewers are|customers are|many|most|cluster\w*|pattern|recurring|repeated|"
+                           r"several|common(ly)?)\b", re.I)
+
+
+def pattern_word_warnings(agg: dict, notes: dict) -> list[str]:
+    """Fix notes may not call fewer than 3 reviews a pattern."""
+    out = []
+    for f in agg["fixes"]:
+        note = (notes.get("issues") or {}).get(f["id"], {})
+        if f["negative"] >= 3:
+            continue
+        for field in ("problem", "root_cause", "fix"):
+            m = PATTERN_WORDS.search(note.get(field) or "")
+            if m:
+                out.append(f"fix-notes {f['id']}.{field} says '{m.group(0)}' but only {f['negative']} review(s) "
+                           "back it: say 'one reviewer' or 'single mentions'")
+    return out
+
+
 def cmd_report(args) -> int:
     run = Path(args.run_dir)
     agg = read_json(run / DATA / "aggregate.json") or sys.exit("run `aggregate` first")
@@ -2349,6 +2481,8 @@ def cmd_report(args) -> int:
     (run / FIX_REPORT).write_text(fix_report_md(agg, reviews, tax, notes), encoding="utf-8")
     n = write_unreplied(run / UNREPLIED, agg, reviews, labels, {a["id"]: a["label"] for a in tax["aspects"]})
     missing = [f["label"] for f in agg["fixes"][:5] if f["id"] not in (notes.get("issues") or {})]
+    for warning in pattern_word_warnings(agg, notes):
+        print(f"WARNING: {warning}")
     print(f"Wrote {REPORT}, {FIX_REPORT} and {UNREPLIED} ({n} rows) in {run}")
     if missing:
         print(f"No fix notes yet for: {', '.join(missing)}. Write data/fix-notes.json (SKILL.md stage 7) and re-run.")
@@ -2392,13 +2526,14 @@ def fix_rows(agg: dict, reviews: dict, notes: dict) -> list[list]:
     rows = []
     for f in agg["fixes"]:
         note = (notes.get("issues") or {}).get(f["id"], {})
-        q = reviews.get(f["quotes"][0]) if f["quotes"] else None
-        rows.append([f["rank"], f["label"], note.get("problem") or f"{f['label']}: recurring complaint",
+        first = f["quotes"][0] if f["quotes"] else None
+        q = reviews.get(first["id"]) if first else None
+        rows.append([f["rank"], f["label"], note.get("problem") or default_problem(f),
                      f["negative"], round(f["share"], 3), f"{f['trend']['direction']} ({f['trend']['recent']} vs "
                      f"{f['trend']['previous']})", f["priority"], note.get("owner") or f["owner"],
                      note.get("fix") or "To agree with the owner", note.get("geo_action") or DEFAULT_GEO_ACTION,
                      note.get("metric") or f"Negative mentions of {f['label']} per month",
-                     verbatim(q["text"], 300) if q else "", (q.get("review_url") or q.get("profile_url")) if q else ""])
+                     first["snippet"] if q else "", (q.get("review_url") or q.get("profile_url")) if q else ""])
     return rows
 
 
