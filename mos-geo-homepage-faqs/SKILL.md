@@ -1,7 +1,7 @@
 ---
 name: mos-geo-homepage-faqs
 description: >
-  Research and write sourced, entity-first homepage FAQs for a brand or the Homepage FAQs
+  Research and write sourced FAQs in brand voice for a brand or the Homepage FAQs
   step of a GEO Brand Audit. Produces ranked copy, an HTML accordion, matching FAQPage
   JSON-LD, a developer handover and an approval workbook tab. Use for homepage FAQ
   generation or improving an existing FAQ block; use the other pack skills for a full
@@ -13,7 +13,7 @@ description: >
 An independent implementation inspired by observed outputs of Steve Toth's homepage FAQ
 GPT (SEO Notebook). The October 1 sample uses 20 one-sentence answers; the October 10 live
 run produced 15 two-sentence answers, all brand-first, with general sources and eight
-homepage recommendations. This skill deliberately uses shorter, one-sentence answers.
+homepage recommendations. This skill uses direct answers shaped by buyer intent and the brand voice.
 These observations do not recover private instructions or prove a universal GPT formula. This skill adds source review, locale, links and Brand Audit approval.
 It does not require access to the GPT. Install the whole mos-geo-skills pack: the helper uses
 the sibling AI Info crawler and shared workbook template. Python 3.10+ is required;
@@ -30,9 +30,10 @@ better FAQs for free, because stage 2 reads them.
    actual cited passage for each clause, including uncapitalised service and outcome claims.
    No supporting passage, no FAQ. Save the review in `data/evidence-review.md` with the
    question, source URL, short supporting excerpt, retrieval date and any limitation.
-2. **One sentence, entity first.** Each answer is one sentence of 20 to 55 words that opens
-   with the brand or a product name. Never `Yes`, `No`, `It`, `We`, `Our` or `You`. Full
-   formula: `references/faq-anatomy.md`.
+2. **Direct answer, brand voice.** Answer the decision in the opening sentence and name
+   the brand/product in the opening paragraph. Yes/No and We/Our are allowed. Follow brand
+   guidelines for pronouns, rhythm, terminology and warmth. Add useful supporting sentences,
+   paragraphs, lists or tables; no fixed sentence count or word range.
 3. **Capability, not outcome.** teaches, helps, shows, is designed to, focuses on. Never
    gets you cited, will rank, guarantees, best, #1.
 4. **No volatile facts.** No prices, member counts, numbers or dates unless the user asks and
@@ -56,16 +57,32 @@ every subcommand: `$F <sub> --help`.
 |---|---|---|---|
 | 0 | Run folder + preflight | `$F path --brand`, `$F doctor` | `$RUN` exists; `doctor` passes or its install line was shown |
 | 1 | Crawl own site | `$F crawl --url --run-dir` | `data/pages/*.md` and `data/link-inventory.csv` exist |
-| 2 | Reuse audit context | `$F gather --run-dir [--brain] [--include]` | `data/input-bundle.md` exists |
+| 2 | Reuse audit context | `$F gather --run-dir [--brain] [--include] [--questions] [--voice]` | `data/input-bundle.md` exists |
 | 2b | Brand + voice interview | Claude, one round | `data/interview.md` written, `gather` re-run |
 | 3 | Research + disambiguation | Claude, WebSearch | `data/research.md` written, with a public `## Summary`; `gather` re-run |
 | 4 | Source review | Read cited passages | `data/evidence-review.md` supports every claim; FAQ metadata indexes its sources |
-| 5 | Question set | Claude, `references/question-bank.md` | 12 to 20 questions picked from about 30 |
+| 5 | Question set | Claude, `references/question-bank.md` | All supplied questions mapped, including answer gaps |
 | 6 | Write | Claude, `references/faq-anatomy.md` | `faqs.md` written, every FAQ tagged with its sources |
 | 6b | Internal links | `$F links --run-dir`, then Claude | links written inline in `faqs.md` |
 | 7 | Lint (the gate) | `$F lint --run-dir --brand ... --final` | `Result: PASS` |
-| 8 | Render | `$F render --run-dir --url --forbid` | `faqs.html`, `faqpage.jsonld`, `research-note.md`, `handover.md` |
+| 8 | Render | `$F render --run-dir --url --forbid` | `publishing/faqs.html`, `publishing/faqpage.jsonld`, `review/research-note.md`, `review/handover.md` |
 | 9 | Workbook | `$F workbook --run-dir` | Checklist ticked, Homepage FAQs tab, Initiatives row |
+
+### Start with question data
+
+Read existing context first. Unless already supplied or explicitly declined, ask before
+writing FAQs: "Do you have Dealbreaker questions, customer/sales questions, community
+questions, Search Console queries or earlier Brand Audit outputs we should use? Share
+files or paste them; we can proceed without them." Offer discovered files first and wait
+for an answer or explicit skip. Request files in normal chat if the question tool supports
+text only. Search prior relevant Dealbreaker runs, not just this month.
+
+If no Dealbreaker output exists, suggest the installed Dealbreaker/Dealbreaker Detector
+skill first for focused questions and concise answers. Discover its actual invocation;
+never invent a name or make it a hard dependency. Existing outputs suffice even if the
+skill is unavailable. Check dates: question drafts do not verify pricing or policy facts.
+Retain every supplied question, including unanswered ones. Map duplicate merges explicitly;
+never silently cut questions to fit a count or category quota.
 
 ### 0. Run folder and preflight
 
@@ -75,11 +92,30 @@ mkdir -p "$RUN"
 $F doctor
 ```
 
-Same rules as every mos-geo skill: `campaigns/geo/YYYY-MM/homepage-faqs/` in a one-brand
-brain, a brand folder in an agency brain, `outputs/geo/YYYY-MM/<brand>/homepage-faqs/` with
+Same rules as every mos-geo skill: `campaigns/geo/YYYY-MM/homepublishing/pages/` in a one-brand
+brain, a brand folder in an agency brain, `outputs/geo/YYYY-MM/<brand>/homepublishing/pages/` with
 no brain, and `-2`, `-3` for a repeat run. Never write a run folder into this pack. If
 `doctor` says Scrapling is missing, show its one-line install and carry on; `crawl` falls
 back to the `mos-geo-ai-info` crawler.
+
+### Keep the run folder clean
+
+The **only root-level file is `faqs.md`**. Put everything else in a category:
+
+```text
+homepage-faqs-3/
+  faqs.md
+  publishing/       # HTML, JSON-LD; per-page blocks in pages/
+  review/           # handover, placement plan, comparison, research note, README
+  data/             # crawl, inputs, evidence, voice brief, question plan, lint records
+```
+
+No README, preview, comparison, schema or HTML beside `faqs.md`. Optional review workbooks
+belong in `review/`; the shared monthly Brand Audit workbook stays at the month root.
+Save agent-written extras in the right subfolder from the start. The helper commands
+organize legacy outputs automatically; `$F organize --run-dir "$RUN"` also migrates an
+existing folder without changing FAQ copy or overwriting a destination. Final lint must
+be repeated when the checker changes. Apply the same layout to an Obsidian review copy.
 
 ### 1 and 2. Crawl and gather
 
@@ -94,7 +130,10 @@ back to the `mos-geo-ai-info` crawler.
   the Brand 360 report, Brand Truth Review corrections and the brain. Use it for context and
   voice. A fact found only here is private: `lint` fails it and warns where it was found.
 
-Brain files are for voice only, never a source for a public claim. Blocked site or no brain:
+Pass repeatable `--questions <file>` for question reports/drafts/query exports and
+`--voice <file>` for brand guidelines/TOV. Both are private context only. This month's
+`dealbreakers/dealbreakers-report.md` and `faq-draft.md` are auto-discovered; pass explicit
+paths for older runs. Brain and question/voice inputs never corroborate public claims. Blocked site or no brain:
 say so and carry on.
 
 ### 2b. Brand + voice interview (one round, gaps only)
@@ -106,7 +145,7 @@ it is available (one question per item, suggestion as the first option); otherwi
 numbered list.
 
 1. **Tone of voice:** three words for how the brand sounds, plus words it never uses.
-   Skipped when the brain has a voice file.
+   Skipped when supplied guidelines or a brain voice file answer it.
 2. **Locale / spelling:** en-AU, en-GB or en-US, suggested from `<html lang>` and the domain.
 3. **Same-name check:** "I found {other entity} with a similar name. Is that you?" Asked only
    when the research finds one.
@@ -116,9 +155,14 @@ numbered list.
    publicly named.
 
 "Skip" on any question means the suggested default is used and recorded as a default in
-`research-note.md`. This skill's compact format stays consistent: voice changes word choice and warmth, not
-structure. The original GPT varies between runs. Write answers to `data/interview.md`, then re-run `gather`. If the bundle answers
-everything, ask nothing.
+`review/research-note.md`. Save `data/voice-brief.md` with source paths, pronouns, rhythm, examples, terminology,
+locale and never-say words. Supplied guidelines take precedence over generic style defaults.
+Voice also controls structure, but cannot override factual evidence or direct answers.
+Review copy against the voice examples separately; lint cannot validate tone. Keep private
+style notes here; only explicitly approved factual answers belong in public interview.md.
+Re-run `gather` after recording those facts. If existing context answers everything, ask nothing.
+Ignore empty TODO templates when real voice guidance exists; follow referenced populated sources.
+Apply voice rules to this surface: never invent metrics to satisfy a style example.
 
 ### 3. Research and disambiguation
 
@@ -129,7 +173,7 @@ shares the name). Write `data/research.md` in two parts:
 - `## Summary` (**public**): the themes the evidence supports, how the brand differs from any
   same-name entity (by its own specifics, never naming the other entity), and one honest
   sentence on how sparse the independent evidence is. This is the only part that reaches
-  `research-note.md` and the public bundle, so write nothing here you would not publish.
+  `review/research-note.md` and the public bundle, so write nothing here you would not publish.
 - Everything else (**private working notes**): sources found with URLs, the same-name
   entities, dead ends. Never rendered. Never cite people-data brokers (ZoomInfo, SignalHire,
   Wiza, RocketReach, Apollo, Lusha, ContactOut); render strips them anyway.
@@ -148,17 +192,37 @@ rather than turning a roadmap item into an available feature.
 
 ### 5 and 6. Pick questions, then write faqs.md
 
-Draft about 30 candidates across the eight buckets in `references/question-bank.md` (seven,
-plus an optional founder bucket), keep 12 to 20 within each bucket's min and max (`lint`
-enforces the "Target counts" table; `--count N` lowers the maximum), then write `$RUN/faqs.md`
-in the formula from `references/faq-anatomy.md`. Rank them and mark the top 8
-`placement: homepage`, the rest `placement: faq-page` (ranking order is in the question
-bank). Format, per FAQ:
+Use supplied buyer questions first, then fill demonstrated gaps using the question bank.
+Cover prerequisites, access/licensing, deliverables, limits, refunds, support and factual
+alternatives when relevant. Do not replace a policy question with promotional benefits.
+Current pricing/policies may be included when requested, evidenced and explicitly approved;
+pass `--allow-volatile` and record the review date. Never guess missing answers.
+
+Create `data/question-plan.json` as an array with one row per original/new question:
+`question`, `origin`, `question_source`, `intent`, `status`, `placement`, `target`, `reason`,
+`answer_source_urls`. Status examples: `ready`, `needs-client-answer`, `needs-source`,
+`merged` (also `merged_into`). Account for every original; keep missing answers as pending
+and exclude them from `faqs.md` until verified. Counts are planning budgets, not caps.
+
+Choose placement by reader task:
+
+- `homepage`: broad identity, fit and joining decisions.
+- `page`: specific course/product/service/workflow questions; `target` must be a crawled,
+  live, indexable same-site URL.
+- `faq-page`: general support questions on a dedicated FAQ page.
+- `content-gap`: suggested same-site URL and reason where no useful page exists. No markup
+  is generated until the page exists and placement changes to `page`.
+
+Group related questions on useful pages; do not create thin pages per query. Honour a
+user preference for all Dealbreakers on the homepage. Discuss length without dropping any.
+Write `$RUN/faqs.md` using `references/faq-anatomy.md`, with metadata for each FAQ:
 
 ```markdown
-### Does {Brand} teach GEO?
-{Brand} teaches generative engine optimisation, or GEO, ... [technical GEO audits](https://example.com/geo) ...
-<!-- bucket: capability; placement: homepage; sources: https://example.com/geo, https://news.example.org/x; evidence: third-party -->
+### Do I need coding experience to use {Product}?
+No. {Product}, from {Brand}, includes ...
+
+You will need ...
+<!-- bucket: prerequisite; placement: page; target: https://example.com/product/; sources: https://example.com/product/; evidence: first-party -->
 ```
 
 `sources` are the URLs the answer came from. `evidence` is `first-party` (only the brand's own
@@ -182,37 +246,40 @@ $F lint --run-dir "$RUN" --brand "<brand>" --products "<Product A>,<Product B>" 
 ```
 
 Pass the same `--forbid` list to `render`: a never-say term or data-broker URL in any rendered
-file (`faqs.html`, `faq-page.html`, `faqpage.jsonld`, `handover.md`, `research-note.md`) fails
+file (`publishing/faqs.html`, `publishing/faq-page.html`, `publishing/faqpage.jsonld`, `review/handover.md`, `review/research-note.md`) fails
 `render`, and `lint` re-checks the rendered files when they exist.
 
-It fails on count, format, provenance, outcome and volatile language, missing buckets or
-sources, bad links, near-duplicate questions, never-say terms and em dashes; it warns on
-answer overlap, voice slips and thin link coverage. Fix and re-run until `Result: PASS`.
+It fails unsupported names/numbers, promises, unapproved volatile facts, missing sources
+or entity context, invalid page targets, unresolved placeholders, bad links, duplicate
+questions and forbidden terms. Counts/homepage length warn; no bucket quotas
+apply. Review voice manually. Fix overlap and thin link coverage where useful. Fix and re-run until `Result: PASS`.
 
 ### 8 and 9. Render and workbook
 
-`$F render --run-dir "$RUN" --url https://<domain>/` writes `faqs.html` (a `<details>` accordion, no external assets), `faqpage.jsonld`,
-`research-note.md` (the research `## Summary`, cited sources and claims policy) and `handover.md`. `$F workbook --run-dir
+`$F render --run-dir "$RUN" --url https://<domain>/` writes `publishing/faqs.html` (a `<details>` accordion, no external assets), `publishing/faqpage.jsonld`,
+`review/research-note.md` (the research `## Summary`, cited sources and claims policy) and `review/handover.md`, plus `review/placement-plan.md` (including unresolved questions) and
+`publishing/pages/*.html`/`*.jsonld` for verified page targets. Content gaps/unanswered questions
+produce no website markup. Use the placement plan alongside workbook approval. `$F workbook --run-dir
 "$RUN"` adds the Homepage FAQs approval tab and an Initiatives row to the month's workbook.
 
-Pass the same `--forbid` terms to lint and render. If copy, source bundles, links, research
-or the checker changes, rerun final lint before rendering. Confirm the homepage HTML and
+Pass the same `--forbid` terms to lint and render. If copy, source bundles, links, research,
+the question plan, voice brief or checker changes, rerun final lint before rendering. Confirm the homepage HTML and
 JSON-LD contain the same questions and answers and FAQ-page-only questions are absent
 from homepage schema. Workbook approval precedes publishing; generating these files does
 not authorise a live site edit.
 
+Do not add a measurement loop.
+
 ### Final message to the user
 
-Keep it short: how many FAQs, the homepage 8 by question, how many carry links, the
-same-name entity avoided (if any), interview defaults used, anything dropped for lack of a
-source, the file paths, and the next step (client approves the workbook tab, then a developer
-follows `handover.md`).
+Keep it short: how many FAQs, homepage and per-page placements, how many carry links, the
+same-name entity avoided (if any), interview defaults used, questions retained as pending for missing answers/sources, the file paths, and the next step (client approves the workbook tab, then a developer
+follows `review/handover.md`).
 
 ## Evidence and limits
 
 Say this plainly when asked "does it work?": the FAQ text is ordinary page text that
-search-backed engines can retrieve and quote, and a one-sentence answer that names the brand
-is easy to lift whole. Nothing shows AI engines weight FAQ blocks specially. The `FAQPage`
+search-backed engines can retrieve and quote, and a direct, self-contained answer gives useful context. Nothing shows AI engines weight FAQ blocks specially. The `FAQPage`
 JSON-LD is shipped for machine readability only: Google removed FAQ rich results from Search
 entirely on 7 May 2026 (after limiting them to government and health sites in August 2023),
 so no site gets a rich result from it. The only correlational study found pages with FAQs
@@ -226,7 +293,7 @@ Steve Toth's "LLM-Friendly Homepage FAQ Generator" GPT, credited in the research
 | File | Read it when |
 |---|---|
 | `references/faq-anatomy.md` | Before writing faqs.md, every time |
-| `references/question-bank.md` | Stage 5: patterns, buckets, target counts, placement ranking |
+| `references/question-bank.md` | Stage 5: buyer decisions and page placement |
 | `references/source-sample-steve-toth-gpt.md` | To see the GPT's raw output. Copy the shape, never the facts |
 | `scripts/faqs.py` | `--help` for every subcommand; its docstring is authoritative on the faqs.md format |
 

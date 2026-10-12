@@ -9,7 +9,8 @@ Subcommands
             + data/input-bundle.md (all that plus this month's ai-info / brand-360 / truths and the brain)
   links     BM25 shortlist of the 3 best internal pages per answer -> data/link-candidates.json
   lint      the deterministic gate (answer formula, provenance, links, voice) -> data/lint.md
-  render    faqs.html, faqpage.jsonld, handover.md, research-note.md
+  organize  move supporting artifacts out of the root (only faqs.md remains)
+  render    publishing/ HTML + JSON-LD and review/ handover, research note, placement plan
   workbook  tick the Checklist, add the 'Homepage FAQs' tab and a publish row on Initiatives
 
 faqs.md format (the file Claude writes at <run>/faqs.md)
@@ -20,15 +21,16 @@ faqs.md format (the file Claude writes at <run>/faqs.md)
     {Brand} is a ... [descriptive anchor](https://brand.example/page/) ... .
     <!-- bucket: identity; placement: homepage; sources: https://brand.example/, https://brand.example/about/; evidence: first-party -->
 
-  * The answer is every non-empty line between the H3 and the next H3 (joined with spaces),
-    minus the metadata comment. It must be ONE sentence.
+  * The answer is every non-empty line between the H3 and the next H3, preserving paragraphs, lists and tables,
+    minus the metadata comment. Answer directly; name the entity in the opening paragraph.
   * Links are inline markdown `[anchor](url)`; the anchor is words already in the answer.
     At most one per answer. `data/links.json` ([{"question" or "n", "target", "anchor"}]) is
     also accepted: lint checks the anchor is verbatim in the answer and render applies it. Inline
     links in faqs.md are the source of truth; an entry repeated in both counts once.
   * Metadata comment keys, `;`-separated `key: value`:
       bucket     identity | product | capability | proof | audience | resources | differentiator | founder
-      placement  homepage | faq-page        (default: first 8 homepage, the rest faq-page)
+      placement  homepage | faq-page | page | content-gap
+      target     same-site URL required for page/content-gap; page must be live and indexable
       sources    comma-separated URLs the answer came from (at least one). This IS the evidence
                  ledger: there is no separate ledger file.
       evidence   first-party (brand's own pages) | third-party (independent sources) | mixed (both);
@@ -73,19 +75,72 @@ INVENTORY = "data/link-inventory.csv"
 CANDIDATES = "data/link-candidates.json"
 LINKS_JSON = "data/links.json"
 RESEARCH = "data/research.md"
-FAQS_MD, FAQS_HTML, JSONLD, HANDOVER, NOTE = "faqs.md", "faqs.html", "faqpage.jsonld", "handover.md", "research-note.md"
+FAQS_MD = "faqs.md"
+FAQS_HTML, JSONLD = "publishing/faqs.html", "publishing/faqpage.jsonld"
+FAQ_PAGE, PAGE_FAQS = "publishing/faq-page.html", "publishing/pages"
+HANDOVER, NOTE, PLACEMENT = "review/handover.md", "review/research-note.md", "review/placement-plan.md"
 WORKBOOK = "brand-audit-master.xlsx"
 TAB = "Homepage FAQs"
 INV_COLS = ["url", "status", "final_url", "canonical", "indexable", "title", "h1", "meta_description",
             "page_type", "word_count"]
-# (min, max) per bucket; kept in step with references/question-bank.md "Target counts".
-BUCKET_LIMITS = {"identity": (1, 1), "product": (0, 3), "capability": (4, 8), "proof": (1, 4), "audience": (2, 4),
-                 "resources": (0, 2), "differentiator": (0, 2), "founder": (0, 1)}
-BUCKETS = set(BUCKET_LIMITS)
-PLACEMENTS = {"homepage", "faq-page"}
+# Coverage categories are descriptive; no minimum or maximum quotas.
+BUCKETS = {"identity", "product", "capability", "proof", "audience", "resources",
+           "differentiator", "founder", "objection", "access", "prerequisite", "limitations", "comparison"}
+PLACEMENTS = {"homepage", "faq-page", "page", "content-gap"}
 EVIDENCE = {"first-party", "third-party", "mixed"}
 HOMEPAGE_TOP = 8
 INSTALL = 'uv tool install "scrapling[fetchers]"  &&  scrapling install'
+
+
+def artifact_target(run: Path, source: Path) -> Path:
+    category = ("publishing" if source.suffix.lower() in {".html", ".jsonld"} else
+                "data" if source.name in {"questions.md", "voice.md"} or source.suffix.lower() in
+                {".json", ".csv", ".txt", ".log", ".py", ".jpg", ".jpeg", ".png", ".webp"} else "review")
+    return run / category / source.name
+
+
+def input_path(run: Path, name: str) -> Path:
+    """Explicit inputs in an old root still resolve after organizing that run."""
+    path = Path(name)
+    if not path.exists() and path.resolve().parent == run.resolve():
+        target = artifact_target(run, path)
+        if target.is_file():
+            return target
+    return path
+
+
+def organize_run(run: Path) -> int:
+    """Leave only faqs.md at the root; migrate old outputs without overwriting files."""
+    run = run.resolve()
+    if not run.is_dir():
+        return 0
+    moves = []
+    for source in sorted(run.iterdir()):
+        if source.name == FAQS_MD or source.is_dir():
+            continue
+        moves.append((source, artifact_target(run, source)))
+    if (run / "page-faqs").is_dir():
+        moves.append((run / "page-faqs", run / PAGE_FAQS))
+    # Validate every move before touching any source. Both resolved paths must stay in this run.
+    for source, target in moves:
+        if source.is_symlink():
+            raise ValueError(f"cannot organize linked artifact: {source}")
+        source.resolve().relative_to(run)
+        target.resolve().relative_to(run)
+        if target.exists():
+            raise ValueError(f"cannot organize {source}: destination already exists: {target}")
+    for source, target in moves:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(target)
+    return len(moves)
+
+
+def cmd_organize(args) -> int:
+    run = Path(args.run_dir)
+    if not run.is_dir():
+        sys.exit(f"missing run folder: {run}")
+    print(f"Organized {run}: {organize_run(run)} artifact(s) moved; root copy is {FAQS_MD}")
+    return 0
 
 
 def sibling():
@@ -344,6 +399,7 @@ def enqueue(queue: list[str], seen: set, urls: list[str], host: str, ai) -> None
 def cmd_crawl(args) -> int:
     ai = sibling()
     run = Path(args.run_dir)
+    organize_run(run)
     pages = run / DATA / "pages"
     pages.mkdir(parents=True, exist_ok=True)
     start, rows = resolve_start(args.url, ai)
@@ -403,10 +459,12 @@ def load_inventory(run: Path) -> dict[str, dict]:
 BRAIN_GLOBS = ["CLAUDE.md", "BRAIN.md", "CONTEXT.md", "reference/core/*.md", "reference/proof/*.md",
                "reference/voice*.md", "reference/voice/*.md", "business/brand/*.md", "business/voice/*.md",
                "business/offer/*.md", "business/offers/*.md", "business/proof/*.md", "business/proof/*/*.md",
-               "business/strategy/*.md", "business/audience/*.md", "voice.md"]
+               "business/strategy/*.md", "business/audience/*.md", "voice.md",
+               ".claude/rules/*voice*.md", ".claude/rules/*brand*.md", "brand-guidelines.md", "tone-of-voice.md", "business/brand/guidelines/brand-guidelines.md"]
 FILE_CAP = 6000  # words per file
 MONTH_SOURCES = [("ai-info", ["*.md", "data/discrepancies.md", "data/facts.json"]),
-                 ("ai-info-draft", ["page.md"]), ("brand-360-report", ["*.md"])]
+                 ("ai-info-draft", ["page.md"]), ("brand-360-report", ["*.md"]),
+                 ("dealbreakers", ["dealbreakers-report.md", "faq-draft.md"])]
 
 
 def latest_run(month: Path, name: str) -> Path | None:
@@ -447,17 +505,23 @@ def truth_corrections(run: Path) -> str:
     return "\n".join(lines)
 
 
-def gather_files(run: Path, brain: str | None, include: list[str]) -> list[tuple[str, Path]]:
+def gather_files(run: Path, brain: str | None, include: list[str], questions: list[str] = (), voice: list[str] = ()) -> list[tuple[str, Path]]:
     files: list[tuple[str, Path]] = []
     if brain:
         for g in BRAIN_GLOBS:
             files += [("brain", p) for p in sorted(Path(brain).glob(g)) if p.is_file()]
     for inc in include:
-        p = Path(inc)
+        p = input_path(run, inc)
         found = sorted(p.rglob("*.md")) if p.is_dir() else ([p] if p.is_file() else [])
         if not found:
             print(f"  [warn] --include {inc}: nothing found")
         files += [("include", f) for f in found]
+    for kind, paths in (("questions", questions), ("voice", voice)):
+        for name in paths:
+            path = input_path(run, name)
+            if not path.is_file():
+                sys.exit(f"missing --{kind} file: {path}")
+            files.append((kind, path))
     files += month_files(run)
     files += [("crawl", p) for p in sorted((run / DATA / "pages").glob("*.md"))]
     if (run / DATA / "interview.md").is_file():
@@ -479,8 +543,10 @@ def research_summary(run: Path) -> str:
 
 def cmd_gather(args) -> int:
     run = Path(args.run_dir)
+    organize_run(run)
     seen, parts, manifest, public = set(), [], [], []
-    for kind, p in gather_files(run, args.brain, args.include or []):
+    for kind, p in gather_files(run, args.brain, args.include or [], getattr(args, "questions", None) or [],
+                                      getattr(args, "voice", None) or []):
         if p.resolve() in seen:
             continue
         seen.add(p.resolve())
@@ -488,6 +554,8 @@ def cmd_gather(args) -> int:
         words = raw.split()
         text = " ".join(words[:FILE_CAP]) if len(words) > FILE_CAP else raw
         note = f", truncated at {FILE_CAP}" if len(words) > FILE_CAP else ""
+        if kind in {"questions", "voice", "dealbreakers"}:
+            text, note = raw, ""  # preserve all supplied questions and style guidance
         parts.append(f"\n\n=== {kind.upper()}: {p} ({len(words)} words{note}) ===\n\n{text}")
         manifest.append({"kind": kind, "path": str(p), "words": len(words), "truncated": bool(note)})
         if kind in PUBLIC_KINDS:
@@ -550,7 +618,7 @@ def parse_faqs(md: str) -> tuple[str, list[dict]]:
         m = META.search(block)
         f["meta"] = parse_meta(m.group(1)) if m else {"sources": []}
         f["has_meta"] = bool(m)
-        f["answer"] = " ".join(META.sub(" ", block).split())
+        f["answer"] = META.sub("", block).strip()
     for i, f in enumerate(faqs):
         f["meta"].setdefault("placement", "homepage" if i < HOMEPAGE_TOP else "faq-page")
     return title, faqs
@@ -601,10 +669,8 @@ STOP = set("""a an and are as at be been but by can for from has have how i if i
 such than that the their them there these they this to was were what when where which who why will with
 your you does do did not no yes about also more most other our we us any each own may might should could
 across alongside including using used use make makes helps help""".split())
-COMMON_CAPS = {"AI", "I", "FAQ", "FAQs", "URL", "URLs", "HTML", "API", "APIs", "PDF", "JSON", "CEO", "B2B",
+COMMON_CAPS = {"Yes", "No", "We", "Our", "You", "Your", "It", "Its", "This", "These", "They", "Some", "Cancelling", "Payments", "Use", "Ask", "Contact", "Choose", "Start", "Members", "AI", "I", "FAQ", "FAQs", "URL", "URLs", "HTML", "API", "APIs", "PDF", "JSON", "CEO", "B2B",
                "B2C", "SaaS", "DIY", "OK"}
-BAD_OPENERS = {"yes", "no", "it", "it's", "its", "we", "our", "you", "your", "they", "this", "absolutely", "sure"}
-ABBREV = re.compile(r"\b(e\.g|i\.e|etc|vs|Inc|Ltd|Pty|Co|Dr|Mr|Mrs|Ms|St|No|approx)\.", re.I)
 PROMISE = re.compile(r"\bguarantee[sd]?\b|\bguaranteed\b|\bwill (rank|double|triple|get|boost)\b|"
                      r"\bgets? (you |brands? |your brand )?cited\b|#1\b|\bnumber one\b", re.I)
 SUPERLATIVE = re.compile(r"\b(best|leading|world[- ]class|premier|unrivalled|unrivaled|unmatched|most trusted|"
@@ -623,7 +689,7 @@ GENERIC_ANCHOR = re.compile(r"^(click here|here|learn more|read more|find out mo
                             r"this link|this|link|website|homepage|home|details|more details)$", re.I)
 EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿]")
 NUM = re.compile(r"(?<![\w.])(\$?)(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(\s?[kKmM](?![a-zA-Z]))?(%?)")
-PLACEHOLDER = re.compile(r"\[VERIFY:[^\]]*\]|\bTODO\b|\bTBC\b")
+PLACEHOLDER = re.compile(r"\[VERIFY:[^\]]*\]|\[CLIENT TO ANSWER[^\]]*\]|\bTODO\b|\bTBC\b")
 TOKEN = re.compile(r"[^\W_][\w'’&+.-]*")
 
 
@@ -703,7 +769,7 @@ def cap_phrases(text: str) -> list[str]:
     for m in TOKEN.finditer(text):
         tok = capital_part(re.sub(r"(['’]s|[.'’-])$", "", m.group(0)))
         capital = bool(tok)
-        joined = cur and text[prev_end:m.start()] == " "
+        joined = cur and text[prev_end:m.start()] == " " and not text[:prev_end].endswith((".", "!", "?"))
         if capital and (joined or not cur):
             cur.append(tok)
         elif capital:
@@ -748,23 +814,18 @@ def check_provenance(faq: dict, text: str, names: list[str], bundle: Bundle, r: 
     return len(missing)
 
 
-def one_sentence(text: str) -> bool:
-    t = ABBREV.sub(lambda m: m.group(1), text.strip())
-    return t.endswith(".") and not re.search(r"[.!?][\"”’)]?\s+\S", t)
-
-
 def check_answer_shape(faq: dict, text: str, names: list[str], r: Report) -> None:
     tag = f"FAQ {faq['n']}"
-    n = len(text.split())
-    if not one_sentence(text):
-        r.fails.append(f"{tag}: answer must be exactly one sentence ending in a full stop: {text[:80]!r}")
-    if not 20 <= n <= 55:
-        r.fails.append(f"{tag}: answer is {n} words; write 20 to 55")
-    first = (text.split() or [""])[0].strip(",.").lower()
-    if first in BAD_OPENERS:
-        r.fails.append(f"{tag}: answer opens with {first.title()!r}; open with the brand or product name as subject")
-    elif not any(text.startswith(nm) for nm in names if nm):
-        r.fails.append(f"{tag}: answer must start with the brand or a product name ({', '.join(names)})")
+    if not text.strip():
+        r.fails.append(f"{tag}: answer is empty")
+        return
+    opening = text.split("\n\n", 1)[0]
+    if not any(re.search(re.escape(name), opening, re.I) for name in names if name):
+        r.fails.append(f"{tag}: opening paragraph must identify the brand or product ({', '.join(names)})")
+    if len(text.split()) > 180:
+        r.warns.append(f"{tag}: answer exceeds 180 words; consider moving detail to its supporting page")
+    if not re.search(r"[.!?](?:[\"”’)]|$|\s)", opening):
+        r.warns.append(f"{tag}: make the opening a complete, direct answer")
 
 
 def check_language(faq: dict, text: str, opts: dict, r: Report) -> None:
@@ -775,8 +836,6 @@ def check_language(faq: dict, text: str, opts: dict, r: Report) -> None:
             m = None  # "not a guarantee of", "rather than guarantees": the recommended non-guarantee line
         if m:
             r.fails.append(f"{tag}: {what} {m.group(0)!r}; describe capability, never promise results")
-    if "—" in text or "—" in faq["question"]:
-        r.fails.append(f"{tag}: em dash; use a comma, colon or full stop")
     vm = VOLATILE.search(text)
     if vm and not opts["allow_volatile"]:
         r.fails.append(f"{tag}: volatile fact {vm.group(0)!r} (price, count or date); leave it out or pass --allow-volatile")
@@ -830,7 +889,7 @@ def check_meta(faq: dict, final: bool, r: Report, hosts: set[str] = frozenset())
     if meta.get("bucket") not in BUCKETS:
         r.fails.append(f"{tag}: bucket {meta.get('bucket')!r} is not one of {sorted(BUCKETS)}")
     if meta.get("placement") not in PLACEMENTS:
-        r.fails.append(f"{tag}: placement {meta.get('placement')!r} is not homepage or faq-page")
+        r.fails.append(f"{tag}: unknown placement {meta.get('placement')!r}")
     if not [s for s in meta["sources"] if s.startswith(("http://", "https://"))]:
         r.fails.append(f"{tag}: no source URL; every FAQ cites the page(s) it came from")
     if meta.get("evidence") not in EVIDENCE:
@@ -841,8 +900,10 @@ def check_meta(faq: dict, final: bool, r: Report, hosts: set[str] = frozenset())
 
 
 def check_questions(faqs: list[dict], names: list[str], r: Report, cap: int = 20) -> None:
-    if not 12 <= len(faqs) <= cap:
-        r.fails.append(f"{len(faqs)} FAQs; write 12 to {cap}")
+    if not faqs:
+        r.fails.append("no answered FAQs to publish; retain unanswered questions in the plan")
+    if len(faqs) > cap:
+        r.warns.append(f"{len(faqs)} FAQs exceeds the planning budget of {cap}; retain supplied questions and route them to suitable pages")
     drop = names_words(names)
     sets = [content_set(f["question"], drop) for f in faqs]
     for i, f in enumerate(faqs):
@@ -857,13 +918,25 @@ def check_questions(faqs: list[dict], names: list[str], r: Report, cap: int = 20
 
 def check_coverage(faqs: list[dict], r: Report) -> None:
     buckets = Counter(f["meta"].get("bucket") for f in faqs)
-    for name, (lo, hi) in BUCKET_LIMITS.items():
-        if not lo <= buckets[name] <= hi:
-            r.fails.append(f"bucket {name}: {buckets[name]} FAQ(s); allowed {lo} to {hi} (references/question-bank.md)")
-    home = sum(f["meta"].get("placement") == "homepage" for f in faqs)
-    if home > HOMEPAGE_TOP:
-        r.warns.append(f"{home} FAQs placed on the homepage; keep the top {HOMEPAGE_TOP} there, the rest on an FAQ page")
+    home = [f for f in faqs if f["meta"].get("placement") == "homepage"]
+    if len(home) > HOMEPAGE_TOP:
+        r.warns.append(f"{len(home)} FAQs placed on the homepage; review length and move detailed answers to relevant pages")
+    if home and not any(f["meta"].get("bucket") == "identity" for f in home):
+        r.warns.append("homepage set has no identity question; include one only if the main content leaves identity unclear")
     r.notes.append("buckets: " + ", ".join(f"{k} {v}" for k, v in sorted(buckets.items(), key=lambda kv: str(kv[0]))))
+
+
+def check_placement(faq: dict, inventory: dict, r: Report) -> None:
+    meta, tag = faq["meta"], f"FAQ {faq['n']}"
+    if meta.get("placement") not in ("page", "content-gap"):
+        return
+    target = meta.get("target", "")
+    if not target.startswith(("http://", "https://")) or not is_brand(target, brand_hosts(inventory)):
+        r.fails.append(f"{tag}: page/content-gap placement needs a same-site target URL")
+        return
+    row = inventory.get(clean_url(target))
+    if meta["placement"] == "page" and (not row or row.get("status") != "200" or row.get("indexable") != "yes"):
+        r.fails.append(f"{tag}: target is not a crawled, indexable 200 page; use content-gap for a proposed page")
 
 
 def check_overlap(faqs: list[dict], texts: list[str], names: list[str], r: Report) -> None:
@@ -946,6 +1019,7 @@ def lint_faqs(md: str, bundle_text: str, opts: dict) -> Report:
     orphans = 0
     for faq, text in zip(faqs, texts):
         check_meta(faq, opts["final"], r, brand_hosts(opts["inventory"]))
+        check_placement(faq, opts["inventory"], r)
         check_answer_shape(faq, text, names, r)
         check_language(faq, text, opts, r)
         orphans += check_provenance(faq, text, names, bundle, r, private)
@@ -962,8 +1036,9 @@ def split_list(values: list[str] | None) -> list[str]:
 
 def cmd_lint(args) -> int:
     run = Path(args.run_dir)
-    page = Path(args.faqs) if args.faqs else run / FAQS_MD
-    bundle_p = Path(args.bundle) if args.bundle else run / PUBLIC_BUNDLE
+    organize_run(run)
+    page = input_path(run, args.faqs) if args.faqs else run / FAQS_MD
+    bundle_p = input_path(run, args.bundle) if args.bundle else run / PUBLIC_BUNDLE
     for p, hint in ((page, "write faqs.md first"), (bundle_p, "run gather first")):
         if not p.is_file():
             sys.exit(f"missing {p}: {hint}")
@@ -973,6 +1048,10 @@ def cmd_lint(args) -> int:
             "has_candidates": has_candidates(run), "count": args.count,
             "private": (run / BUNDLE).read_text(encoding="utf-8", errors="replace") if (run / BUNDLE).is_file() else ""}
     r = lint_faqs(page.read_text(encoding="utf-8"), bundle_p.read_text(encoding="utf-8", errors="replace"), opts)
+    try:
+        check_question_plan(run, parse_faqs(page.read_text(encoding="utf-8"))[1], r)
+    except (ValueError, OSError) as error:
+        r.fails.append(f"question plan: {error}")
     r.fails += [f"{name}: never-say term {term!r} in a rendered file" for name, term in rendered_leaks(run, opts["forbid"])]
     verdict = "FAIL" if r.fails else "PASS"
     lines = [f"# Lint: {page}", "", f"Checked {time.strftime('%Y-%m-%d %H:%M')}", ""]
@@ -994,7 +1073,7 @@ def cmd_lint(args) -> int:
 def lint_inputs(run: Path) -> dict:
     """Bind an export to the exact copy, evidence, links and checker that passed final lint."""
     paths = [FAQS_MD, PUBLIC_BUNDLE, BUNDLE, INVENTORY, LINKS_JSON, CANDIDATES, RESEARCH,
-             "data/evidence-review.md"]
+             "data/evidence-review.md", "data/question-plan.json", "data/voice-brief.md"]
     result = {name: hashlib.sha256((run / name).read_bytes()).hexdigest() if (run / name).is_file() else None
               for name in paths}
     result["checker"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -1016,14 +1095,16 @@ def render_gate(run: Path, brand: str, forbid: list[str]) -> bool:
     return True
 
 
-RENDERED = [FAQS_HTML, "faq-page.html", JSONLD, HANDOVER, NOTE]
+RENDERED = [FAQS_HTML, FAQ_PAGE, JSONLD, HANDOVER, NOTE, PLACEMENT]
 
 
 def rendered_leaks(run: Path, forbid: list[str]) -> list[tuple[str, str]]:
     """(file, term) for every never-say term or data-broker URL found in a public rendered file."""
     out = []
-    for name in RENDERED:
-        p = run / name
+    paths = [run / name for name in RENDERED]
+    paths += sorted((run / PAGE_FAQS).glob("*.html")) + sorted((run / PAGE_FAQS).glob("*.jsonld"))
+    for p in paths:
+        name = p.relative_to(run).as_posix()
         if not p.is_file():
             continue
         text = html.unescape(p.read_text(encoding="utf-8", errors="replace"))
@@ -1100,6 +1181,7 @@ def shortlist(faqs: list[dict], rows: list[dict], docs: list[list[str]], drop: s
 
 def cmd_links(args) -> int:
     run = Path(args.run_dir)
+    organize_run(run)
     inv = load_inventory(run)
     if not inv:
         sys.exit(f"missing {run / INVENTORY}: run crawl first")
@@ -1133,8 +1215,32 @@ def md_inline_html(md: str, quote: bool = True) -> str:
     return "".join(out)
 
 
+def answer_html(md: str, quote: bool = True) -> str:
+    """Small, escaped Markdown subset shared by visible HTML and structured answers."""
+    def inline(text):
+        return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", md_inline_html(text, quote=quote))
+
+    blocks = []
+    for block in re.split(r"\n\s*\n", md.strip()):
+        lines = block.splitlines()
+        if not lines:
+            continue
+        if all(re.match(r"^\s*[-*]\s+", line) for line in lines):
+            blocks.append("<ul>" + "".join("<li>" + inline(re.sub(r"^\s*[-*]\s+", "", line)) + "</li>" for line in lines) + "</ul>")
+        elif all(re.match(r"^\s*\d+[.)]\s+", line) for line in lines):
+            blocks.append("<ol>" + "".join("<li>" + inline(re.sub(r"^\s*\d+[.)]\s+", "", line)) + "</li>" for line in lines) + "</ol>")
+        elif len(lines) >= 2 and "|" in lines[0] and re.fullmatch(r"[\s|:\-]+", lines[1]):
+            cells = lambda line: [inline(c.strip()) for c in line.strip().strip("|").split("|")]
+            head = "<thead><tr>" + "".join("<th scope=\"col\">" + c + "</th>" for c in cells(lines[0])) + "</tr></thead>"
+            rows = "".join("<tr>" + "".join("<td>" + c + "</td>" for c in cells(line)) + "</tr>" for line in lines[2:])
+            blocks.append("<table>" + head + "<tbody>" + rows + "</tbody></table>")
+        else:
+            blocks.append("<p>" + inline(" ".join(line.strip() for line in lines)) + "</p>")
+    return "\n".join(blocks)
+
+
 def faqs_html(items: list[tuple[str, str]], heading: str) -> str:
-    rows = [f'<details class="faq-item">\n  <summary>{esc(q)}</summary>\n  <p>{md_inline_html(a)}</p>\n</details>'
+    rows = [f'<details class="faq-item">\n  <summary>{esc(q)}</summary>\n  {answer_html(a)}\n</details>'
             for q, a in items]
     style = ("<style>.faq details{border-bottom:1px solid #ddd;padding:.75rem 0}"
              ".faq summary{cursor:pointer;font-weight:600}.faq p{margin:.5rem 0 0}</style>")
@@ -1146,7 +1252,7 @@ def faq_jsonld(items: list[tuple[str, str]], url: str) -> dict:
     url = clean_url(url)  # https://x.com -> https://x.com/, matching the canonical
     return {"@context": "https://schema.org", "@type": "FAQPage", "@id": f"{url}#faq", "url": url,
             "mainEntity": [{"@type": "Question", "name": q,
-                            "acceptedAnswer": {"@type": "Answer", "text": md_inline_html(a, quote=False)}}
+                            "acceptedAnswer": {"@type": "Answer", "text": answer_html(a)}}
                            for q, a in items]}
 
 
@@ -1159,11 +1265,11 @@ review the cited passages and client verdicts before publishing.
 
 ## Files
 
-- `faqs.html`: the homepage FAQ block ({n_home} questions) as a `<details>` accordion. No scripts or
+- `publishing/faqs.html`: the homepage FAQ block ({n_home} questions) as a `<details>` accordion. No scripts or
   external assets; the small inline `<style>` can be deleted if the theme styles it.
-- `faqpage.jsonld`: `FAQPage` schema for the same {n_home} questions. Paste inside
+- `publishing/faqpage.jsonld`: `FAQPage` schema for the same {n_home} questions. Paste inside
   `<script type="application/ld+json">` on the homepage only.
-{faq_page_line}- `faqs.md`: the source copy. `data/lint.md`: the gate result. `research-note.md`: sources and claims policy.
+{faq_page_line}- `faqs.md`: the source copy. `data/lint.md`: the gate result. `review/research-note.md`: sources and claims policy.
 
 ## Where it goes on the homepage
 
@@ -1175,8 +1281,11 @@ review the cited passages and client verdicts before publishing.
 
 ## Homepage vs FAQ page
 
-The top {top} questions (placement `homepage`) go on the homepage. The rest (placement `faq-page`)
-belong on a dedicated FAQ page or the AI Info Page, where a longer list does not push the offer down.
+Paths below are relative to the run folder. Follow `review/placement-plan.md`: broad joining and brand questions go on the homepage; specific
+questions go on the relevant product, course or service page. `publishing/pages/` contains blocks
+and matching schema only for verified existing targets. Content gaps and unanswered
+questions stay in the plan until the page and answer are approved. `publishing/faq-page.html` is
+for questions explicitly assigned to a dedicated FAQ page. No fixed question quota applies.
 
 ## Internal links
 
@@ -1200,7 +1309,7 @@ mark up questions that are not visible on the page.
 
 def placement_split(faqs: list[dict], extra: list[dict]) -> tuple[list, list]:
     home = [(f["question"], linked_answer(f, extra)) for f in faqs if f["meta"].get("placement") == "homepage"]
-    rest = [(f["question"], linked_answer(f, extra)) for f in faqs if f["meta"].get("placement") != "homepage"]
+    rest = [(f["question"], linked_answer(f, extra)) for f in faqs if f["meta"].get("placement") == "faq-page"]
     return home, rest
 
 
@@ -1214,7 +1323,8 @@ def research_note(run: Path, brand: str, faqs: list[dict]) -> str:
              "## Evidence", "", f"{len(faqs)} FAQs: " + ", ".join(f"{k} {v}" for k, v in sorted(evidence.items())),
              "", "Sources cited:", ""] + [f"- {s}" for s in sources]
     lines += ["", "## Claims policy", "",
-              "Answers describe capabilities (teaches, helps, shows, focuses on), never outcomes. No prices, "
+              "Answers address buyer decisions using verified facts and brand voice. Current pricing and "
+              "policy facts require explicit approval and volatile-fact opt-in; no invented outcomes, "
               "superlatives or guarantees. Lint checks answer shape and name/number presence in the "
               "public bundle; it does not establish support for every complete claim. See "
               "`data/evidence-review.md` for source review and the workbook for client approval.",
@@ -1226,11 +1336,60 @@ def research_note(run: Path, brand: str, faqs: list[dict]) -> str:
 
 
 def write_public(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(strip_brokers(text), encoding="utf-8")
+
+
+def question_plan(run: Path) -> list[dict]:
+    path = run / "data/question-plan.json"
+    if not path.is_file():
+        return []
+    plan = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(plan, list) or any(not isinstance(row, dict) or not isinstance(row.get("question"), str) or not row["question"].strip() for row in plan):
+        raise ValueError("question-plan.json must be an array of objects with question text")
+    return plan
+
+
+def check_question_plan(run: Path, faqs: list[dict], report: Report) -> None:
+    plan = question_plan(run)
+    drafted = {faq["question"].casefold(): faq for faq in faqs}
+    statuses = {"ready", "needs-client-answer", "needs-source", "merged"}
+    for row in plan:
+        q, status = row["question"], row.get("status")
+        draft = drafted.get(q.casefold())
+        if not isinstance(status, str) or status not in statuses:
+            report.fails.append(f"question plan: {q!r} needs a valid status")
+        elif status == "ready" and not draft:
+            report.fails.append(f"question plan: ready question {q!r} is missing from faqs.md")
+        elif status in {"needs-client-answer", "needs-source"} and draft:
+            report.fails.append(f"question plan: unresolved question {q!r} must not appear in publishable copy")
+        elif status == "merged" and str(row.get("merged_into", "")).casefold() not in drafted:
+            report.fails.append(f"question plan: merged question {q!r} needs a drafted merged_into target")
+        if status == "ready" and draft:
+            for key in ("placement", "target"):
+                if row.get(key, "") != draft["meta"].get(key, ""):
+                    report.fails.append(f"question plan: {q!r} {key} disagrees with FAQ metadata")
+
+
+def placement_plan(run: Path, faqs: list[dict]) -> str:
+    lines = ["# FAQ placement and answer gaps", "", "Review every supplied question before publishing. Content gaps are planning suggestions, not live pages.", ""]
+    known = set()
+    for faq in faqs:
+        known.add(faq["question"].casefold())
+        meta = faq["meta"]
+        lines += [f"### {faq['question']}", f"Placement: {meta.get('placement')}" + (f" — {meta['target']}" if meta.get("target") else ""),
+                  "Status: source-reviewed draft; client approval required." if meta.get("placement") != "content-gap" else "Status: proposed page; publish only after page creation and approval.", ""]
+    for row in question_plan(run):
+        if row["question"].casefold() in known:
+            continue
+        lines += [f"### {row['question']}", f"Placement: {row.get('placement', 'unassigned')}" + (f" — {row['target']}" if row.get("target") else ""),
+                  f"Status: {row.get('status', 'needs-client-answer')}", ("Merged into: " + row["merged_into"] if row.get("status") == "merged" else row.get("reason", "Answer or supporting source required; excluded from publishable markup.")), ""]
+    return "\n".join(lines) + "\n"
 
 
 def cmd_render(args) -> int:
     run = Path(args.run_dir)
+    organize_run(run)
     title, faqs = parse_faqs((run / FAQS_MD).read_text(encoding="utf-8"))
     brand = args.brand or brand_from_title(title) or "the brand"
     if not render_gate(run, brand, split_list(args.forbid)):
@@ -1242,17 +1401,37 @@ def cmd_render(args) -> int:
     write_public(run / JSONLD, json.dumps(faq_jsonld(home, args.url), indent=2, ensure_ascii=False) + "\n")
     line = ""
     if rest:
-        write_public(run / "faq-page.html", faqs_html(rest, f"More about {brand}"))
-        line = (f"- `faq-page.html`: the other {len(rest)} questions for an FAQ page (give that page its own "
+        write_public(run / FAQ_PAGE, faqs_html(rest, f"More about {brand}"))
+        line = (f"- `publishing/faq-page.html`: the other {len(rest)} questions for an FAQ page (give that page its own "
                 "`FAQPage` schema if you publish them there).\n")
-    elif (run / "faq-page.html").is_file():
-        (run / "faq-page.html").unlink()
+    elif (run / FAQ_PAGE).is_file():
+        (run / FAQ_PAGE).unlink()
+    pages = {}
+    for faq in faqs:
+        if faq["meta"].get("placement") == "page":
+            target = clean_url(faq["meta"]["target"])
+            pages.setdefault(target, []).append((faq["question"], linked_answer(faq, extra)))
+    folder = run / PAGE_FAQS
+    expected = set()
+    if pages:
+        folder.mkdir(parents=True, exist_ok=True)
+    for target, items in pages.items():
+        slug = page_slug(target)
+        for suffix, body in ((".html", faqs_html(items, heading)), (".jsonld", json.dumps(faq_jsonld(items, target), indent=2, ensure_ascii=False) + "\n")):
+            path = folder / (slug + suffix)
+            expected.add(path)
+            write_public(path, body)
+    for pattern in ("*.html", "*.jsonld"):
+        for path in folder.glob(pattern):
+            if path not in expected:
+                path.unlink()
+    write_public(run / PLACEMENT, placement_plan(run, faqs))
     write_public(run / HANDOVER, HANDOVER_TMPL.format(
         brand=brand, date=time.strftime("%d %B %Y").lstrip("0"), n_home=len(home), faq_page_line=line,
         top=HOMEPAGE_TOP, tab=TAB, workbook=WORKBOOK))
     write_public(run / NOTE, research_note(run, brand, faqs))
     print(f"Wrote {FAQS_HTML} ({len(home)} homepage FAQs), {JSONLD}, {HANDOVER}, {NOTE}"
-          + (f", faq-page.html ({len(rest)})" if rest else "") + f" in {run}")
+          + (f", {FAQ_PAGE} ({len(rest)})" if rest else "") + f" in {run}")
     leaks = rendered_leaks(run, split_list(args.forbid))
     for name, term in leaks:
         print(f"FAIL {name}: never-say term {term!r} in a public file; fix the source and render again")
@@ -1268,7 +1447,7 @@ TAB_ORDER = ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibili
 
 def open_book(run: Path):
     import openpyxl
-    book = run / WORKBOOK if (run / WORKBOOK).is_file() else run.parent / WORKBOOK
+    book = run / "review" / WORKBOOK if (run / "review" / WORKBOOK).is_file() else run.parent / WORKBOOK
     if not book.is_file():
         if not PACK_TEMPLATE.is_file():
             sys.exit(f"no {WORKBOOK} in {run.parent} and no pack template at {PACK_TEMPLATE}")
@@ -1309,7 +1488,7 @@ def kept_verdicts(wb) -> dict:
 def faq_row(f: dict, extra: list[dict]) -> list:
     links = links_for(f, extra)
     link = links[0] if links else {"url": None, "anchor": None}
-    return [f["n"], "Homepage" if f["meta"].get("placement") == "homepage" else "FAQ page", f["question"],
+    return [f["n"], f["meta"].get("placement", "unassigned") + (" — " + f["meta"]["target"] if f["meta"].get("target") else ""), f["question"],
             plain(linked_answer(f, extra)), f["meta"].get("bucket"), "\n".join(f["meta"].get("sources", [])),
             f["meta"].get("evidence"), link["url"], link["anchor"]]
 
@@ -1348,12 +1527,17 @@ def write_tab(wb, faqs: list[dict], extra: list[dict], brand: str, run: Path, ke
 def add_initiative(wb, brand: str, run: Path) -> None:
     ws = wb["Initiatives"]
     task = f"Publish the homepage FAQs for {brand}"
-    if any(ws.cell(row=r, column=4).value == task for r in range(1, ws.max_row + 1)):
+    existing = next((r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=4).value == task), None)
+    instructions = (f"Client approves the '{TAB}' tab, then follow {run.name}/{HANDOVER}: paste {FAQS_HTML} into the "
+                    f"homepage (server-rendered), add {JSONLD}, keep the internal links.")
+    if existing is not None:
+        # Refresh generated paths without resetting the client's status, owner or priorities.
+        ws.cell(row=existing, column=5, value=instructions)
+        ws.cell(row=existing, column=13, value=f"{run.name}/{FAQS_HTML}")
         return
     r = next(r for r in range(6, ws.max_row + 2) if not ws.cell(row=r, column=4).value)
     vals = {3: "Brand Optimisation", 4: task,
-            5: f"Client approves the '{TAB}' tab, then follow {run.name}/{HANDOVER}: paste {FAQS_HTML} into the "
-               f"homepage (server-rendered), add {JSONLD}, keep the internal links.",
+            5: instructions,
             6: SKILL_ID, 7: "Scheduled", 8: "Yes", 10: 5, 11: 6, 12: 2, 13: f"{run.name}/{FAQS_HTML}"}
     for col, v in vals.items():
         ws.cell(row=r, column=col, value=v)
@@ -1365,6 +1549,7 @@ def cmd_workbook(args) -> int:
     except ImportError:
         sys.exit("openpyxl is needed: uv run --with openpyxl python faqs.py workbook ...")
     run = Path(args.run_dir).resolve()
+    organize_run(run)
     if not (run / FAQS_MD).is_file():
         sys.exit(f"missing {run / FAQS_MD}")
     title, faqs = parse_faqs((run / FAQS_MD).read_text(encoding="utf-8"))
@@ -1393,6 +1578,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--start", help="where to look for a MarketingOS brain (default .)")
     p.set_defaults(fn=cmd_path)
     sub.add_parser("doctor", help="preflight: Scrapling, uv, openpyxl, sibling crawler").set_defaults(fn=cmd_doctor)
+    p = sub.add_parser("organize", help="move supporting artifacts into publishing, review and data folders")
+    p.add_argument("--run-dir", required=True)
+    p.set_defaults(fn=cmd_organize)
     p = sub.add_parser("crawl", help="crawl the brand's own site into pages + link inventory")
     p.add_argument("--url", required=True)
     p.add_argument("--run-dir", required=True)
@@ -1407,6 +1595,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--include", action="append",
                    help="extra public file or folder of .md (repeatable). Drafts count as public only if "
                         "they are published or client-approved")
+    p.add_argument("--questions", action="append", help="question research or Dealbreaker file; private context, never public evidence")
+    p.add_argument("--voice", action="append", help="brand guidelines or TOV file; private writing context, never public evidence")
     p.set_defaults(fn=cmd_gather)
     p = sub.add_parser("links", help="BM25 shortlist of internal link targets per answer")
     p.add_argument("--run-dir", required=True)
@@ -1421,11 +1611,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--forbid", action="append", help="never-say term(s), comma-separated (repeatable)")
     p.add_argument("--allow-volatile", action="store_true", help="allow prices, counts and dates")
     p.add_argument("--final", action="store_true", help="also fail on [VERIFY]/TODO placeholders")
-    p.add_argument("--count", type=int, default=20, help="max FAQs (default 20; min is always 12)")
+    p.add_argument("--count", type=int, default=20, help="planning budget (default 20); exceeding it warns, never drops supplied questions")
     p.add_argument("--faqs", help="lint this file instead of <run>/faqs.md")
     p.add_argument("--bundle", help="provenance bundle (default <run>/data/public-bundle.md)")
     p.set_defaults(fn=cmd_lint)
-    p = sub.add_parser("render", help="faqs.html + faqpage.jsonld + handover.md + research-note.md")
+    p = sub.add_parser("render", help="publishing/ HTML + JSON-LD and review/ notes")
     p.add_argument("--run-dir", required=True)
     p.add_argument("--url", required=True, help="the homepage URL the FAQs will live on")
     p.add_argument("--brand")
@@ -1441,7 +1631,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except ValueError as error:
+        print(f"FAIL {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

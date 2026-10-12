@@ -23,7 +23,7 @@
     {
       "skill": "mos-geo-homepage-faqs",
       "category": "Brand Optimisation",
-      "what_it_does": "Sourced, entity-first FAQs ranked for a homepage and FAQ page, with passage-level claim review, verified internal links where useful, matching FAQPage schema and a client approval tab; exports require current final lint.",
+      "what_it_does": "Sourced FAQs in brand voice using existing buyer/Dealbreaker questions, with answer gaps retained, relevant page placement, passage-level review, verified internal links, matching FAQPage schema and client approval; exports require current final lint.",
       "run": "/mos-geo-homepage-faqs",
       "output": "campaigns/geo/YYYY-MM/homepage-faqs/",
       "feeds_tab": "Homepage FAQs, Initiatives",

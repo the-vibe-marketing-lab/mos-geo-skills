@@ -122,15 +122,15 @@ class LintTest(unittest.TestCase):
         r = f.lint_faqs(faqs_md(GOOD), BUNDLE, opts())
         self.assertEqual(r.fails, [], r.fails)
 
-    def test_two_sentences_fail(self):
+    def test_two_sentences_pass(self):
         md = with_answer(0, "Acme Widgets is a Geelong widget maker for small manufacturers. It designs, builds and "
                             "supports industrial widgets with durable parts and clear documentation for owners.")
-        self.assertFailsWith(fails(md), "exactly one sentence")
+        self.assertEqual(fails(md), [])
 
-    def test_yes_opener_fails(self):
+    def test_yes_opener_passes(self):
         md = with_answer(5, "Yes, Acme Widgets publishes maintenance guides that explain cleaning, lubrication, "
                             "inspection intervals and common faults so owners can keep equipment running.")
-        self.assertFailsWith(fails(md), "opens with 'Yes'")
+        self.assertEqual(fails(md), [])
 
     def test_number_not_in_bundle_fails(self):
         md = with_answer(5, "Acme Widgets publishes 37 maintenance guides that explain cleaning, lubrication, "
@@ -140,6 +140,13 @@ class LintTest(unittest.TestCase):
     def test_unsupported_tool_name_fails(self):
         md = with_answer(2, "WidgetOS connects to Shopify, Xero and Codex so that online orders, invoices and stock "
                             "levels stay in step with the factory schedule instead of being copied by hand.")
+        self.assertFailsWith(fails(md), "'Codex'")
+
+    def test_names_do_not_join_across_sentences(self):
+        self.assertEqual(f.cap_phrases('WidgetOS. Shopify connects to Xero.'), ['WidgetOS', 'Shopify', 'Xero'])
+        md = with_answer(0, 'Acme Widgets makes widgets. Payments are non-refundable. Cancelling is free.')
+        self.assertEqual(fails(md), [])
+        md = with_answer(0, 'Acme Widgets makes widgets. Codex connects to the factory.')
         self.assertFailsWith(fails(md), "'Codex'")
 
     def test_link_to_redirect_fails(self):
@@ -199,10 +206,10 @@ class ReviewFixesTest(unittest.TestCase):
         self.assertEqual(r.fails, [])
         self.assertIn("6 of 12 answers linked", " ".join(r.notes))
 
-    def test_bucket_cap_fails(self):
+    def test_bucket_quotas_do_not_drop_questions(self):
         items = [list(x) for x in GOOD]
         items[11][2] = "identity"
-        self.assertFailsWith(fails(faqs_md([tuple(x) for x in items])), "bucket identity: 2")
+        self.assertEqual(fails(faqs_md([tuple(x) for x in items])), [])
 
     def test_third_party_evidence_needs_off_domain_source(self):
         md = faqs_md(GOOD).replace("evidence: first-party", "evidence: third-party", 1)
@@ -301,6 +308,141 @@ class LinksTest(unittest.TestCase):
 
 
 class RenderWorkbookTest(unittest.TestCase):
+    def test_legacy_layout_migration_preserves_copy_and_files(self):
+        before = (self.run / f.FAQS_MD).read_bytes()
+        artifacts = {'faqs.html': b'old html', 'faqpage.jsonld': b'old schema',
+                     'handover.md': b'old handover', 'comparison.md': b'old comparison',
+                     'README.md': b'old readme', 'extra-notes.md': b'user notes',
+                     'source.csv': b'question,answer', 'capture.png': b'image bytes'}
+        for name, content in artifacts.items():
+            (self.run / name).write_bytes(content)
+        (self.run / 'page-faqs').mkdir()
+        (self.run / 'page-faqs/item.html').write_bytes(b'page block')
+        self.assertEqual(f.organize_run(self.run), len(artifacts) + 1)
+        self.assertEqual((self.run / f.FAQS_MD).read_bytes(), before)
+        self.assertEqual([p.name for p in self.run.iterdir() if p.is_file()], ['faqs.md'])
+        for name, content in artifacts.items():
+            self.assertEqual(f.artifact_target(self.run, self.run / name).read_bytes(), content)
+        self.assertEqual((self.run / f.PAGE_FAQS / 'item.html').read_bytes(), b'page block')
+        self.assertEqual(f.organize_run(self.run), 0)
+
+    def test_layout_conflict_does_not_overwrite_or_partially_move(self):
+        (self.run / 'comparison.md').write_text('original', encoding='utf-8')
+        (self.run / 'README.md').write_text('readme', encoding='utf-8')
+        (self.run / 'review').mkdir()
+        (self.run / 'review/comparison.md').write_text('client edits', encoding='utf-8')
+        with self.assertRaises(ValueError):
+            f.organize_run(self.run)
+        self.assertEqual((self.run / 'review/comparison.md').read_text(encoding='utf-8'), 'client edits')
+        self.assertTrue((self.run / 'README.md').is_file())
+        self.assertTrue((self.run / 'comparison.md').is_file())
+
+    def test_root_stays_clean_after_render_workbook_and_rerun(self):
+        self.make_book()
+        for _ in range(2):
+            self.assertEqual(self.lint(), 0)
+            self.assertEqual(f.cmd_render(Namespace(run_dir=str(self.run), url=HOME, brand=None, heading=None, forbid=None)), 0)
+            self.assertEqual(f.cmd_workbook(Namespace(run_dir=str(self.run), brand=None)), 0)
+            self.assertEqual([p.name for p in self.run.iterdir() if p.is_file()], ['faqs.md'])
+            self.assertTrue((self.run / f.FAQS_HTML).is_file())
+            self.assertTrue((self.run / f.PLACEMENT).is_file())
+            text = (self.run / f.HANDOVER).read_text(encoding='utf-8')
+            self.assertIn('publishing/faqs.html', text)
+            self.assertIn('review/placement-plan.md', text)
+
+    def test_local_workbook_moves_into_review_and_preserves_client_state(self):
+        import openpyxl
+        self.make_book().rename(self.run / f.WORKBOOK)
+        args = Namespace(run_dir=str(self.run), brand=None)
+        self.assertEqual(f.cmd_workbook(args), 0)
+        book = self.run / 'review' / f.WORKBOOK
+        self.assertTrue(book.is_file())
+        wb = openpyxl.load_workbook(book)
+        wb[f.TAB].cell(row=7, column=11, value='Approve')
+        ini = wb['Initiatives']
+        ini.cell(row=6, column=7, value='In progress')
+        ini.cell(row=6, column=13, value='homepage-faqs/faqs.html')
+        wb.save(book)
+        self.assertEqual(f.cmd_workbook(args), 0)
+        wb = openpyxl.load_workbook(book)
+        self.assertEqual(wb[f.TAB].cell(row=7, column=11).value, 'Approve')
+        self.assertEqual(wb['Initiatives'].cell(row=6, column=7).value, 'In progress')
+        self.assertEqual(wb['Initiatives'].cell(row=6, column=13).value, 'homepage-faqs/publishing/faqs.html')
+        self.assertIn('review/handover.md', wb['Initiatives'].cell(row=6, column=5).value)
+        self.assertEqual([p.name for p in self.run.iterdir() if p.is_file()], ['faqs.md'])
+
+    def test_multiblock_answers_match_visible_html_and_schema(self):
+        answer = ('We make widgets at Acme Widgets. Choose the format that fits your work.\n\n'
+                  '- Stock widgets.\n- Custom widgets.\n\n'
+                  '| Type | Use |\n| --- | --- |\n| Stock | Maintenance |\n\n'
+                  '<script>alert("x")</script>')
+        _, parsed = f.parse_faqs(faqs_md([(GOOD[0][0], answer, 'identity')]))
+        self.assertEqual(parsed[0]['answer'], answer)
+        block = f.answer_html(answer)
+        self.assertIn('<ul><li>Stock widgets.</li>', block)
+        self.assertIn('<table><thead>', block)
+        self.assertNotIn('<script>', block)
+        self.assertIn('&lt;script&gt;', block)
+        self.assertIn(block, f.faqs_html([(GOOD[0][0], answer)], 'FAQs'))
+        self.assertEqual(f.faq_jsonld([(GOOD[0][0], answer)], HOME)['mainEntity'][0]['acceptedAnswer']['text'], block)
+
+    def test_page_routing_and_unanswered_dealbreaker_retention(self):
+        md = faqs_md(GOOD).replace('bucket: product; placement: homepage;',
+                                   f'bucket: product; placement: page; target: {OS_PAGE};')
+        md = md.replace('bucket: resources; placement: faq-page;',
+                        'bucket: resources; placement: content-gap; target: https://acme.example/resources/;')
+        (self.run / f.FAQS_MD).write_text(md, encoding='utf-8')
+        q = 'What is Acme Widgets refund policy?'
+        (self.run / 'data/question-plan.json').write_text(json.dumps([
+            {'question': q, 'status': 'needs-client-answer', 'placement': 'homepage',
+             'reason': 'Client must confirm the refund policy.'}]), encoding='utf-8')
+        self.assertEqual(self.lint(), 0)
+        self.assertEqual(f.cmd_render(Namespace(run_dir=str(self.run), url=HOME, brand=None, heading=None, forbid=None)), 0)
+        schema = json.loads((self.run / f.PAGE_FAQS / (f.page_slug(OS_PAGE) + '.jsonld')).read_text(encoding='utf-8'))
+        self.assertEqual(schema['url'], OS_PAGE)
+        self.assertEqual(schema['mainEntity'][0]['name'], GOOD[1][0])
+        self.assertIn(q, (self.run / f.PLACEMENT).read_text(encoding='utf-8'))
+        home = (self.run / f.JSONLD).read_text(encoding='utf-8')
+        self.assertNotIn(GOOD[1][0], home)
+        for path in list((self.run / 'publishing').glob('*.html')) + list((self.run / f.PAGE_FAQS).glob('*')):
+            text = path.read_text(encoding='utf-8')
+            self.assertNotIn(q, text)
+            self.assertNotIn(GOOD[10][0], text)
+        self.assertEqual(len(list((self.run / f.PAGE_FAQS).glob('*.html'))), 1)
+
+    def test_unresolved_or_omitted_ready_question_blocks_export(self):
+        path = self.run / 'data/question-plan.json'
+        for row in ({'question': GOOD[0][0], 'status': 'needs-client-answer'},
+                    {'question': 'Can I get a refund?', 'status': 'ready', 'placement': 'homepage'},
+                    {'question': 'Different wording?', 'status': 'merged', 'merged_into': 'Missing question?'}):
+            path.write_text(json.dumps([row]), encoding='utf-8')
+            self.assertEqual(self.lint(), 1)
+
+    def test_question_and_voice_files_are_private_inputs(self):
+        questions, voice = self.run / 'questions.md', self.run / 'voice.md'
+        questions.write_text('PrivateDealbreaker and proposed 37 seats.', encoding='utf-8')
+        voice.write_text('PrivateVoice: We speak casually.', encoding='utf-8')
+        f.cmd_gather(Namespace(run_dir=str(self.run), brain=None, include=None,
+                               questions=[str(questions)], voice=[str(voice)]))
+        private = (self.run / f.BUNDLE).read_text(encoding='utf-8')
+        public = (self.run / f.PUBLIC_BUNDLE).read_text(encoding='utf-8')
+        for term in ('PrivateDealbreaker', 'PrivateVoice'):
+            self.assertIn(term, private)
+            self.assertNotIn(term, public)
+
+    def test_first_person_short_answer_and_client_placeholder(self):
+        self.assertEqual(fails(with_answer(0, 'We make widgets at Acme Widgets.')), [])
+        self.assertEqual(fails(with_answer(0, 'We make widgets at Acme Widgets — built locally.')), [])
+        self.assertTrue(fails('# Acme Widgets FAQs\n'))
+        self.assertTrue(fails(with_answer(0, 'Acme Widgets policy: [CLIENT TO ANSWER: confirm refunds].')))
+
+    def test_page_target_must_exist_and_be_indexable(self):
+        md = faqs_md(GOOD).replace('bucket: product; placement: homepage;',
+                                   'bucket: product; placement: page; target: https://acme.example/missing/;')
+        self.assertTrue(any('target' in error for error in fails(md)))
+        md = md.replace('https://acme.example/missing/', 'https://elsewhere.example/')
+        self.assertTrue(fails(md))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.month = Path(self.tmp.name) / "2026-10"
@@ -336,8 +478,9 @@ class RenderWorkbookTest(unittest.TestCase):
         self.assertEqual(ld["url"], HOME)
         self.assertEqual(ld["@id"], HOME + "#faq")
         self.assertIn("August 2023", (self.run / f.HANDOVER).read_text(encoding="utf-8"))
-        self.assertTrue((self.run / "faq-page.html").is_file())
+        self.assertTrue((self.run / f.FAQ_PAGE).is_file())
         self.assertTrue((self.run / f.NOTE).is_file())
+        self.assertEqual([p.name for p in self.run.iterdir() if p.is_file()], ['faqs.md'])
 
     def test_render_fails_on_forbidden_term_and_strips_brokers(self):
         (self.run / "data" / "research.md").write_text(
@@ -368,7 +511,8 @@ class RenderWorkbookTest(unittest.TestCase):
 
     def test_export_rejects_changed_evidence_links_and_research(self):
         args = Namespace(run_dir=str(self.run), url=HOME, brand=None, heading=None, forbid=None)
-        for name in [f.PUBLIC_BUNDLE, f.INVENTORY, f.LINKS_JSON, f.RESEARCH]:
+        for name in [f.PUBLIC_BUNDLE, f.INVENTORY, f.LINKS_JSON, f.RESEARCH,
+                     'data/question-plan.json', 'data/voice-brief.md']:
             with self.subTest(name=name):
                 self.assertEqual(self.lint(), 0)
                 path = self.run / name
