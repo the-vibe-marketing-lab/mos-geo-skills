@@ -222,9 +222,12 @@ uv run --with wordcloud --with matplotlib python $SKILL/scripts/reviews.py wordc
 ```
 
 `aggregate` writes `data/aggregate.json`: rating spread, monthly trend, platform table, reply rate
-and median reply time, aspect volumes, and the fix priority for every negative aspect (an aspect
-with a safety or legal report tied to it ranks first regardless of its score; a safety or legal
-review that ties to no aspect is listed at the top of the fix report to read first):
+and median reply time, aspect volumes, and the fix priority for every negative aspect. The fix list
+is ranked by score only. Separately, every review whose own words name an injury, a hazard or a
+legal or regulator step (cut, burn, rash, "hurt his back carrying", Fair Trading, ACCC, lawyer,
+recall; never figurative "ruined my back") is listed one by one in a **Read first** box at the top
+of the fix report and in the report headline, with reviews the model labelled safety/legal but whose
+text names none flagged as likely over-labels:
 
 `priority = volume share × average severity × recency weight × visibility weight × (1 + share unreplied)`
 
@@ -236,8 +239,11 @@ prior), drop stopwords and the brand's own name, and need a phrase in at least 2
 `--block <word>` for product names that crowd the cloud, and `--min-count 1` on very small runs.
 
 Then read `data/aggregate.json` (the `fixes` list) and the quotes it points to, and write
-`data/fix-notes.json` for the top 5 issues (shape in `references/report-spec.md`): a one-line
-problem, the likely root cause **as a hypothesis**, the fix, the GEO action and the metric to watch.
+`data/fix-notes.json` for **every issue in the fix list**, not just the top 5 (shape in
+`references/report-spec.md`): a one-line problem, the likely root cause **as a hypothesis**, a
+concrete fix the owner could schedule, the GEO action and the metric to watch. All five fields,
+every issue. A low-ranked issue still gets a real fix, even a small one ("add sizing to the
+pillow page"), never "to agree with the owner".
 Plain, specific, Australian spelling, no em dashes, no hype. Then:
 
 ```bash
@@ -245,8 +251,9 @@ $R report --run-dir "$RUN"
 ```
 
 It writes `review-sentiment-report.md`, `fix-report.md` and `unreplied-negatives.csv` (every 1 to 2
-star review with no owner reply, newest first: the quickest win in the report). It tells you which
-top issues still lack notes.
+star review with no owner reply, newest first: the quickest win in the report). If any issue still
+has a missing note field it prints them and **exits non-zero**: write the missing notes and re-run.
+`--allow-placeholders` writes a draft anyway (exit 0), never for a client.
 
 ## Stage 8: Workbook
 

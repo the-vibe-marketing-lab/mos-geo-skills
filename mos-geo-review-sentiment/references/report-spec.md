@@ -50,12 +50,14 @@ Star-only reviews (no text) count toward ratings and reply rates, not toward asp
   different issue; cuts are marked "…". Order: strongest feeling, fewest other complaints, newest.
   In priority order, a review already quoted under another issue is used again only when there is
   no other candidate. An issue with no qualifying sentence shows no quote rather than a wrong one.
-- **Safety and legal**: a review labelled `safety_legal` is tied to an aspect only through the
-  sentence with the injury or legal word (hurt, injury, burn, rash, Fair Trading, ACCC, lawyer ...).
-  Any aspect with one or more tied reviews ranks first, marked "Safety/legal: ranked first
-  regardless of score". Safety or legal reviews that tie to no aspect are quoted under "Read first"
-  at the top of the fix report, with a note when the text names no injury or legal step at all
-  (likely an over-label).
+- **Safety and legal (Read first)**: the fix list is ranked by priority score only. Any review whose
+  own text names an injury (cut my hand, hurt his back, burn, rash, hospital), a hazard (unsafe,
+  sharp edges, exposed wires) or a legal or regulator step (Fair Trading, ACCC, ombudsman, lawyer,
+  tribunal, recall) is listed individually in a "Read first: safety and legal reports" box at the top
+  of `fix-report.md`, with its quote, link, date and the aspect its sentence matches; the report
+  headline summarises them. Figurative discomfort ("ruined my back", "pain in the neck", "killing
+  me") does not count. Reviews the model labelled `safety_legal` whose text names none of these are
+  listed underneath as likely over-labels to check.
 - **Sample caption**: "the newest N reviews per platform" for scraped runs; "a user-supplied sample
   of N reviews; selection method unknown" for `import` runs.
 - **Denominators**: always both, "60 labelled reviews (55 name an aspect)".
@@ -82,11 +84,11 @@ Star-only reviews (no text) count toward ratings and reply rates, not toward asp
 }
 ```
 
-Write it for the top 5 issues at least. Rules: every claim comes from the quotes or the numbers;
+Write it for **every** issue in `aggregate.json` `fixes`, with all five fields. `report` exits
+non-zero while any issue is on a placeholder (`--allow-placeholders` for drafts only). Rules: every claim comes from the quotes or the numbers;
 root causes are labelled guesses; fewer than 3 reviews is "one reviewer" or "single mentions",
 never "reviewers are" or "a cluster"; Australian spelling; no em dashes; no hype words ("game-changer",
-"unlock", "skyrocket"); never promise AI citations. Missing notes fall back to neutral defaults and
-`report` lists which issues still need them.
+"unlock", "skyrocket"); never promise AI citations.
 
 ## `review-sentiment-report.md`
 
@@ -117,7 +119,9 @@ the reviewer says they are leaving.
 `wordcloud-positive.png`, `wordcloud-negative.png` and `wordcloud.html`. Praise = 4 to 5 stars (or
 positive labels where there are no stars); complaints = 1 to 2 stars (or negative labels). Phrases
 are bigrams and trigrams scored with log-odds and a pooled Dirichlet prior, so a phrase used equally
-by happy and unhappy customers scores near zero. Size = distinctiveness; the HTML shows the count,
+by happy and unhappy customers scores near zero. Overlapping fragments of one sentence ("take
+another day", "day off work", "work to wait") collapse to the highest scoring one when they come
+from mostly the same reviews. Size = distinctiveness; the HTML shows the count,
 the share of that side and three quotes on hover or keyboard focus, plus a table view. Colours are
 the dataviz reference diverging pair (blue praise, red complaints), validated on light and dark
 surfaces; the HTML follows the system colour scheme.
@@ -126,7 +130,8 @@ surfaces; the HTML follows the system colour scheme.
 
 `brand-audit-master.xlsx` at the month root. **Review Fixes** tab: rank, aspect, problem, negative
 reviews, share, trend, priority, owner, fix, GEO action, metric, an example quote and link, then
-Client verdict (Agree / Partly agree / Disagree / Already fixed) and Client notes, which survive a
-re-run. **Initiatives**: the top issues (config `initiatives.top_issues`, at least
-`min_negative_mentions` each) plus "Reply to N unreplied 1 to 2 star reviews", ICE-scored, with no
-duplicates on re-run. **Checklist**: the `mos-geo-review-sentiment` row ticked.
+Client verdict (Agree / Partly agree / Disagree / Already fixed), Client notes, and a Row key
+(skill:brand:month:aspect id) that keeps verdicts attached when wording changes. **Initiatives**: the top issues (config `initiatives.top_issues`, at least
+`min_negative_mentions` each) plus "Reply to N unreplied 1 to 2 star reviews", ICE-scored. Each Initiative carries the same row key in its Deliverable cell, so a re-run updates the
+task and instructions in place (status, owner and ICE scores edited in the sheet are kept) instead
+of adding a second row, even when a fix note's problem line was reworded. **Checklist**: the `mos-geo-review-sentiment` row ticked.

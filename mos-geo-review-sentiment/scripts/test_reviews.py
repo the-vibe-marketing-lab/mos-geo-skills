@@ -375,19 +375,61 @@ class Iteration2(unittest.TestCase):
         rv.assign_quotes(issues, n=1)
         self.assertEqual([[q["id"] for q in f["quotes"]] for f in issues], [["a"], ["b"], ["a"]])
 
-    def test_safety_issue_ranks_first_regardless_of_score(self):
+    def test_ranking_is_pure_score_and_the_hinge_goes_in_read_first(self):
         old = [{"id": f"h{i}", "platform": "trustpilot", "rating": 1.0, "date": "2025-11-0%d" % (i + 1),
                 "owner_reply": "Sorry", "text": "The hinge snapped and cut my hand."} for i in range(5)]
         new = [{"id": f"d{i}", "platform": "trustpilot", "rating": 1.0, "date": "2026-09-01",
                 "text": "Delivery was late again."} for i in range(20)]
         labels = {r["id"]: {"aspects": {"build": -2}, "severity": "safety_legal"} for r in old}
         labels.update({r["id"]: {"aspects": {"delivery": -2}, "severity": "minor"} for r in new})
-        out = rv.fixes(old + new, labels, self.tax, rv.load_config("scoring.json"), "2026-10-12")
-        self.assertEqual([f["id"] for f in out], ["build", "delivery"])
-        self.assertGreater(out[1]["priority"], out[0]["priority"])  # the score alone would put it second
-        self.assertTrue(out[0]["safety_first"])
-        section = rv.fix_section(out[0], {r["id"]: r for r in old}, {}, {})
-        self.assertIn("Safety/legal: ranked first regardless of score", section)
+        agg = rv.build_aggregate(old + new, labels, self.tax, rv.load_config("scoring.json"), "2026-10-12", {},
+                                 {"brand": "Acme", "max_per_platform": 500})
+        self.assertEqual([f["id"] for f in agg["fixes"]], ["delivery", "build"])  # by score only
+        reports = agg["safety_reports"]
+        self.assertEqual({e["id"] for e in reports}, {f"h{i}" for i in range(5)})
+        self.assertTrue(all(e["kind"] == "injury" and e["aspect"] == "build" for e in reports))
+        box = rv.read_first_md(agg, {r["id"]: r for r in old + new})
+        self.assertIn("## Read first: safety and legal reports", box)
+        self.assertIn("cut my hand", box)
+        self.assertIn("Read first", rv.headline_lines(agg, {})[0])
+
+    def test_injury_lexicon_is_concrete_not_figurative(self):
+        for text in ("This mattress ruined my back.", "Their support is a pain in the neck.",
+                     "The wait is killing me.", "I was hurt by their attitude."):
+            self.assertIsNone(rv.safety_hit(text), text)
+        expected = {"The hinge cut my hand.": "injury", "My husband hurt his back carrying the boxes.": "injury",
+                    "The heater left a burn on the floor and on me.": "injury", "It gave me a rash.": "injury",
+                    "I have raised a case with Fair Trading.": "legal", "I reported them to the ACCC.": "legal",
+                    "Our lawyer is involved.": "legal", "The model was recalled last year.": "legal",
+                    "The frame has sharp edges.": "hazard"}
+        for text, kind in expected.items():
+            self.assertEqual(rv.safety_hit(text), kind, text)
+
+    def test_over_labels_are_flagged_not_dropped(self):
+        r = {"id": "o", "rating": 1.0, "date": "2026-01-01", "text": "Worst couch ever, the cushions sag."}
+        reports = rv.safety_reports([r], {"o": {"aspects": {"build": -2}, "severity": "safety_legal"}}, self.terms)
+        self.assertTrue(reports[0]["over_label"])
+
+    def test_checkout_quote_from_a_failing_payment_sentence(self):
+        r = {"id": "c", "rating": 2.0, "date": "2026-03-01",
+             "text": "The checkout kept failing and charged my card twice before it went through. "
+                     "Still waiting on my refund after six weeks."}
+        labels = {"c": {"aspects": {"checkout": -1, "refunds": -2}}}
+        quotes = rv.quote_candidates([r], labels, "checkout", self.terms)
+        self.assertEqual(quotes[0]["snippet"], "The checkout kept failing and charged my card twice before it went "
+                                               "through. …")
+
+    def test_overlapping_cloud_fragments_are_suppressed(self):
+        text = "Delivery was three weeks late and I had to take another day off work to wait for it."
+        reviews = [{"id": f"n{i}", "platform": "trustpilot", "rating": 1.0, "date": "2026-09-01", "text": text}
+                   for i in range(4)] + \
+                  [{"id": f"p{i}", "platform": "trustpilot", "rating": 5.0, "date": "2026-09-01",
+                    "text": "Great sofa, easy to build."} for i in range(4)]
+        neg = [p["phrase"] for p in rv.score_phrases(reviews, {}, set())["negative"]]
+        fragments = [g for g in ("take another day", "day off work", "work to wait", "another day off") if g in neg]
+        self.assertEqual(len(fragments), 1, neg)  # one of the overlapping run survives, not three
+        self.assertTrue(rv.words_overlap("take another day", "day off work"))
+        self.assertFalse(rv.words_overlap("late delivery", "day off work"))
 
     def test_import_marks_a_user_supplied_sample(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -465,11 +507,13 @@ class OfflinePipeline(unittest.TestCase):
         self.assertEqual(agg["meta"]["reviews"], 62)
         self.assertEqual(agg["meta"]["excluded_from_stars"], ["reddit"])
         self.assertEqual(agg["headline"]["rated"], 52)  # 62 minus 10 Reddit
-        safety = [f for f in agg["fixes"] if f["safety_first"]]
-        self.assertEqual(agg["fixes"][:len(safety)], safety)  # the fixture's hinge injury goes first
-        rest = [f["priority"] for f in agg["fixes"] if not f["safety_first"]]
-        self.assertEqual(rest, sorted(rest, reverse=True))
-        self.assertEqual(self.quiet(rv.cmd_report), 0)
+        ranks = [f["priority"] for f in agg["fixes"]]
+        self.assertEqual(ranks, sorted(ranks, reverse=True))  # pure score order
+        self.assertTrue(any(e.get("kind") == "injury" for e in agg["safety_reports"]))  # the hinge, in Read first
+        self.assertEqual(self.quiet(rv.cmd_report, allow_placeholders=False), 2)  # fixture notes cover 2 issues
+        self.assertEqual(self.quiet(rv.cmd_report, allow_placeholders=True), 0)
+        self.assertEqual(len(rv.placeholder_issues(agg, json.loads(
+            (self.run_dir / "data" / "fix-notes.json").read_text(encoding="utf-8")))), len(agg["fixes"]) - 2)
         for name in (rv.REPORT, rv.FIX_REPORT, rv.UNREPLIED):
             self.assertTrue((self.run_dir / name).is_file(), name)
         fix = (self.run_dir / rv.FIX_REPORT).read_text(encoding="utf-8")
@@ -511,6 +555,16 @@ class OfflinePipeline(unittest.TestCase):
         tasks_after = [r[3] for r in wb["Initiatives"].iter_rows(min_row=6, values_only=True) if r[3]]
         self.assertEqual(sorted(tasks_before), sorted(tasks_after))
         self.assertTrue(any("unreplied" in t for t in tasks_after))
+        notes_path = self.run_dir / "data" / "fix-notes.json"
+        notes = json.loads(notes_path.read_text(encoding="utf-8"))
+        notes["issues"]["refunds"]["problem"] = "Refunds are slow (reworded)"
+        notes_path.write_text(json.dumps(notes), encoding="utf-8")
+        self.quiet(rv.cmd_workbook)  # edited problem line: update in place, never a second row
+        wb = openpyxl.load_workbook(book)
+        tasks_edited = [r[3] for r in wb["Initiatives"].iter_rows(min_row=6, values_only=True) if r[3]]
+        self.assertEqual(len(tasks_edited), len(tasks_after))
+        self.assertIn("Fix review complaint: Refunds are slow (reworded)", tasks_edited)
+        self.assertEqual(wb[rv.TAB].cell(row=7, column=15).value, "Agree")
         checklist = {r[2]: r for r in wb["Checklist"].iter_rows(values_only=True) if r[2]}
         self.assertEqual(checklist[rv.SKILL_ID][8], "☑")
 

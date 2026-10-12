@@ -1931,7 +1931,8 @@ NEG_CUES = set("""
 not no never nobody nothing nowhere none cannot can't won't didn't doesn't isn't wasn't don't couldn't wouldn't
 late later delay delayed waiting waited wait still poor bad worse worst terrible horrible awful disgusting
 disappointed disappointing frustrating frustrated rude ignored ignoring broken broke faulty defective damaged
-missing lost wrong complaint issue issues problem problems fault failed fail
+missing lost wrong complaint issue issues problem problems fault failed fail failing fails stuck twice double
+charged overcharged error errors crashed crash declined
 sagging sag smell pilling unacceptable avoid beware nightmare chase chased unanswered hold
 """.split())
 
@@ -2013,7 +2014,9 @@ def quote_candidates(negs: list[dict], labels: dict, aspect_id: str, terms: dict
     for r in negs:
         sents = [" ".join(x.split()) for x in split_sentences(r.get("text") or "")]
         lab = labels[r["id"]]["aspects"]
-        i = fitting_sentence(sents, aspect_id, list(lab), terms, needs_cue=True)
+        # The review's own negative label for this aspect is enough; a 4 to 5 star
+        # review must also show the complaint in the sentence itself.
+        i = fitting_sentence(sents, aspect_id, list(lab), terms, needs_cue=(r.get("rating") or 0) >= 4)
         if i is None:
             continue
         others = sum(1 for k, v in lab.items() if k != aspect_id and v < 0)
@@ -2034,46 +2037,54 @@ def assign_quotes(issues: list[dict], n: int = 3) -> None:
         f["quotes"] = picks
 
 
-SAFETY_CUES = re.compile(
-    r"\b(injur\w*|hurt\w*|cut (?:my|his|her|their)|burn\w*|bleed\w*|blood|rash\w*|allerg\w*|fire|smok\w*|sharp|"
-    r"unsafe|danger\w*|hazard\w*|collaps\w*|(?:my|his|her) back|hospital|doctor|legal\w*|lawyer\w*|accc|"
-    r"consumer law|fair trading|tribunal|ncat|vcat|sue|court)\b", re.I)
+# Concrete injury, hazard or legal steps only. Figurative discomfort ("ruined my back",
+# "pain in the neck", "killing me") is deliberately not here.
+BODY = r"(?:back|hand|hands|arm|leg|foot|feet|finger|fingers|wrist|shoulder|knee|head|neck|ankle|toe|eye|skin)"
+SAFETY_PATTERNS = {
+    "injury": re.compile(
+        r"\b(?:cut (?:my|his|her|their|our) " + BODY + r"|(?:hurt|injured|sprained|strained|broke|burnt|burned) "
+        r"(?:my|his|her|their|our) " + BODY + r"|injur(?:y|ies|ed)|burns?|burnt|scald\w*|rash(?:es)?|"
+        r"allergic reaction|bleed\w*|bleeding|stitches|hospital|emergency department|concussion|"
+        r"electric(?:al)? shock|caught fire|on fire)\b", re.I),
+    "hazard": re.compile(r"\b(?:hazard\w*|unsafe|dangerous|fire risk|choking|toxic|sharp edges?|exposed wires?|"
+                         r"tipped over|collapsed (?:under|on))\b", re.I),
+    "legal": re.compile(r"\b(?:fair trading|accc|consumer affairs|consumer law|ombudsman|lawyers?|solicitors?|"
+                        r"legal action|tribunal|ncat|vcat|qcat|small claims|recall(?:ed|s)?|class action|"
+                        r"sued|suing|sue (?:them|you|koala|the company))\b", re.I),
+}
 
 
-def safety_aspects(r: dict, labels: dict, terms: dict) -> set:
-    """Severity is per review, so it is tied to an aspect only through the
-    sentence that carries the injury or legal word: the labelled aspect that
-    sentence matches best. A review can tie to no aspect at all."""
-    if labels.get(r["id"], {}).get("severity") != "safety_legal":
-        return set()
-    labelled = [k for k in labels[r["id"]].get("aspects", {}) if k in terms]
-    out = set()
-    for sent in split_sentences(r.get("text") or ""):
-        if not SAFETY_CUES.search(sent):
+def safety_hit(sentence: str) -> str | None:
+    return next((kind for kind, pat in SAFETY_PATTERNS.items() if pat.search(sentence)), None)
+
+
+def safety_reports(reviews: list[dict], labels: dict, terms: dict) -> list[dict]:
+    """Every review whose own text names an injury, a hazard or a legal or
+    regulator step, with the sentence, link and the aspect that sentence is
+    about. Plus reviews the model labelled safety/legal whose text names none
+    (likely over-labels). These sit in a Read-first box; they do not change the
+    priority ranking."""
+    out = []
+    for r in reviews:
+        sents = [" ".join(x.split()) for x in split_sentences(r.get("text") or "")]
+        hit = next(((i, safety_hit(x)) for i, x in enumerate(sents) if safety_hit(x)), None)
+        labelled = labels.get(r["id"], {})
+        if not hit and labelled.get("severity") != "safety_legal":
             continue
-        scores = {k: sentence_score(sent, terms[k], False)[0] for k in labelled}
-        top = max(scores.values(), default=0)
-        out |= {k for k, v in scores.items() if v == top and v > 0}
-    return out
-
-
-def safety_quote(r: dict) -> str:
-    """The sentence with the injury or legal word; or a plain note when the text has none."""
-    sents = [" ".join(x.split()) for x in split_sentences(r.get("text") or "")]
-    i = next((n for n, x in enumerate(sents) if SAFETY_CUES.search(x)), None)
-    if i is None:
-        return quote_line(r) + "\n\n(Labelled safety or legal, but the text names no injury, risk or legal step: " \
-                               "likely an over-label. Check it.)"
-    return quote_line(r, excerpt_from(sents, i))
-
-
-def unattributed_safety(reviews: list[dict], labels: dict, terms: dict) -> list[str]:
-    return [r["id"] for r in reviews if labels.get(r["id"], {}).get("severity") == "safety_legal"
-            and not safety_aspects(r, labels, terms)]
-
-
-def is_safety(negs: list[dict], labels: dict, aspect_id: str, terms: dict) -> int:
-    return sum(aspect_id in safety_aspects(r, labels, terms) for r in negs)
+        entry = {"id": r["id"], "date": r.get("date"), "labelled_safety": labelled.get("severity") == "safety_legal"}
+        if hit:
+            i, kind = hit
+            pool = [k for k in labelled.get("aspects", {}) if k in terms]
+            scores = {k: sentence_score(sents[i], terms[k], False)[0] for k in pool}
+            if not any(scores.values()):  # the review's labels miss it: match against the whole taxonomy
+                scores = {k: sentence_score(sents[i], terms[k], False)[0] for k in terms}
+            best = max(scores, key=scores.get, default=None)
+            entry.update(kind=kind, snippet=excerpt_from(sents, i, limit=260),
+                         aspect=best if best and scores[best] > 0 else None)
+        else:
+            entry.update(kind=None, snippet=verbatim(r.get("text") or "", 200), aspect=None, over_label=True)
+        out.append(entry)
+    return sorted(out, key=lambda e: (e.get("over_label", False), -int((e.get("date") or "0").replace("-", "") or 0)))
 
 
 def fixes(reviews: list[dict], labels: dict, tax: dict, sc: dict, as_of: str) -> list[dict]:
@@ -2089,13 +2100,10 @@ def fixes(reviews: list[dict], labels: dict, tax: dict, sc: dict, as_of: str) ->
         out.append({"id": a["id"], "label": a["label"], "owner": a.get("owner"), "negative": len(negs),
                     "share": comp["volume_share"], "components": comp, "priority": priority_score(**comp),
                     "trend": trend(negs, as_of, sc), "churn": sum(labels[r["id"]].get("churn", False) for r in negs),
-                    "safety_reviews": is_safety(negs, labels, a["id"], terms),
                     "_candidates": quote_candidates(negs, labels, a["id"], terms)})
-    # Safety or legal issues go first whatever their score: a priority formula must never bury them.
-    out.sort(key=lambda f: (f["safety_reviews"] == 0, -f["priority"]))
+    out.sort(key=lambda f: -f["priority"])  # purely by score; safety lives in its own Read-first box
     for i, f in enumerate(out, 1):
         f["rank"] = i
-        f["safety_first"] = f["safety_reviews"] > 0
     assign_quotes(out)
     return out
 
@@ -2156,7 +2164,7 @@ def build_aggregate(reviews, labels, tax, sc, as_of, stats, meta) -> dict:
         "praised": [a["id"] for a in praised],
         "fixes": fixes(reviews, labels, tax, sc, as_of),
         "unreplied_negatives": [r["id"] for r in unreplied_negatives(reviews)],
-        "safety_unattributed": unattributed_safety(reviews, labels, {a["id"]: aspect_terms(a) for a in tax["aspects"]}),
+        "safety_reports": safety_reports(reviews, labels, {a["id"]: aspect_terms(a) for a in tax["aspects"]}),
         "scoring": {k: v for k, v in sc.items() if not k.startswith("_")},
     }
 
@@ -2257,21 +2265,32 @@ def score_phrases(reviews: list[dict], labels: dict, blocked: set, min_count: in
     out = {}
     for side, sign in (("positive", 1), ("negative", -1)):
         rows = [(g, c, sign * z[g]) for g, c in grams[side].items() if c >= min_count and sign * z[g] > 0]
-        rows = drop_contained(sorted(rows, key=lambda x: (-x[2], -x[1], -len(x[0].split()), x[0])))[:top]
+        ids = {g: {r["id"] for r in docs[side][g]} for g, _, _ in rows}
+        rows = drop_overlapping(sorted(rows, key=lambda x: (-x[2], -len(x[0].split()), -x[1], x[0])), ids)[:top]
         out[side] = [{"phrase": g, "count": c, "score": round(s, 3), "share": round(c / max(n[side], 1), 3),
                       "quotes": [quote_of(r, g) for r in pick_examples(docs[side][g])]} for g, c, s in rows]
     out["corpus"] = n
     return out
 
 
-def drop_contained(rows: list[tuple]) -> list[tuple]:
-    """Drop a phrase that overlaps a kept phrase with the same count ("refund
-    never" next to "refund never arrived" adds nothing)."""
+def words_overlap(a: str, b: str) -> bool:
+    """'take another day' / 'day off work': one contains the other, or the end of
+    one is the start of the other."""
+    x, y = a.split(), b.split()
+    if a in b or b in a:
+        return True
+    return any(x[-k:] == y[:k] or y[-k:] == x[:k] for k in range(1, min(len(x), len(y))))
+
+
+def drop_overlapping(rows: list[tuple], ids: dict, same: float = 0.5) -> list[tuple]:
+    """Rows arrive best first (score, then longer). Drop a phrase that overlaps a
+    kept one AND comes from mostly the same reviews (Jaccard >= `same`): it is a
+    fragment of the same sentence ("day off work", "work to wait" next to "take
+    another day"), not a second thing customers say."""
     kept = []
     for g, c, s in rows:
-        words = g.split()
-        if any(kc == c and (g in k or k in g or words[:-1] == k.split()[1:] or words[1:] == k.split()[:-1])
-               for k, kc, _ in kept):
+        if any(words_overlap(g, k) and len(ids[g] & ids[k]) / max(len(ids[g] | ids[k]), 1) >= same
+               for k, _, _ in kept):
             continue
         kept.append((g, c, s))
     return kept
@@ -2504,7 +2523,6 @@ def few(n: int, many: str, one: str = "one reviewer", two: str = "two reviewers"
 
 def headline_lines(agg: dict, tax_names: dict) -> list[str]:
     h, rep, meta = agg["headline"], agg["replies"], agg["meta"]
-    top_fix = agg["fixes"][0] if agg["fixes"] else None
     praise = next((a for a in agg["aspects"] if agg["praised"] and a["id"] == agg["praised"][0]), None)
     labelled_note = labelled_text(meta)
     lines = [f"- **Average star rating:** {stars(h['avg_rating'])} from {h['rated']} rated reviews"
@@ -2516,9 +2534,13 @@ def headline_lines(agg: dict, tax_names: dict) -> list[str]:
              f"replies; {pct(rep['negative_reply_rate'] or 0, 1) if rep['negative_reply_rate'] is not None else 'n/a'} "
              f"of 1 to 2 star reviews"
              + (f"; median {rep['median_reply_days']:.0f} days to reply" if rep["median_reply_days"] is not None else "")]
-    if top_fix and top_fix.get("safety_first"):
-        lines.append(f"- **First to fix ({SAFETY_LABEL.lower()}):** {top_fix['label']} "
-                     f"({few(top_fix['safety_reviews'], 'reviews', 'one review', 'two reviews')} at safety or legal level)")
+    real = [e for e in agg.get("safety_reports", []) if not e.get("over_label")]
+    if real:
+        names = {a["id"]: a["label"] for a in agg["aspects"]}
+        items = "; ".join(f"{e['kind']} ({names.get(e['aspect'], 'no single issue')}, {e.get('date') or 'undated'})"
+                          for e in real[:6])
+        lines.insert(0, f"- **Read first:** {few(len(real), 'reviews name', 'one review names', 'two reviews name')} "
+                        f"an injury, a hazard or a legal step: {items}. Quotes and links at the top of `{FIX_REPORT}`.")
     top_score = max((f for f in agg["fixes"]), key=lambda f: f["priority"], default=None)
     if top_score:
         count = few(top_score["negative"], "negative reviews", "one negative review", "two negative reviews")
@@ -2602,7 +2624,7 @@ def praised_md(agg: dict, reviews: dict, labels: dict, tax: dict) -> str:
 
 def complaints_md(agg: dict) -> str:
     rows = [[f["rank"], f["label"], f["negative"], f"{f['share'] * 100:.0f}%", f["trend"]["direction"],
-             f"{f['priority']:.3f}" + (" (safety/legal: first regardless)" if f.get("safety_first") else ""),
+             f"{f['priority']:.3f}",
              f["owner"]] for f in agg["fixes"][:5]]
     return md_table(["Rank", "Aspect", "Negative reviews", "Share", "Trend", "Priority", "Owner"], rows) \
         if rows else "_No complaints found._"
@@ -2690,11 +2712,26 @@ DEFAULT_GEO_ACTION = ("Reply publicly to the unreplied reviews on this issue, th
                       "(FAQ or policy page) so engines have the brand's own account to cite.")
 
 
-SAFETY_LABEL = "Safety/legal: ranked first regardless of score"
-
-
-def safety_count(f: dict) -> str:
-    return few(f["safety_reviews"], "reviews describe", "one review describes", "two reviews describe")
+def read_first_md(agg: dict, reviews: dict) -> str:
+    """The safety and legal box at the top of the fix report: each review, not a
+    count, so nobody has to trust a ranking to find an injury."""
+    reports = [e for e in agg.get("safety_reports", []) if e["id"] in reviews]
+    if not reports:
+        return ""
+    names = {a["id"]: a["label"] for a in agg["aspects"]}
+    real = [e for e in reports if not e.get("over_label")]
+    over = [e for e in reports if e.get("over_label")]
+    out = ["## Read first: safety and legal reports\n",
+           "Each review below names an injury, a hazard or a legal or regulator step in its own words. They are "
+           "listed one by one, outside the ranking, because one of these can matter more than any score.\n"]
+    for e in real:
+        out.append(f"- **{e['kind'].capitalize()}**, about {names.get(e['aspect'], 'no single issue')}:\n\n"
+                   + quote_line(reviews[e["id"]], e["snippet"]) + "\n")
+    if over:
+        out.append("**Labelled safety or legal by the model, but the text names no injury, hazard or legal step "
+                   "(likely over-labels; check them):**\n")
+        out += [quote_line(reviews[e["id"]], e["snippet"]) + "\n" for e in over]
+    return "\n".join(out)
 
 
 def default_problem(f: dict) -> str:
@@ -2707,8 +2744,6 @@ def fix_section(f: dict, reviews: dict, note: dict, tax_aspect: dict) -> str:
     owner = note.get("owner") or f["owner"]
     return "\n".join([
         f"## {f['rank']}. {note.get('problem') or default_problem(f)}\n",
-        *([f"- **{SAFETY_LABEL}** ({safety_count(f)} an injury, a physical risk or a legal issue.)"]
-          if f.get("safety_first") else []),
         f"- **Aspect:** {f['label']}. **Owner:** {owner}.",
         f"- **How many:** {few(f['negative'], 'negative reviews', 'one negative review', 'two negative reviews')}, "
         f"{f['share'] * 100:.0f}% of reviews with text"
@@ -2743,12 +2778,9 @@ def fix_report_md(agg: dict, reviews: dict, tax: dict, notes: dict) -> str:
             "hypotheses from the review text, not confirmed findings.\n"]
     body = [fix_section(f, reviews, (notes.get("issues") or {}).get(f["id"], {}), aspects.get(f["id"], {}))
             for f in agg["fixes"]]
-    loose = [rid for rid in agg.get("safety_unattributed", []) if rid in reviews]
-    if loose:
-        body.insert(0, "## Read first: safety or legal reports not tied to an issue\n\n"
-                       f"{few(len(loose), 'reviews were', 'One review was', 'Two reviews were')} labelled at safety or "
-                       "legal level, but no sentence ties the injury or legal point to one aspect. Read them before "
-                       "the list below.\n\n" + "\n\n".join(safety_quote(reviews[rid]) for rid in loose) + "\n")
+    box = read_first_md(agg, reviews)
+    if box:
+        body.insert(0, box)
     return "\n".join(head + (body or ["_No complaints found._\n"]))
 
 
@@ -2785,6 +2817,17 @@ def pattern_word_warnings(agg: dict, notes: dict) -> list[str]:
     return out
 
 
+NOTE_FIELDS = ("problem", "root_cause", "fix", "geo_action", "metric")
+
+
+def placeholder_issues(agg: dict, notes: dict) -> list[str]:
+    """Every issue in the fix report needs its own note; any missing field falls
+    back to a placeholder, which is fine for a draft and wrong for a client."""
+    issues = notes.get("issues") or {}
+    return [f"{f['label']} ({f['id']})" for f in agg["fixes"]
+            if any(not str((issues.get(f["id"]) or {}).get(k) or "").strip() for k in NOTE_FIELDS)]
+
+
 def cmd_report(args) -> int:
     run = Path(args.run_dir)
     agg = read_json(run / DATA / "aggregate.json") or sys.exit("run `aggregate` first")
@@ -2795,13 +2838,18 @@ def cmd_report(args) -> int:
     (run / REPORT).write_text(report_md(agg, run, reviews, labels, tax, notes), encoding="utf-8")
     (run / FIX_REPORT).write_text(fix_report_md(agg, reviews, tax, notes), encoding="utf-8")
     n = write_unreplied(run / UNREPLIED, agg, reviews, labels, {a["id"]: a["label"] for a in tax["aspects"]})
-    missing = [f["label"] for f in agg["fixes"][:5] if f["id"] not in (notes.get("issues") or {})]
     for warning in pattern_word_warnings(agg, notes):
         print(f"WARNING: {warning}")
     print(f"Wrote {REPORT}, {FIX_REPORT} and {UNREPLIED} ({n} rows) in {run}")
-    if missing:
-        print(f"No fix notes yet for: {', '.join(missing)}. Write data/fix-notes.json (SKILL.md stage 7) and re-run.")
-    return 0
+    missing = placeholder_issues(agg, notes)
+    if not missing:
+        return 0
+    print(f"WARNING: {len(missing)} issue(s) still on the placeholder fix ('To agree with the owner'): "
+          f"{', '.join(missing)}. Write a concrete note for every issue in data/fix-notes.json and re-run.")
+    if getattr(args, "allow_placeholders", False):
+        print("(--allow-placeholders: the report was written anyway; do not send it to a client like this)")
+        return 0
+    return 2
 
 
 # -------------------------------------------------------------- workbook --
@@ -2809,7 +2857,7 @@ def cmd_report(args) -> int:
 TAB = "Review Fixes"
 FIX_HEADERS = ["Rank", "Aspect", "Problem", "Negative reviews", "Share of reviews", "Trend", "Priority score",
                "Owner", "Fix", "GEO action", "Metric to watch", "Example quote", "Link", "Client verdict",
-               "Client notes"]
+               "Client notes", "Row key"]
 
 
 def open_workbook(run: Path):
@@ -2837,19 +2885,26 @@ def tick_checklist(wb, run: Path, day: str) -> None:
     sys.exit(f"Checklist has no {SKILL_ID} row; rebuild the template (_shared/brand-audit/build_template.py)")
 
 
+def row_key(agg: dict, part: str) -> str:
+    """Stable identity for a workbook row: skill, brand, month and aspect id. Editing a
+    problem line or a task name never creates a second row."""
+    meta = agg["meta"]
+    return f"{SKILL_ID}:{slugify(meta.get('brand') or '')}:{(meta.get('as_of') or '')[:7]}:{part}"
+
+
 def fix_rows(agg: dict, reviews: dict, notes: dict) -> list[list]:
     rows = []
     for f in agg["fixes"]:
         note = (notes.get("issues") or {}).get(f["id"], {})
         first = f["quotes"][0] if f["quotes"] else None
         q = reviews.get(first["id"]) if first else None
-        rows.append([f["rank"], f["label"], ("[Safety/legal: ranked first regardless of score] " if f.get("safety_first")
-                                             else "") + (note.get("problem") or default_problem(f)),
+        rows.append([f["rank"], f["label"], note.get("problem") or default_problem(f),
                      f["negative"], round(f["share"], 3), f"{f['trend']['direction']} ({f['trend']['recent']} vs "
                      f"{f['trend']['previous']})", f["priority"], note.get("owner") or f["owner"],
                      note.get("fix") or "To agree with the owner", note.get("geo_action") or DEFAULT_GEO_ACTION,
                      note.get("metric") or f"Negative mentions of {f['label']} per month",
-                     first["snippet"] if q else "", (q.get("review_url") or q.get("profile_url")) if q else ""])
+                     first["snippet"] if q else "", (q.get("review_url") or q.get("profile_url")) if q else "",
+                     row_key(agg, f["id"])])
     return rows
 
 
@@ -2860,12 +2915,13 @@ def write_fix_tab(wb, agg: dict, reviews: dict, notes: dict, run: Path) -> int:
     if TAB in wb.sheetnames:
         old = wb[TAB]
         for r in range(1, old.max_row + 1):
-            if old.cell(row=r, column=3).value:
-                kept[str(old.cell(row=r, column=3).value)] = [old.cell(row=r, column=c).value for c in (15, 16)]
+            key = old.cell(row=r, column=17).value or old.cell(row=r, column=3).value  # row key, else legacy label
+            if key:
+                kept[str(key)] = [old.cell(row=r, column=c).value for c in (15, 16)]
         del wb[TAB]
     ws = wb.create_sheet(TAB)
     ws.sheet_view.showGridLines = False
-    widths = [2, 7, 18, 40, 11, 10, 18, 10, 11, 40, 40, 30, 50, 30, 16, 30]
+    widths = [2, 7, 18, 40, 11, 10, 18, 10, 11, 40, 40, 30, 50, 30, 16, 30, 12]
     for i, w in enumerate(widths):
         ws.column_dimensions[chr(65 + i)].width = w
     h = agg["headline"]
@@ -2883,7 +2939,8 @@ def write_fix_tab(wb, agg: dict, reviews: dict, notes: dict, run: Path) -> int:
     ws.freeze_panes = ws.cell(row=top + 1, column=2)
     rows = fix_rows(agg, reviews, notes)
     for n, vals in enumerate(rows, start=top + 1):
-        for i, v in enumerate(vals + kept.get(str(vals[1]), [None, None]), start=2):  # keyed on aspect
+        verdict = kept.get(vals[-1]) or kept.get(str(vals[1])) or [None, None]
+        for i, v in enumerate(vals[:-1] + verdict + [vals[-1]], start=2):
             c = ws.cell(row=n, column=i, value=v)
             c.alignment, c.border = wrap, edge
         ws.cell(row=n, column=6).number_format = "0.0%"
@@ -2891,16 +2948,13 @@ def write_fix_tab(wb, agg: dict, reviews: dict, notes: dict, run: Path) -> int:
     dv = DataValidation(type="list", formula1='"Agree,Partly agree,Disagree,Already fixed"', allow_blank=True)
     ws.add_data_validation(dv)
     dv.add(f"O{top + 1}:O{last}")
-    ws.auto_filter.ref = f"B{top}:P{last}"
+    ws.auto_filter.ref = f"B{top}:Q{last}"
     return len(rows)
 
 
-def add_initiatives(wb, agg: dict, notes: dict, run: Path) -> int:
-    ws = wb["Initiatives"]
-    existing = {ws.cell(row=r, column=4).value for r in range(1, ws.max_row + 1)}
+def initiative_tasks(agg: dict, notes: dict) -> list[tuple]:
     cfg = agg["scoring"]["initiatives"]
-    spot = agg["meta"].get("spot_check") or {}
-    conf = 7 if spot.get("rate", 0) >= 0.85 else 5
+    conf = 7 if (agg["meta"].get("spot_check") or {}).get("rate", 0) >= 0.85 else 5
     tasks = []
     for f in agg["fixes"][: cfg["top_issues"]]:
         if f["negative"] < cfg["min_negative_mentions"]:
@@ -2908,23 +2962,45 @@ def add_initiatives(wb, agg: dict, notes: dict, run: Path) -> int:
         note = (notes.get("issues") or {}).get(f["id"], {})
         task = clip(f"Fix review complaint: {note.get('problem') or f['label']}", 120)
         how = f"{note.get('fix') or 'Agree the fix with the owner'}. GEO: {note.get('geo_action') or DEFAULT_GEO_ACTION}"
-        tasks.append((task, how, max(5, 10 - f["rank"]), conf, 5))
+        tasks.append((row_key(agg, f["id"]), task, how, max(5, 10 - f["rank"]), conf, 5))
     if agg["unreplied_negatives"]:
-        tasks.append((f"Reply to {len(agg['unreplied_negatives'])} unreplied 1 to 2 star reviews",
-                      f"Work through {UNREPLIED}, newest first. Reply publicly, specifically and without templates.",
-                      6, 8, 2))
-    added = 0
-    for task, how, impact, confidence, ease in tasks:
-        if task in existing:
+        tasks.append((row_key(agg, "unreplied"), f"Reply to {len(agg['unreplied_negatives'])} unreplied 1 to 2 "
+                      "star reviews", f"Work through {UNREPLIED}, newest first. Reply publicly, specifically and "
+                      "without templates.", 6, 8, 2))
+    return tasks
+
+
+def find_initiative(ws, key: str, task: str) -> int | None:
+    """The row for this key; or a legacy row of this skill with the same task text."""
+    legacy = None
+    for r in range(6, ws.max_row + 1):
+        link = str(ws.cell(row=r, column=13).value or "")
+        if f"[{key}]" in link:
+            return r
+        if legacy is None and ws.cell(row=r, column=4).value == task and ws.cell(row=r, column=6).value == SKILL_ID:
+            legacy = r
+    return legacy
+
+
+def add_initiatives(wb, agg: dict, notes: dict, run: Path) -> tuple[int, int]:
+    """Insert or update in place, keyed on brand + month + aspect id. Status, owner and
+    ICE edits made in the sheet are kept; task wording and instructions follow the notes."""
+    ws = wb["Initiatives"]
+    added = updated = 0
+    for key, task, how, impact, confidence, ease in initiative_tasks(agg, notes):
+        link = f"{run.resolve().name}/{FIX_REPORT} [{key}]"
+        r = find_initiative(ws, key, task)
+        if r:
+            for col, v in {4: task, 5: how, 13: link}.items():
+                ws.cell(row=r, column=col, value=v)
+            updated += 1
             continue
         r = next(r for r in range(6, ws.max_row + 2) if not ws.cell(row=r, column=4).value)
         for col, v in {3: "Brand Optimisation", 4: task, 5: how, 6: SKILL_ID, 7: "Scheduled", 8: "No",
-                       9: "[CLIENT]", 10: impact, 11: confidence, 12: ease,
-                       13: f"{run.resolve().name}/{FIX_REPORT}"}.items():
+                       9: "[CLIENT]", 10: impact, 11: confidence, 12: ease, 13: link}.items():
             ws.cell(row=r, column=col, value=v)
-        existing.add(task)
         added += 1
-    return added
+    return added, updated
 
 
 def cmd_workbook(args) -> int:
@@ -2935,13 +3011,13 @@ def cmd_workbook(args) -> int:
     wb, book = open_workbook(run)
     tick_checklist(wb, run, agg["meta"]["as_of"])
     n = write_fix_tab(wb, agg, reviews, notes, run)
-    added = add_initiatives(wb, agg, notes, run)
+    added, updated = add_initiatives(wb, agg, notes, run)
     fixed = ["Checklist", "Brand Truth Review", "Brand 360 Report", "AI Visibility", "AI Info Page"]
     middle = [s for s in wb.sheetnames if s not in fixed + ["Initiatives"]]
     order = [s for s in fixed if s in wb.sheetnames] + middle + (["Initiatives"] if "Initiatives" in wb.sheetnames else [])
     wb._sheets = [wb[s] for s in order]
     wb.save(book)
-    print(f"Wrote {book}: Checklist ticked, {n} row(s) on '{TAB}', {added} Initiative(s) added")
+    print(f"Wrote {book}: Checklist ticked, {n} row(s) on '{TAB}', {added} Initiative(s) added, {updated} updated")
     return 0
 
 
@@ -3031,7 +3107,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top", type=int, default=60)
     p.add_argument("--block", action="append", help="extra word to drop (repeatable), e.g. a product name")
 
-    add("report", cmd_report, "write the report, the fix report and unreplied-negatives.csv")
+    p = add("report", cmd_report, "write the report, the fix report and unreplied-negatives.csv")
+    p.add_argument("--allow-placeholders", action="store_true",
+                   help="write even when some issues have no fix note (exits 0; for drafts only)")
     add("workbook", cmd_workbook, "'Review Fixes' tab + Initiatives + Checklist tick (needs openpyxl)")
     return ap
 
