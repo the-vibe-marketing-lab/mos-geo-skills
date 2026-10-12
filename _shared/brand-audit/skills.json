@@ -30,6 +30,15 @@
       "needs": "Client website URL (community or marketplace URLs optional)"
     },
     {
+      "skill": "mos-geo-review-sentiment",
+      "category": "Brand Optimisation",
+      "what_it_does": "Review sentiment audit: finds the brand's third-party review profiles (Trustpilot, Google Maps, ProductReview, G2, Capterra, Reddit and more), scrapes only the ones you pick, labels every review against an approved aspect taxonomy, and ranks the complaints to fix, with verbatim quotes, owners, a GEO action each, phrase word clouds and the unreplied 1 to 2 star reviews.",
+      "run": "/mos-geo-review-sentiment",
+      "output": "campaigns/geo/YYYY-MM/review-sentiment/",
+      "feeds_tab": "Review Fixes, Initiatives",
+      "needs": "Apify token (about $0.50 to $3 a run at 500 reviews per platform); TypeSafe API key optional (Claude labels in session without it)"
+    },
+    {
       "skill": "mos-geo-homepage-faqs",
       "category": "Brand Optimisation",
       "what_it_does": "Sourced FAQs in brand voice using existing buyer/Dealbreaker questions, with answer gaps retained, relevant page placement, passage-level review, verified internal links, matching FAQPage schema and client approval; exports require current final lint.",

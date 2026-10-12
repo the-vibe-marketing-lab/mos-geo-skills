@@ -1,7 +1,7 @@
 # GEO evidence base — LLM share buttons
 
 **Last reviewed:** 2026-08-23
-**Applies to:** every skill in `mos-geo-skills`, especially `mos-geo-llm-buttons` (sections 1 to 8) and the schema skills, `mos-geo-schema-scraper` and `mos-geo-schema-optimisation` (section 9, reviewed 2026-09-24), and `mos-geo-homepage-faqs` (section 10, reviewed 2026-10-01).
+**Applies to:** every skill in `mos-geo-skills`, especially `mos-geo-llm-buttons` (sections 1 to 8) and the schema skills, `mos-geo-schema-scraper` and `mos-geo-schema-optimisation` (section 9, reviewed 2026-09-24), and `mos-geo-homepage-faqs` (section 10, reviewed 2026-10-01), and `mos-geo-review-sentiment` (section 12, reviewed 2026-10-12).
 
 This is the honest version. It exists so no skill in this pack, and no member using one, ever promises a client something the evidence does not support. If you only read one section, read [The one controlled A/B result](#2-the-one-controlled-ab-result) and [What is NOT true](#3-what-is-not-true).
 
@@ -20,6 +20,7 @@ This is the honest version. It exists so no skill in this pack, and no member us
 9. [Schema markup](#9-schema-markup)
 10. [Google Preferred Sources (separate tactic)](#10-google-preferred-sources-separate-tactic)
 11. [Homepage FAQs for AI search](#11-homepage-faqs-for-ai-search)
+12. [Review sites and AI citations](#12-review-sites-and-ai-citations)
 
 ---
 
@@ -254,3 +255,26 @@ What the evidence says about putting a question-and-answer block on a homepage, 
 ### How to pitch it
 
 A homepage FAQ answers the questions buyers and AI assistants ask about you, in your words, on the page you control most, with a link to the proof behind each answer. We do not promise rankings, rich results or citations from it.
+
+---
+
+## 12. Review sites and AI citations
+
+Used by `mos-geo-review-sentiment` (the AI-citation column in its picker, the visibility weights in its `config/scoring.json`, and the "Why this matters for AI answers" paragraph in its report). Checked 2026-10-12.
+
+- **Reddit is among the most-cited domains on every engine measured.** Semrush tracked more than 230,000 prompts weekly for 13 weeks (14 July to 12 October 2025) across ChatGPT search, Google AI Mode and Perplexity, over 100 million citations: Reddit was in the top cited domains on all three, and with Wikipedia the two most cited on ChatGPT. Reddit's share of ChatGPT responses swung from close to 60% in early August to around 10% by mid-September, so treat any single share as a moment, not a constant. <https://www.semrush.com/blog/most-cited-domains-ai/> (published 10 November 2025)
+- **Peec AI, 30 million sources, US, March 2026:** Reddit in the top five for ChatGPT, Perplexity, Google AI Overviews, Google AI Mode and Gemini. G2 in Perplexity's top five only. Yelp in Google AI Mode's top five. Facebook in the top five for AI Overviews and AI Mode (the page notes Facebook blocks Perplexity's crawler). Sample dates and method are not stated on the summary page. <https://docs.peec.ai/research/most-cited-domains-by-engine>
+- **Not measured by either study:** Trustpilot, ProductReview.com.au, Capterra, Google Maps reviews, Tripadvisor. The skill makes no claim about how often these are cited and gives them a visibility weight of 1.0.
+- **Both are vendor studies of US prompts.** No Australian data was found. Rankings move week to week.
+
+### What you can say to a client
+
+- A complaint repeated on a page AI engines read can end up in an engine's description of the brand. A public reply and an on-site answer give the engine a second, first-party source.
+- Reddit threads about the brand are worth reading because engines cite Reddit heavily, not because any one thread is known to be cited.
+
+### What you must not say
+
+- That fixing reviews will change what ChatGPT or AI Overviews say, by any amount or by any date. No study measures that.
+- That Trustpilot or ProductReview reviews are cited by AI engines at a given rate. Unmeasured.
+- Unsourced multipliers ("brands with a G2 profile get 3x more ChatGPT citations"): one circulates on LinkedIn with no study behind it. Dropped.
+

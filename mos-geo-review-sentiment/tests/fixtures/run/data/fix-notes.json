@@ -1,0 +1,7 @@
+{
+  "summary": "Fixture run on synthetic reviews. Customers like the product and the price; the problems are what happens after they pay: late deliveries and refunds that do not arrive.",
+  "issues": {
+    "delivery": {"problem": "Orders arrive weeks late and tracking does not update", "root_cause": "Possibly one courier or one warehouse; the reviews do not say which.", "fix": "Pull late-order data by courier and region, and send proactive delay emails.", "geo_action": "Reply to each late-delivery review with the current delivery window; publish real delivery times on the shipping page.", "metric": "Late-delivery mentions per month", "owner": "ops"},
+    "refunds": {"problem": "Refunds take more than six weeks or never arrive", "root_cause": "Refunds may wait for a manual approval step.", "fix": "Set a 10 business day refund promise and track it.", "geo_action": "Put the refund timeline in the returns FAQ and link it in replies.", "metric": "Refund complaints per month", "owner": "ops"}
+  }
+}

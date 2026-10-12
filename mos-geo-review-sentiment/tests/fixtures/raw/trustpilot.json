@@ -1,0 +1,10 @@
+[
+ {"id": "tp0001", "title": "Late but sorted", "text": "Delivery was late but support fixed it.", "rating": 4, "language": "en",
+  "dates": {"publishedDate": "2026-09-30T10:00:00.000Z"}, "publishedDate": "2026-09-30T10:00:00.000Z",
+  "consumer": {"displayName": "Test Person"}, "reviewerName": "Test Person",
+  "reply": {"text": "Thanks, glad we could help.", "publishedDate": "2026-10-02T08:00:00.000Z"},
+  "url": "https://www.trustpilot.com/reviews/tp0001"},
+ {"id": "tp0002", "title": "Never again", "text": "Refund never came.", "rating": 1, "language": "en",
+  "dates": {"publishedDate": "2026-08-01T10:00:00.000Z"}, "reviewerName": "Other Person", "reply": null,
+  "url": "https://www.trustpilot.com/reviews/tp0002"}
+]

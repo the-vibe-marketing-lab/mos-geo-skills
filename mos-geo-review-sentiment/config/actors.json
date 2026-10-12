@@ -1,0 +1,206 @@
+{
+  "_comment": "Pinned Apify actors, one per platform. `input` is a template: \"{url}\" becomes the picked profile URL, \"{query}\" the brand search term (Reddit), \"{max}\" the per-platform cap as a number. `price_per_review_usd` is the FREE-tier price from the Apify store (lower on paid plans), used for the estimate only, plus `start_fee_usd` (a flat per-run charge some actors add; measured from the 2026-10-12 smoke runs, null = not measured); the real cost comes from the Apify run record. `cap_param` is the input field that caps rows; the run is also capped with Apify's own maxItems and maxTotalChargeUsd. Re-run `preflight --smoke` before trusting an actor whose last_smoke_tested is old. Actors drift: when one fails its smoke test, swap in the store alternative with the most 30-day runs and record why in `notes`.",
+  "actors": {
+    "google_maps": {
+      "actor": "compass/Google-Maps-Reviews-Scraper",
+      "input": {
+        "startUrls": [
+          {
+            "url": "{url}"
+          }
+        ],
+        "maxReviews": "{max}",
+        "reviewsSort": "newest",
+        "language": "en",
+        "reviewsOrigin": "all",
+        "personalData": false
+      },
+      "price_per_review_usd": 0.0006,
+      "price_event": "review-scraped",
+      "smoke_target": "https://www.google.com/maps/search/?api=1&query=Sydney%20Opera%20House&query_place_id=ChIJ3S-JXmauEmsRUcIaWtf4MzE",
+      "last_smoke_tested": "2026-10-12",
+      "notes": "7,000+ users in 30 days. Google shows a capped share of a place's reviews; the report states how many came back against the profile total.",
+      "start_fee_usd": 0.0001
+    },
+    "trustpilot": {
+      "actor": "memo23/trustpilot-scraper-ppe",
+      "input": {
+        "startUrls": [
+          "{url}"
+        ],
+        "maxItems": "{max}",
+        "sortBy": "recent",
+        "sampling": "proportional",
+        "expandRegionalDomains": false,
+        "scrapeAllReviews": true,
+        "includeCompanyDetails": false,
+        "includeStats": false,
+        "reviewInsights": false,
+        "painPointAnalysis": false,
+        "enrichEmails": false
+      },
+      "price_per_review_usd": 0.00075,
+      "price_event": "apify-default-dataset-item",
+      "smoke_target": "https://www.trustpilot.com/review/au.koala.com",
+      "last_smoke_tested": "2026-10-12",
+      "notes": "expandRegionalDomains is off so only the picked profile is read; sampling proportional keeps the star mix honest when the cap is below the profile total. Apify refuses a run cost cap below $0.45 for this actor; the row cap (maxItems) is what limits spend.",
+      "charge_cap_floor_usd": 0.45,
+      "start_fee_usd": 0.04
+    },
+    "productreview": {
+      "actor": "abotapi/product-reviews-australia-scraper",
+      "input": {
+        "mode": "url",
+        "outputType": "reviews",
+        "urls": [
+          "{url}"
+        ],
+        "limit": "{max}",
+        "maxReviewsPerListing": "{max}",
+        "reviewSortBy": "newest"
+      },
+      "price_per_review_usd": 0.002,
+      "price_event": "apify-default-dataset-item",
+      "smoke_target": "https://www.productreview.com.au/listings/koala-mattress",
+      "last_smoke_tested": "2026-10-12",
+      "notes": "Fragile: under 10 users in 30 days. Smoke-test before every client run.",
+      "charge_cap_floor_usd": 0.5,
+      "start_fee_usd": 0.09
+    },
+    "g2": {
+      "actor": "memo23/g2-scraper",
+      "input": {
+        "startUrls": [
+          {
+            "url": "{url}"
+          }
+        ],
+        "maxReviews": "{max}",
+        "maxItems": "{max}",
+        "sortOrder": "most_recent",
+        "reviewInsights": false,
+        "painPointAnalysis": false,
+        "enrichEmails": false
+      },
+      "price_per_review_usd": 0.00175,
+      "price_event": "apify-default-dataset-item",
+      "smoke_target": "https://www.g2.com/products/slack/reviews",
+      "last_smoke_tested": "2026-10-12",
+      "notes": "",
+      "start_fee_usd": 0.005
+    },
+    "capterra": {
+      "actor": "azzouzana/capterra-reviews-scraper",
+      "input": {
+        "profileUrls": [
+          "{url}"
+        ],
+        "sortOrder": "MOST_RECENT",
+        "maxReviewsPerProfile": "{max}"
+      },
+      "price_per_review_usd": 0.001,
+      "price_event": "apify-default-dataset-item",
+      "smoke_target": "https://www.capterra.com/p/135003/Slack/",
+      "last_smoke_tested": "2026-10-12",
+      "notes": "The actor rejects a per-profile cap below 10.",
+      "min_max": 10,
+      "start_fee_usd": 0.005
+    },
+    "reddit": {
+      "actor": "harshmaur/reddit-scraper",
+      "input": {
+        "searchTerms": [
+          "{query}"
+        ],
+        "searchPosts": true,
+        "searchComments": true,
+        "searchSort": "new",
+        "searchTime": "all",
+        "maxPostsCount": "{half}",
+        "maxCommentsCount": "{half}",
+        "crawlCommentsPerPost": false,
+        "includeNSFW": false,
+        "aiAnalysis": false
+      },
+      "price_per_review_usd": 0.002,
+      "price_event": "result",
+      "smoke_target": "\"Koala\" mattress",
+      "last_smoke_tested": "2026-10-12",
+      "notes": "Discussion, not reviews: posts and comments from a Reddit search for the brand. Results that do not name the brand are dropped in code. No stars, so Reddit never counts toward the star average. Charges per post or comment saved.",
+      "start_fee_usd": 0.02
+    },
+    "facebook": {
+      "actor": "apify/facebook-reviews-scraper",
+      "input": {
+        "startUrls": [
+          {
+            "url": "{url}"
+          }
+        ],
+        "resultsLimit": "{max}"
+      },
+      "price_per_review_usd": 0.0025,
+      "price_event": "",
+      "smoke_target": "",
+      "last_smoke_tested": null,
+      "notes": "Not smoke-tested yet (outside the v1 core six). Run `preflight --smoke --platforms facebook` before offering it.",
+      "charge_cap_floor_usd": 0,
+      "start_fee_usd": null
+    },
+    "yelp": {
+      "actor": "web_wanderer/yelp-reviews-scraper",
+      "input": {
+        "startUrls": [
+          {
+            "url": "{url}"
+          }
+        ],
+        "maxReviews": "{max}"
+      },
+      "price_per_review_usd": 0.0003,
+      "price_event": "",
+      "smoke_target": "",
+      "last_smoke_tested": null,
+      "notes": "Not smoke-tested yet (outside the v1 core six).",
+      "charge_cap_floor_usd": 0,
+      "start_fee_usd": null
+    },
+    "app_store": {
+      "actor": "thewolves/appstore-reviews-scraper",
+      "input": {
+        "startUrls": [
+          {
+            "url": "{url}"
+          }
+        ],
+        "maxReviews": "{max}"
+      },
+      "price_per_review_usd": 0.0001,
+      "price_event": "",
+      "smoke_target": "",
+      "last_smoke_tested": null,
+      "notes": "Not smoke-tested yet (outside the v1 core six).",
+      "charge_cap_floor_usd": 0,
+      "start_fee_usd": null
+    }
+  },
+  "discovery": {
+    "actor": "apify/google-search-scraper",
+    "input": {
+      "queries": "{queries}",
+      "maxPagesPerQuery": "{pages}",
+      "countryCode": "{country}",
+      "languageCode": "en",
+      "mobileResults": false,
+      "saveHtml": false,
+      "includeUnfilteredResults": false
+    },
+    "price_per_query_usd": 0.0045,
+    "price_event": "search-page-scraped",
+    "last_smoke_tested": null,
+    "charge_cap_floor_usd": 0.5,
+    "notes": "Apify refuses a run cost cap below $0.50 for this actor; maxPagesPerQuery 1 is what limits spend (one results page per query). Each query reads up to pages_per_query results pages (default 3, about $0.0045 each on the FREE tier); the dry run shows the total first.",
+    "pages_per_query": 3
+  },
+  "_smoke_log": "2026-10-12: all six core actors passed a 5-review smoke test (Capterra needs a cap of at least 10). Measured per-run start fees: Trustpilot $0.04, ProductReview $0.09, G2 and Capterra ~$0.005, Google Maps ~$0.002, Reddit ~$0.02. Reddit keyword search returns off-topic posts; reviews.py drops any that do not name the brand."
+}

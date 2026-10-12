@@ -1,0 +1,7 @@
+[
+ {"type": "review_summary", "productSlug": "acme", "aggregateRating": 4.5, "totalReviews": 100},
+ {"type": "review", "review_id": 9001, "review_title": "Does the job", "review_content": "Long form text.",
+  "review_question_answers": {"What do you like best about Acme?": "Fast setup.", "What do you dislike about Acme?": "Pricey add-ons."},
+  "review_rating": 4, "reviewer": {"reviewer_name": "G2 Person"}, "publish_date": "2026-10-12T01:37:31-05:00",
+  "review_link": "https://www.g2.com/products/acme/reviews/acme-review-9001", "product_url": "https://www.g2.com/products/acme/reviews"}
+]

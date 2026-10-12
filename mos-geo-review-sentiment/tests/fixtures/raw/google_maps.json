@@ -1,0 +1,7 @@
+[
+ {"reviewId": "gm1", "name": "Map Person", "text": "Friendly staff and quick service.", "stars": 5, "rating": null,
+  "publishedAtDate": "2026-10-01T09:00:00.000Z", "responseFromOwnerText": "Thank you!", "responseFromOwnerDate": "2026-10-03T00:00:00.000Z",
+  "reviewUrl": "https://www.google.com/maps/reviews/gm1", "originalLanguage": "en", "isAdvertisement": false},
+ {"reviewId": "gm2", "name": null, "text": null, "stars": 4, "publishedAtDate": "2026-09-01T09:00:00.000Z", "reviewUrl": null},
+ {"reviewId": "gm3", "text": "Sponsored", "stars": 5, "publishedAtDate": "2026-09-01T09:00:00.000Z", "isAdvertisement": true}
+]
