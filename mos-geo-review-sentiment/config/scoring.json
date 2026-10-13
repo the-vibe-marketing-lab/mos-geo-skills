@@ -34,5 +34,9 @@
     "mention": 0.5
   },
   "_trend_comment": "Trend words need at least min_mentions negative mentions in BOTH windows; below that the report says 'too few to call'.",
-  "monthly_min_reviews": 5
+  "monthly_min_reviews": 5,
+  "wordcloud": {
+    "_comment": "Pack-wide words never shown in the clouds (keep brand-neutral). Per run: `wordcloud --block <word>` or `block_words` in data/run-meta.json for competitors; capitalised names in Reddit thread titles are added automatically.",
+    "block_words": []
+  }
 }

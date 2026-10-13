@@ -2089,6 +2089,23 @@ def reply_stats(reviews: list[dict]) -> dict:
             "median_reply_days": statistics.median(days) if days else None}
 
 
+def blended_reply_pool(reviews: list[dict]) -> list[dict]:
+    """The blended reply rate leaves out the brand's own site when nobody ever
+    replies there: 1,851 unreplied product-page reviews would bury the real rate on
+    Google Maps or ProductReview. Per-platform rates are always shown as well."""
+    own = {p["id"] for p in platform_index().values() if p.get("own_site")}
+    silent = {plat for plat in own if not any(r.get("owner_reply") for r in reviews if r["platform"] == plat)}
+    return [r for r in reviews if r["platform"] not in silent]
+
+
+def imported_platforms(meta: dict, reviews: list[dict]) -> dict:
+    """Platforms added with `import --append` (uncapped, chosen by whoever supplied
+    them), with how many reviews each has in the run."""
+    names = {plat for entry in meta.get("imported") or [] for plat in (entry.get("rows") or {})}
+    counts = Counter(r["platform"] for r in reviews)
+    return {plat: counts.get(plat, 0) for plat in sorted(names)}
+
+
 def platform_table(reviews: list[dict], stats: dict) -> list[dict]:
     by = defaultdict(list)
     for r in reviews:
@@ -2292,18 +2309,53 @@ SAFETY_PATTERNS = {
     "injury": re.compile(
         r"\b(?:cut (?:my|his|her|their|our) " + BODY + r"|(?:hurt|injured|sprained|strained|broke|burnt|burned) "
         r"(?:my|his|her|their|our) " + BODY + r"|injur(?:y|ies|ed)|burns?|burnt|scald\w*|rash(?:es)?|"
-        r"allergic reaction|bleed\w*|bleeding|stitches|hospital|emergency department|concussion|"
+        r"allergic reaction|bleed\w*|bleeding|stitches|concussion|"
         r"electric(?:al)? shock|caught fire|on fire)\b", re.I),
     "hazard": re.compile(r"\b(?:hazard\w*|unsafe|dangerous|fire risk|choking|toxic|sharp edges?|exposed wires?|"
                          r"tipped over|collapsed (?:under|on))\b", re.I),
+    "food safety": re.compile(
+        r"\b(?:(?:missing|no|without)\b[^.!?]{0,120}?\b(?:use[ds]?[- ]by|best[- ]before)(?: date)?|"
+        r"(?:undercooked|raw|pink) (?:chicken|meat|pork|fish|salmon|beef|mince|prawns?|turkey|lamb)|"
+        r"food poisoning|gastro|contaminat\w*|mou?ld(?:y)?|gone off|spoiled|off smell|smelt off|smelled off|"
+        r"(?:got|was|were|felt) (?:really |so |very )?sick after)\b", re.I),
     "legal": re.compile(r"\b(?:fair trading|accc|consumer affairs|consumer law|ombudsman|lawyers?|solicitors?|"
                         r"legal action|tribunal|ncat|vcat|qcat|small claims|recall(?:ed|s)?|class action|"
                         r"sued|suing|sue (?:them|you|koala|the company))\b", re.I),
 }
 
 
+NEGATED = re.compile(r"\b(?:never (?:had|been|got)|no (?:issues?|problems?|concerns?)|haven't had|have not had|"
+                     r"not (?:once|a single)|without (?:any )?(?:issues?|problems?))\b[^.!?]{0,50}$", re.I)
+
+
 def safety_hit(sentence: str) -> str | None:
-    return next((kind for kind, pat in SAFETY_PATTERNS.items() if pat.search(sentence)), None)
+    """The kind of the first safety word that is not negated ('never had an issue
+    with contamination' is praise, not a report)."""
+    for kind, pat in SAFETY_PATTERNS.items():
+        for m in pat.finditer(sentence):
+            if not NEGATED.search(sentence[:m.start()]):
+                return kind
+    return None
+
+
+def harm_caused(r: dict, label: dict, sentence: str) -> bool:
+    """An injury or hazard word only counts when the review is a complaint: 3 stars
+    or fewer, a negative aspect, or a complaint word in the same sentence. 'Great
+    help straight out of hospital' (5 stars, all praise) is recovery, not harm."""
+    rating = r.get("rating") if has_stars(r["platform"]) else None
+    if rating is not None and rating <= 3:
+        return True
+    if any(v <= -1 for v in (label or {}).get("aspects", {}).values()):
+        return True
+    return any(w in NEG_CUES for w in re.findall(r"[a-z']+", sentence.lower()))
+
+
+def first_safety(r: dict, label: dict, sents: list[str]) -> tuple[int, str] | None:
+    for i, sent in enumerate(sents):
+        kind = safety_hit(sent)
+        if kind and (kind not in ("injury", "hazard") or harm_caused(r, label, sent)):
+            return i, kind
+    return None
 
 
 def safety_reports(reviews: list[dict], labels: dict, terms: dict) -> list[dict]:
@@ -2315,8 +2367,8 @@ def safety_reports(reviews: list[dict], labels: dict, terms: dict) -> list[dict]
     out = []
     for r in reviews:
         sents = [" ".join(x.split()) for x in split_sentences(r.get("text") or "")]
-        hit = next(((i, safety_hit(x)) for i, x in enumerate(sents) if safety_hit(x)), None)
         labelled = labels.get(r["id"], {})
+        hit = first_safety(r, labelled, sents)
         if not hit and labelled.get("severity") != "safety_legal":
             continue
         entry = {"id": r["id"], "date": r.get("date"), "labelled_safety": labelled.get("severity") == "safety_legal"}
@@ -2401,6 +2453,7 @@ def build_aggregate(reviews, labels, tax, sc, as_of, stats, meta) -> dict:
                  "excluded_from_stars": sorted({r["platform"] for r in reviews if not has_stars(r["platform"])}),
                  "max_per_platform": meta.get("max_per_platform"),
                  "source": meta.get("source") or "scraped",
+                 "imported_platforms": imported_platforms(meta, reviews),
                  "listing_link_platforms": sorted({r["platform"] for r in reviews
                                                    if r.get("review_url") and r["review_url"] == r.get("profile_url")}), "spot_check": meta.get("spot_check"),
                  "label_sources": dict(Counter(l.get("source", "?") for l in labels.values()))},
@@ -2410,7 +2463,7 @@ def build_aggregate(reviews, labels, tax, sc, as_of, stats, meta) -> dict:
         "monthly": monthly(reviews, labels, sc.get("monthly_min_reviews", 5)),
         "monthly_dropped": sum(1 for m in monthly(reviews, labels) if m["reviews"] < sc.get("monthly_min_reviews", 5)),
         "platforms": platform_table(reviews, stats),
-        "replies": reply_stats(reviews),
+        "replies": reply_stats(blended_reply_pool(reviews)),
         "aspects": aspects,
         "praised": [a["id"] for a in praised],
         "fixes": fixes(reviews, labels, tax, sc, as_of),
@@ -2436,6 +2489,9 @@ didnt doesnt cant wont isnt wasnt thats theyre youre still yet back well also th
 m one two three would've could've should've etc thing things lot bit get got getting go going went
 """.split())
 
+TRAILING_QUALIFIERS = {"little", "bit", "quite", "very", "really", "pretty", "slightly", "too", "so", "abit",
+                       "lot", "much", "more", "less", "super", "extremely"}
+
 # Colours: the dataviz reference diverging pair (blue = praise, red = complaints),
 # validated with validate_palette.js on the light (#fcfcfb) and dark (#1a1a19) surfaces.
 CLOUD_COLOURS = {"positive": {"light": "#2a78d6", "dark": "#3987e5"},
@@ -2457,8 +2513,8 @@ def ngrams_of(text: str, blocked: set, sizes=(2, 3)) -> set[str]:
         for n in sizes:
             for i in range(len(words) - n + 1):
                 gram = words[i:i + n]
-                if gram[0] in STOPWORDS or gram[-1] in STOPWORDS:
-                    continue
+                if gram[0] in STOPWORDS or gram[-1] in STOPWORDS or gram[-1] in TRAILING_QUALIFIERS:
+                    continue  # "pancakes a little" is a fragment of "pancakes a little dry"
                 if any(w in blocked for w in gram) or all(w.isdigit() for w in gram):
                     continue
                 if any(len(w) < 2 for w in (gram[0], gram[-1])):
@@ -2501,27 +2557,95 @@ def log_odds(pos: Counter, neg: Counter, n_pos: int, n_neg: int, alpha: float = 
     return out
 
 
-def score_phrases(reviews: list[dict], labels: dict, blocked: set, min_count: int = 2, top: int = 60) -> dict:
-    grams = {"positive": Counter(), "negative": Counter()}
-    docs = {"positive": defaultdict(list), "negative": defaultdict(list)}
+def sentence_sides(r: dict, label: dict | None, terms: dict) -> list[tuple[str, str]]:
+    """(sentence, side) for each sentence that clearly praises or complains. A
+    sentence takes the side of the labelled aspect it matches best; a sentence
+    about no aspect follows the stars (1 to 2 complaint, 4 to 5 praise when the
+    review has no complaint). A review with no negative aspect and 3+ stars (or no
+    stars, like most Reddit chat) never feeds the complaint side."""
+    aspects = (label or {}).get("aspects", {})
+    rating = r.get("rating") if has_stars(r["platform"]) else None
+    has_neg = any(v <= -1 for v in aspects.values())
+    out = []
+    for sent in split_sentences(f"{r.get('title') or ''}. {r.get('text') or ''}"):
+        hits = {k: sentence_score(sent, terms[k], False)[0] for k in aspects if k in terms}
+        best = max(hits, key=hits.get) if hits and max(hits.values()) > 0 else None
+        if best is not None:
+            pol = aspects[best]
+            side = "negative" if pol <= -1 else "positive" if pol >= 1 else None
+        elif rating is not None:
+            side = "negative" if rating <= 2 else "positive" if rating >= 4 and not has_neg else None
+        else:
+            side = None
+        if side == "negative" and not (has_neg or (rating is not None and rating <= 2)):
+            side = None
+        if side:
+            out.append((sent, side))
+    return out
+
+
+def text_key(r: dict) -> str:
+    """The same review posted twice (or scraped under two ids) counts once."""
+    return " ".join((r.get("text") or r.get("title") or "").lower().split())[:500]
+
+
+def collect_grams(reviews, labels, terms, blocked):
+    grams = {"positive": defaultdict(set), "negative": defaultdict(set)}
+    rated, docs, first = set(), {"positive": set(), "negative": set()}, {}
     for r in reviews:
-        side = side_of(r, labels)
-        if not side or not r.get("text"):
+        key = text_key(r)
+        if not key:
             continue
-        for g in ngrams_of(f"{r.get('title') or ''}. {r['text']}", blocked):
-            grams[side][g] += 1
-            docs[side][g].append(r)
-    n = {s: sum(1 for r in reviews if side_of(r, labels) == s) for s in grams}
-    z = log_odds(grams["positive"], grams["negative"], n["positive"], n["negative"])
+        first.setdefault(key, r)
+        if r.get("rating") is not None and has_stars(r["platform"]):
+            rated.add(key)
+        for sent, side in sentence_sides(r, labels.get(r["id"]), terms):
+            docs[side].add(key)
+            for g in ngrams_of(sent, blocked):
+                grams[side][g].add(key)
+    return grams, rated, docs, first
+
+
+def subsumed(g: str, keys: set, pool: dict) -> bool:
+    """'fed eye' inside 'grass fed eye fillet': a longer overlapping phrase from
+    (nearly) the same reviews already says it."""
+    return any(len(k.split()) > len(g.split()) and words_overlap(g, k) and len(keys & kk) >= 0.8 * len(keys)
+               for k, kk in pool.items())
+
+
+def score_phrases(reviews: list[dict], labels: dict, blocked: set, min_count: int = 2, top: int = 60,
+                  terms: dict | None = None) -> dict:
+    """Bigrams and trigrams from praise sentences and complaint sentences (not whole
+    reviews), counted once per distinct review text, kept only with at least
+    `min_count` distinct reviews and at least one star-rated review."""
+    grams, rated, docs, first = collect_grams(reviews, labels, terms or {}, blocked)
+    n = {side: len(docs[side]) for side in grams}
+    z = log_odds(Counter({g: len(k) for g, k in grams["positive"].items()}),
+                 Counter({g: len(k) for g, k in grams["negative"].items()}), n["positive"], n["negative"])
     out = {}
     for side, sign in (("positive", 1), ("negative", -1)):
-        rows = [(g, c, sign * z[g]) for g, c in grams[side].items() if c >= min_count and sign * z[g] > 0]
-        ids = {g: {r["id"] for r in docs[side][g]} for g, _, _ in rows}
-        rows = drop_overlapping(sorted(rows, key=lambda x: (-x[2], -len(x[0].split()), -x[1], x[0])), ids)[:top]
+        pool = {g: k for g, k in grams[side].items() if len(k) >= min_count and k & rated}
+        rows = [(g, len(k), sign * z[g]) for g, k in pool.items() if sign * z[g] > 0 and not subsumed(g, k, pool)]
+        rows = drop_overlapping(sorted(rows, key=lambda x: (-x[2], -len(x[0].split()), -x[1], x[0])), pool)[:top]
         out[side] = [{"phrase": g, "count": c, "score": round(s, 3), "share": round(c / max(n[side], 1), 3),
-                      "quotes": [quote_of(r, g) for r in pick_examples(docs[side][g])]} for g, c, s in rows]
+                      "quotes": [quote_of(first[k], g) for k in sorted(pool[g], key=lambda k: first[k].get("date") or "",
+                                                                      reverse=True)[:3]]} for g, c, s in rows]
     out["corpus"] = n
     return out
+
+
+def thread_names(reviews: list[dict], brand: str) -> set:
+    """Capitalised names in Reddit thread titles (other brands people compare:
+    'Muscle Chef', 'Youfoodz') so the cloud never shows a competitor's name."""
+    own = {w.lower() for w in re.findall(r"[A-Za-z]+", brand)}
+    names = set()
+    for r in reviews:
+        if r["platform"] != "reddit" or not r.get("title"):
+            continue
+        for w in re.findall(r"(?<!^)(?<![.!?] )\b([A-Z][a-zA-Z]{2,})", r["title"]):
+            if w.lower() not in STOPWORDS and w.lower() not in own:
+                names.add(w.lower())
+    return names
 
 
 def words_overlap(a: str, b: str) -> bool:
@@ -2602,8 +2726,13 @@ def cmd_wordcloud(args) -> int:
     reviews = read_jsonl(run / DATA / "reviews.jsonl") or sys.exit("no reviews")
     labels = {l["id"]: l for l in read_jsonl(run / DATA / "labels.jsonl")}
     meta = run_meta(run)
-    blocked = brand_words(meta.get("brand", ""), meta.get("domain", "")) | {w.lower() for w in args.block or []}
-    phrases = score_phrases(reviews, labels, blocked, args.min_count, args.top)
+    tax = read_json(run / DATA / "taxonomy.json") or {"aspects": []}
+    terms = {a["id"]: aspect_terms(a) for a in tax["aspects"]}
+    blocked = (brand_words(meta.get("brand", ""), meta.get("domain", "")) | {w.lower() for w in args.block or []}
+               | {w.lower() for w in load_config("scoring.json").get("wordcloud", {}).get("block_words", [])}
+               | {w.lower() for w in meta.get("block_words") or []}
+               | thread_names(reviews, meta.get("brand", "")))
+    phrases = score_phrases(reviews, labels, blocked, args.min_count, args.top, terms)
     write_json(run / DATA / "phrases.json", phrases)
     for side in ("positive", "negative"):
         ok = render_png(phrases[side], CLOUD_COLOURS[side]["light"], run / f"wordcloud-{side}.png")
@@ -2761,6 +2890,22 @@ def quote_line(r: dict, snippet: str | None = None) -> str:
     return f'> "{snippet or verbatim(r.get("text") or r.get("title") or "")}" ({src})'
 
 
+def reply_line(agg: dict) -> str:
+    """Reply rate per platform first; the blended figure only over platforms where
+    the brand replies at all (see blended_reply_pool)."""
+    rep = agg["replies"]
+    per = [f"{p['label']} {pct(p['reply_rate'], 1)}" for p in agg["platforms"] if p.get("reply_rate") is not None]
+    blended = (f"; overall {pct(rep['replied'], rep['eligible'])}, and "
+               f"{pct(rep['negative_reply_rate'] or 0, 1) if rep['negative_reply_rate'] is not None else 'n/a'} "
+               "of 1 to 2 star reviews") if rep.get("eligible") else ""
+    left_out = [p["label"] for p in agg["platforms"] if p.get("reply_rate") == 0
+                and platform_index().get(p["platform"], {}).get("own_site")]
+    return (f"- **Owner replies:** {', '.join(per) or 'n/a'}{blended}"
+            + (f" ({', '.join(left_out)} left out of the overall figure: no replies there)" if left_out else "")
+            + (f"; median {rep['median_reply_days']:.0f} days to reply" if rep.get("median_reply_days") is not None
+               else ""))
+
+
 def labelled_text(meta: dict) -> str:
     """'60 labelled reviews (55 name an aspect)': both denominators, never just one."""
     total = meta.get("labelled_reviews", meta["labelled"])
@@ -2773,7 +2918,7 @@ def few(n: int, many: str, one: str = "one reviewer", two: str = "two reviewers"
 
 
 def headline_lines(agg: dict, tax_names: dict) -> list[str]:
-    h, rep, meta = agg["headline"], agg["replies"], agg["meta"]
+    h, meta = agg["headline"], agg["meta"]
     praise = next((a for a in agg["aspects"] if agg["praised"] and a["id"] == agg["praised"][0]), None)
     labelled_note = labelled_text(meta)
     lines = [f"- **Average star rating:** {stars(h['avg_rating'])} from {h['rated']} rated reviews"
@@ -2781,17 +2926,14 @@ def headline_lines(agg: dict, tax_names: dict) -> list[str]:
                 if meta["excluded_from_stars"] else ""),
              f"- **Net sentiment:** {signed(h['net_sentiment'])} on a -1 to +1 scale ({h['positive']} positive, "
              f"{h['negative']} negative; {labelled_note})",
-             f"- **Owner replies:** {pct(rep['replied'], rep['eligible'])} of reviews on platforms that allow "
-             f"replies; {pct(rep['negative_reply_rate'] or 0, 1) if rep['negative_reply_rate'] is not None else 'n/a'} "
-             f"of 1 to 2 star reviews"
-             + (f"; median {rep['median_reply_days']:.0f} days to reply" if rep["median_reply_days"] is not None else "")]
+             reply_line(agg)]
     real = [e for e in agg.get("safety_reports", []) if not e.get("over_label")]
     if real:
         names = {a["id"]: a["label"] for a in agg["aspects"]}
         items = "; ".join(f"{e['kind']} ({names.get(e['aspect'], 'no single issue')}, {e.get('date') or 'undated'})"
                           for e in real[:6])
         lines.insert(0, f"- **Read first:** {few(len(real), 'reviews name', 'one review names', 'two reviews name')} "
-                        f"an injury, a hazard or a legal step: {items}. Quotes and links at the top of `{FIX_REPORT}`.")
+                        f"an injury, a hazard, a food-safety problem or a legal step: {items}. Quotes and links at the top of `{FIX_REPORT}`.")
     top_score = max((f for f in agg["fixes"]), key=lambda f: f["priority"], default=None)
     if top_score:
         count = few(top_score["negative"], "negative reviews", "one negative review", "two negative reviews")
@@ -2816,18 +2958,27 @@ def distribution_table(agg: dict) -> str:
 
 
 def sample_caption(meta: dict) -> str:
-    """How the reviews were chosen. A user-supplied file is never described as 'newest N'."""
+    """How the reviews were chosen, per platform when they differ. A user-supplied
+    file is never described as 'newest N', and an imported platform is named as
+    uncapped."""
     if meta.get("source") == "user-supplied":
         return f"a user-supplied sample of {meta['reviews']} reviews; selection method unknown"
     cap = meta.get("max_per_platform")
-    return f"the newest {cap} reviews per platform" if cap else "every review on each picked profile"
+    imported = meta.get("imported_platforms") or {}
+    scraped = [plabel(p) for p in meta.get("platforms", []) if p not in imported]
+    base = (f"the newest {cap} reviews per platform" if cap else "every review on each picked profile")
+    if not imported:
+        return base
+    parts = ([f"{base} for {', '.join(scraped)}"] if scraped else []) + \
+        [f"all {n:,} {plabel(p)} reviews, imported uncapped" for p, n in imported.items()]
+    return "; ".join(parts)
 
 
 def monthly_caveat(agg: dict) -> str:
     floor = agg["scoring"].get("monthly_min_reviews", 5)
     meta = agg["meta"]
     why = ("we do not know how it was chosen" if meta.get("source") == "user-supplied"
-           else "busy months fill the cap and older months thin out")
+           else "busy months fill the cap, older months thin out and imported platforms follow their own history")
     dropped = agg.get("monthly_dropped", 0)
     return (f"The sample is {sample_caption(meta)}, so {why}: month-to-month "
             f"movement here is not a trend. Months with fewer than {floor} reviews are left out"
@@ -2925,14 +3076,12 @@ def methods_md(agg: dict, run: Path) -> str:
     jev = sum(r.get("est_cost_usd", 0) for r in read_json(run / DATA / "jev_usage.json", {"runs": []})["runs"])
     spot = meta.get("spot_check")
     rng = meta["date_range"] or ["?", "?"]
-    cap = meta.get("max_per_platform")
     w = sc["visibility_weights"]
     return "\n".join([
         f"- **Sample:** {meta['reviews']} reviews from {', '.join(plabel(p) for p in meta['platforms'])}, dated {rng[0]} to {rng[1]}, "
         + (f"{sample_caption(meta)}. Nothing was scraped for this run." if meta.get("source") == "user-supplied"
-           else f"newest first, capped at {cap if cap else 'all'} per platform. Profile totals are in the platform "
-                "table; where we analysed fewer than the profile shows, the cap or the platform's own limit is the "
-                "reason."),
+           else f"{sample_caption(meta)}. Profile totals are in the platform table; where we analysed fewer than the "
+                "profile shows, the cap or the platform's own limit is the reason."),
         f"- **Excluded:** {meta['unlabelled_no_text']} star-only reviews with no text count toward ratings but not "
         f"aspects. {', '.join(plabel(p) for p in meta['excluded_from_stars']) or 'No platform'} kept out of star averages (no stars). "
         "Reddit results that did not name the brand were dropped.",
@@ -2995,13 +3144,13 @@ def read_first_md(agg: dict, reviews: dict) -> str:
     real = [e for e in reports if not e.get("over_label")]
     over = [e for e in reports if e.get("over_label")]
     out = ["## Read first: safety and legal reports\n",
-           "Each review below names an injury, a hazard or a legal or regulator step in its own words. They are "
+           "Each review below names an injury, a hazard, a food-safety problem or a legal or regulator step in its own words. They are "
            "listed one by one, outside the ranking, because one of these can matter more than any score.\n"]
     for e in real:
         out.append(f"- **{e['kind'].capitalize()}**, about {names.get(e['aspect'], 'no single issue')}:\n\n"
                    + quote_line(reviews[e["id"]], e["snippet"]) + "\n")
     if over:
-        out.append("**Labelled safety or legal by the model, but the text names no injury, hazard or legal step "
+        out.append("**Labelled safety or legal by the model, but the text names no injury, hazard, food-safety or legal step "
                    "(likely over-labels; check them):**\n")
         out += [quote_line(reviews[e["id"]], e["snippet"]) + "\n" for e in over]
     return "\n".join(out)
