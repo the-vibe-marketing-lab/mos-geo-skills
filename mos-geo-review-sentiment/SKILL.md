@@ -53,7 +53,8 @@ RUN=$($R path --brand "<brand>")
 ```
 
 It follows the pack convention: `campaigns/geo/YYYY-MM/review-sentiment/` inside a client or
-in-house brain (agency brains add a brand folder; no brain gives `outputs/geo/YYYY-MM/<brand>/`),
+in-house brain (agency brains add a brand folder; a Prosperity OS client repo, marked by
+`.pm/client.json`, gives `geo/brand-audit/YYYY-MM/`; no brain gives `outputs/geo/YYYY-MM/<brand>/`),
 with `brand-audit-master.xlsx` one level up. Running `path` again for the same brand in the same
 month returns the same folder, so a session can resume; pass `--new` for a fresh
 `review-sentiment-2`.
