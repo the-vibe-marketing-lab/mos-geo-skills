@@ -16,8 +16,15 @@ What each output contains, where every number comes from, and the one file Claud
 | `owner_reply`, `reply_date` | The brand's public reply, if any |
 | `lang` | When the platform gives it |
 | `author_hash` | Salted SHA-256 (16 hex). Never the name |
+| `place_name`, `place_id`, `place_address`, `place_country` | Optional, Google Maps only: which place the review is on. Used to keep only the brand's own place |
+| `product` | Optional, `brand_site` only: the product handle the review sits on (`site` for store reviews) |
 
 Star-only reviews (no text) count toward ratings and reply rates, not toward aspects or clouds.
+Strings like "None" or "null" in actor output are treated as empty, never stored as text.
+
+`brand_site` (label "Brand site (product pages)") holds the brand's own product-page reviews. It
+gets its own platform row, and Methods says they are collected and moderated by the brand
+(selection bias), with the widget's own total, organic count and star split when known.
 
 ## Numbers (all from `aggregate`, never from a model)
 

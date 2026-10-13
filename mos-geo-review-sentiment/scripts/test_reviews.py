@@ -37,7 +37,8 @@ class Normalise(unittest.TestCase):
     def test_every_record_has_the_common_schema(self):
         for platform in ("trustpilot", "google_maps", "productreview", "g2", "capterra", "reddit"):
             for rec in norm(platform):
-                self.assertEqual(tuple(rec), rv.SCHEMA_FIELDS, platform)
+                self.assertEqual(tuple(rec)[:len(rv.SCHEMA_FIELDS)], rv.SCHEMA_FIELDS, platform)
+                self.assertTrue(set(rec) - set(rv.SCHEMA_FIELDS) <= set(rv.OPTIONAL_FIELDS), platform)
                 self.assertEqual(rec["platform"], platform)
 
     def test_trustpilot(self):
@@ -478,6 +479,7 @@ class Iteration2(unittest.TestCase):
         self.assertIn({"platform": "trustpilot", "url": "https://www.trustpilot.com/review/bondisands.co.uk",
                        "source": "regional-site", "country": "GB"}, rows)
         self.assertEqual(rv.country_of("au.koala.com"), "AU")
+        self.assertEqual(rv.regional_domains('<a href="https://vranj.bondisands.com.au/x">', "bondisands.com.au"), {})
 
     def test_search_reads_pages_and_flags_retailers(self):
         queries = rv.search_queries("Acme", [], set())
@@ -573,6 +575,139 @@ class OfflinePipeline(unittest.TestCase):
         self.assertEqual(wb[rv.TAB].cell(row=7, column=15).value, "Agree")
         checklist = {r[2]: r for r in wb["Checklist"].iter_rows(values_only=True) if r[2]}
         self.assertEqual(checklist[rv.SKILL_ID][8], "☑")
+
+
+
+def maps_item(n, place, name, address, country, date, **kw):
+    return {"reviewId": f"{place}-{n}", "name": "[redacted]", "text": f"Review {n} for {name}", "stars": 5,
+            "publishedAtDate": date, "placeId": place, "title": name, "address": address, "countryCode": country,
+            "reviewUrl": None, "responseFromOwnerText": None, "responseFromOwnerDate": "None", **kw}
+
+
+class GoogleMapsPlaces(unittest.TestCase):
+    items = ([maps_item(i, "us1", "Bondi sushi", "75 Kenmare St, New York", "US", "2026-10-1%d" % i) for i in range(5)]
+             + [maps_item(i, "au1", "Bondi Meal Prep", "55 Doody St, Alexandria NSW", "AU", "2026-0%d-01" % (i + 1))
+                for i in range(3)]
+             + [maps_item(0, "us2", "mademeals", "Kearny, NJ", "US", "2026-10-01")])
+
+    def rows(self, items=None):
+        return [rv.normalise("google_maps", it, "https://maps.example/search", "s") for it in items or self.items]
+
+    def test_place_fields_and_none_strings(self):
+        r = self.rows([maps_item(1, "au1", "Bondi Meal Prep", "55 Doody St", "AU", "2026-01-01",
+                                 reviewUrl="https://maps.example/r1", responseFromOwnerText="Thanks!",
+                                 responseFromOwnerDate="2026-01-03T00:00:00Z")])[0]
+        self.assertEqual((r["place_name"], r["place_id"], r["place_country"]), ("Bondi Meal Prep", "au1", "AU"))
+        self.assertEqual((r["review_url"], r["owner_reply"], r["reply_date"]),
+                         ("https://maps.example/r1", "Thanks!", "2026-01-03"))
+        blank = self.rows([maps_item(2, "au1", "Bondi Meal Prep", "x", "AU", "2026-01-01")])[0]
+        self.assertEqual((blank["review_url"], blank["reply_date"], blank["author_hash"]), ("", None, ""))
+
+    def test_only_the_matching_place_is_kept(self):
+        kept, report, msg = rv.filter_places(self.rows(), "Bondi Meal Prep", "AU")
+        self.assertEqual({r["place_id"] for r in kept}, {"au1"})
+        self.assertEqual({p["place_id"]: p["kept"] for p in report}, {"us1": False, "au1": True, "us2": False})
+        self.assertIn("kept 1 place", msg)
+        none, _, msg = rv.filter_places(self.rows(), "Bondi Meal Prep", "US")  # right name, wrong country
+        self.assertEqual(none, [])
+        self.assertIn("nothing kept", msg)
+        twins = self.rows() + self.rows([maps_item(9, "au2", "Bondi Meal Prep Bondi Junction", "x", "AU",
+                                                   "2026-02-01")])
+        self.assertEqual(rv.filter_places(twins, "Bondi Meal Prep", "AU")[0], [])  # ambiguous: keep none
+
+    def test_cap_applies_after_the_place_filter(self):
+        recs, info = rv.finish_platform("google_maps", self.rows(), "Bondi Meal Prep", "AU", 2)
+        self.assertEqual([r["place_id"] for r in recs], ["au1", "au1"])  # not the 5 newer New York reviews
+        self.assertEqual([r["date"] for r in recs], ["2026-03-01", "2026-02-01"])
+        self.assertTrue(info["places"])
+
+    def test_renormalise_rebuilds_from_raw_with_no_network(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            rv.write_json(run / "data" / "raw" / "google_maps-1.json", self.items)
+            rv.write_json(run / "data" / "picker.json", {"rows": [{"id": "google_maps-1", "url": "https://m"}]})
+            rv.update_meta(run, brand="Bondi Meal Prep", country="AU", profiles=["google_maps-1"],
+                           max_per_platform=500, salt="s")
+            rv.write_jsonl(run / "data" / "reviews.jsonl", [{"id": "old", "platform": "google_maps"}])
+            with mock.patch("builtins.print"), mock.patch.object(rv, "http_json", side_effect=AssertionError):
+                self.assertEqual(rv.cmd_renormalise(Namespace(run_dir=str(run), keep_imported=False)), 0)
+            rows = rv.read_jsonl(run / "data" / "reviews.jsonl")
+            self.assertEqual(len(rows), 3)
+            self.assertTrue(all(r["place_address"] == "55 Doody St, Alexandria NSW" for r in rows))
+            places = rv.run_meta(run)["google_maps_places"]["google_maps-1"]["places"]
+            self.assertEqual(sum(p["reviews"] for p in places if not p["kept"]), 6)
+
+    def test_trustpilot_404_reads_no_profile_and_leaves_the_picker(self):
+        cand = {"id": "trustpilot-4", "platform": "trustpilot", "url": "https://www.trustpilot.com/review/x.com"}
+        with mock.patch.object(rv, "fetch_page", return_value=(404, "", cand["url"], "scrapling")):
+            row = rv.profile_stats(cand, "X", "x.com", "2026-10-13", "auto")
+        self.assertEqual(row["read"], "no profile (404)")
+        self.assertEqual(rv.picker_rows([row], 500), [])
+
+    def test_search_url_carries_the_several_places_warning(self):
+        cands = []
+        rv.add_maps_search("Bondi Meal Prep", cands)
+        self.assertIn("may return several places", cands[0]["note"])
+        place = {"platform": "google_maps", "url": "https://maps.app.goo.gl/abc123", "source": "brand-site"}
+        cands = [place]
+        rv.add_maps_search("Bondi Meal Prep", cands)
+        self.assertEqual(cands, [place])  # a place link from the brand site wins
+        self.assertEqual(rv.match_platform("https://maps.app.goo.gl/abc123",
+                                           list(rv.platform_index().values()))["id"], "google_maps")
+
+
+class BrandSite(unittest.TestCase):
+    def test_import_brand_site_and_append_to_a_scraped_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, src = Path(tmp) / "run", Path(tmp) / "onsite-yotpo.jsonl"
+            rv.write_jsonl(run / "data" / "reviews.jsonl", [
+                {"id": "g1", "platform": "google_maps", "rating": 5.0, "date": "2026-09-01", "text": "Great."}])
+            rv.update_meta(run, brand="Acme", max_per_platform=500, profiles=["google_maps-1"])
+            rv.write_jsonl(src, [{"platform": "brand_site", "rating": 5, "date": "2026-09-02", "text": "Tasty meals.",
+                                  "product": "chicken-pesto", "author": "Jo Bloggs"}])
+            args = Namespace(run_dir=str(run), file=str(src), brand="Acme", domain="", force=False, append=False)
+            with mock.patch("builtins.print"), self.assertRaises(SystemExit):
+                rv.cmd_import(args)  # refuses to clobber scraped reviews
+            args.append = True
+            with mock.patch("builtins.print"):
+                self.assertEqual(rv.cmd_import(args), 0)
+            rows = rv.read_jsonl(run / "data" / "reviews.jsonl")
+            self.assertEqual(sorted(r["platform"] for r in rows), ["brand_site", "google_maps"])
+            onsite = next(r for r in rows if r["platform"] == "brand_site")
+            self.assertEqual(onsite["product"], "chicken-pesto")
+            self.assertNotIn("Jo Bloggs", json.dumps(rows))
+            meta = rv.run_meta(run)
+            self.assertNotEqual(meta.get("source"), "user-supplied")  # still a scraped run
+            self.assertEqual(meta["imported"][0]["rows"], {"brand_site": 1})
+            self.assertEqual(rv.plabel("brand_site"), "Brand site (product pages)")
+
+    def test_methods_note_flags_brand_moderation_and_widget_totals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            rv.write_json(run / "data" / "profile-stats.json", {"profiles": [
+                {"id": "brand_site-1", "platform": "brand_site", "reviews": 135, "rating": 4.87,
+                 "organic_reviews": 0, "star_distribution": {"5": 118, "4": 17}}]})
+            note = rv.onsite_methods_note({"meta": {"platforms": ["brand_site", "trustpilot"]}}, run)[0]
+            self.assertIn("collected and moderated by the brand", note)
+            self.assertIn("135 reviews", note)
+            self.assertIn("0 of them organic", note)
+            self.assertIn("5★ 118", note)
+            self.assertEqual(rv.onsite_methods_note({"meta": {"platforms": ["trustpilot"]}}, run), [])
+
+    def test_widget_detection_and_free_yotpo_row(self):
+        page = '<script src="https://cdn-widgetsrepository.yotpo.com/v1/loader/XHZZirYCLdRNbO0h7RxIQ4jJ"></script>'
+        widget = rv.review_widget(page)
+        self.assertEqual(widget, {"provider": "yotpo", "app_key": "XHZZirYCLdRNbO0h7RxIQ4jJ"})
+        self.assertEqual(rv.review_widget('<div class="jdgm-widget">')["provider"], "judgeme")
+        row = {"platform": "brand_site", "provider": "yotpo", "reviews": 135, "rating": 4.9, "id": "brand_site-1",
+               "url": "https://acme.example/", "match": "match", "read": "Yotpo public bottomline"}
+        (picked,) = rv.picker_rows([row], 500)
+        self.assertEqual((picked["est_cost_usd"], picked["scrapable"]), (0.0, True))
+        item = {"id": 9, "score": 4, "title": "Good", "content": "Nice and fresh.", "created_at": "2026-10-09T10:00:00Z",
+                "user": {"display_name": "Sam"}, "comment": {"content": "Thanks Sam!", "created_at": "2026-10-10"},
+                "_product": "chicken-pesto"}
+        r = rv.normalise("brand_site", item, "https://acme.example/", "s")
+        self.assertEqual((r["rating"], r["owner_reply"], r["product"]), (4.0, "Thanks Sam!", "chicken-pesto"))
 
 
 if __name__ == "__main__":

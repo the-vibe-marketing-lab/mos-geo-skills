@@ -5,12 +5,14 @@
       "id": "google_maps",
       "label": "Google Maps",
       "domains": [
-        "google.com",
-        "maps.google.com",
+        "g.page",
         "goo.gl",
-        "maps.app.goo.gl"
+        "google.com",
+        "maps.app.goo.gl",
+        "maps.google.com",
+        "maps.google.com.au"
       ],
-      "profile_pattern": "(google\\.[a-z.]+/maps|maps\\.app\\.goo\\.gl|goo\\.gl/maps)",
+      "profile_pattern": "(google\\.[a-z.]+/maps|maps\\.google\\.[a-z.]+|maps\\.app\\.goo\\.gl|goo\\.gl/maps|g\\.page/)",
       "predictable": [],
       "site_query": null,
       "countries": [
@@ -91,7 +93,7 @@
       "stars": true,
       "replies": true,
       "opt_in": false,
-      "ai_citation": "In Perplexity's top 5 cited domains (Peec AI, 30M sources, US, Mar 2026; geo-evidence s11)"
+      "ai_citation": "In Perplexity's top 5 cited domains (Peec AI, 30M sources, US, Mar 2026; geo-evidence s12)"
     },
     {
       "id": "capterra",
@@ -163,7 +165,7 @@
       "stars": true,
       "replies": true,
       "opt_in": false,
-      "ai_citation": "In Google AI Mode's top 5 cited domains (Peec AI, Mar 2026; geo-evidence s11)"
+      "ai_citation": "In Google AI Mode's top 5 cited domains (Peec AI, Mar 2026; geo-evidence s12)"
     },
     {
       "id": "facebook",
@@ -186,7 +188,7 @@
       "stars": false,
       "replies": true,
       "opt_in": false,
-      "ai_citation": "In the top 5 cited domains for Google AI Overviews and AI Mode (Peec AI, Mar 2026; geo-evidence s11)"
+      "ai_citation": "In the top 5 cited domains for Google AI Overviews and AI Mode (Peec AI, Mar 2026; geo-evidence s12)"
     },
     {
       "id": "app_store",
@@ -276,7 +278,7 @@
       "stars": false,
       "replies": false,
       "opt_in": false,
-      "ai_citation": "In the top 5 cited domains on ChatGPT, Perplexity, Gemini, AI Overviews and AI Mode (Peec AI, Mar 2026; Semrush, Nov 2025; geo-evidence s11)"
+      "ai_citation": "In the top 5 cited domains on ChatGPT, Perplexity, Gemini, AI Overviews and AI Mode (Peec AI, Mar 2026; Semrush, Nov 2025; geo-evidence s12)"
     },
     {
       "id": "glassdoor",
@@ -319,6 +321,26 @@
       "replies": false,
       "opt_in": true,
       "ai_citation": ""
+    },
+    {
+      "id": "brand_site",
+      "label": "Brand site (product pages)",
+      "domains": [],
+      "profile_pattern": "^$",
+      "predictable": [],
+      "site_query": null,
+      "countries": [
+        "*"
+      ],
+      "industries": [
+        "*"
+      ],
+      "stars": true,
+      "replies": true,
+      "opt_in": false,
+      "own_site": true,
+      "ai_citation": "",
+      "_note": "Reviews on the brand's own product pages (Yotpo, Judge.me, Okendo, Stamped). Found from the home-page widget, read free through Yotpo's public API, or added with `import --append`. Collected and moderated by the brand, so the report flags selection bias."
     }
   ],
   "retailers": {
