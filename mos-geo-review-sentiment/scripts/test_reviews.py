@@ -428,8 +428,8 @@ class Iteration2(unittest.TestCase):
 
     def test_overlapping_cloud_fragments_are_suppressed(self):
         text = "Delivery was three weeks late and I had to take another day off work to wait for it."
-        reviews = [{"id": f"n{i}", "platform": "trustpilot", "rating": 1.0, "date": "2026-09-01", "text": text}
-                   for i in range(4)] + \
+        reviews = [{"id": f"n{i}", "platform": "trustpilot", "rating": 1.0, "date": "2026-09-01",
+                    "text": f"Order {i}. {text}"} for i in range(4)] + \
                   [{"id": f"p{i}", "platform": "trustpilot", "rating": 5.0, "date": "2026-09-01",
                     "text": "Great sofa, easy to build."} for i in range(4)]
         neg = [p["phrase"] for p in rv.score_phrases(reviews, {}, set())["negative"]]
@@ -708,6 +708,84 @@ class BrandSite(unittest.TestCase):
                 "_product": "chicken-pesto"}
         r = rv.normalise("brand_site", item, "https://acme.example/", "s")
         self.assertEqual((r["rating"], r["owner_reply"], r["product"]), (4.0, "Thanks Sam!", "chicken-pesto"))
+
+
+
+class BondiFraming(unittest.TestCase):
+    tax = {"aspects": [{"id": "taste", "label": "Taste and seasoning", "description": "Flavour, seasoning, dry or bland."},
+                       {"id": "meat", "label": "Meat quality", "description": "Steak, chicken and fish: tough, chewy, fillet."}]}
+    terms = {a["id"]: rv.aspect_terms(a) for a in tax["aspects"]}
+
+    def review(self, rid, platform, rating, text, title=""):
+        return {"id": rid, "platform": platform, "rating": rating, "date": "2026-09-01", "text": text, "title": title}
+
+    def test_complaint_cloud_uses_negative_sentences_and_distinct_texts(self):
+        reddit = "Looking into iku and Muscle Chef it's good. I generally eat healthy."
+        reviews = [self.review("r1", "reddit", None, reddit, "Bondi vs Muscle Chef?"),
+                   self.review("r2", "reddit", None, reddit, "Bondi vs Muscle Chef?"),  # same post, second id
+                   self.review("n1", "trustpilot", 1.0, "The steak was a tough steak. Dry and tasteless."),
+                   self.review("n2", "productreview", 2.0, "Another tough steak this week. Dry and tasteless again."),
+                   self.review("p1", "trustpilot", 5.0, "Grass fed eye fillet, cooked perfectly."),
+                   self.review("p2", "trustpilot", 5.0, "Lovely grass fed eye fillet and cooked perfectly.")]
+        labels = {"r1": {"aspects": {"taste": 1}}, "r2": {"aspects": {"taste": 1}},
+                  "n1": {"aspects": {"meat": -2, "taste": -2}}, "n2": {"aspects": {"meat": -2, "taste": -2}},
+                  "p1": {"aspects": {"meat": 2}}, "p2": {"aspects": {"meat": 2}}}
+        blocked = rv.brand_words("Bondi", "") | rv.thread_names(reviews, "Bondi")
+        self.assertIn("chef", blocked)  # competitor named in the Reddit thread title
+        out = rv.score_phrases(reviews, labels, blocked, 2, 60, self.terms)
+        neg = [p["phrase"] for p in out["negative"]]
+        self.assertIn("tough steak", neg)
+        self.assertIn("dry and tasteless", neg)
+        self.assertFalse([g for g in neg if "iku" in g or "healthy" in g or "chef" in g])
+        pos = [p["phrase"] for p in out["positive"]]
+        self.assertNotIn("fed eye", pos)  # a fragment of "grass fed eye fillet"
+        self.assertEqual(out["corpus"]["negative"], 2)
+
+    def test_one_post_twice_does_not_pass_min_count(self):
+        text = "Terrible soggy rice. Never again."
+        reviews = [self.review("a", "trustpilot", 1.0, text), self.review("b", "trustpilot", 1.0, text)]
+        labels = {"a": {"aspects": {"taste": -2}}, "b": {"aspects": {"taste": -2}}}
+        self.assertEqual(rv.score_phrases(reviews, labels, set(), 2, 60, self.terms)["negative"], [])
+
+    def test_recovery_is_not_injury_and_food_safety_is_its_own_kind(self):
+        happy = self.review("h", "brand_site", 5.0, "Great help straight out of hospital, thank you.")
+        undercooked = self.review("u", "trustpilot", 2.0, "The chicken was pink inside, undercooked chicken again.")
+        label_text = self.review("l", "brand_site", 4.0, "Very tasty. Missing a label though so hard to see what's in "
+                                                         "it or heating instructions or even a used by date.")
+        beans = self.review("b", "trustpilot", 3.0, "The beans were straight raw, not steamed at all.")
+        hurt = self.review("x", "productreview", 1.0, "My husband hurt his back carrying the boxes.")
+        out = {e["id"]: e for e in rv.safety_reports([happy, undercooked, label_text, beans, hurt], {}, self.terms)}
+        self.assertNotIn("h", out)
+        self.assertNotIn("b", out)
+        self.assertEqual((out["u"]["kind"], out["l"]["kind"], out["x"]["kind"]), ("food safety", "food safety", "injury"))
+        self.assertIsNone(rv.safety_hit("Straight out of hospital and these meals helped."))
+        self.assertEqual(rv.safety_hit("If there's leakage I'm concerned about contamination."), "food safety")
+        self.assertIsNone(rv.safety_hit("I've never had an issue with contamination."))
+
+    def test_reply_rates_per_platform_and_silent_brand_site_left_out(self):
+        reviews = ([{"id": f"g{i}", "platform": "google_maps", "rating": 2.0, "owner_reply": "Sorry" if i < 2 else ""}
+                    for i in range(5)]
+                   + [{"id": f"b{i}", "platform": "brand_site", "rating": 5.0, "owner_reply": ""} for i in range(50)])
+        pool = rv.blended_reply_pool(reviews)
+        self.assertEqual({r["platform"] for r in pool}, {"google_maps"})
+        agg = {"replies": rv.reply_stats(pool), "platforms": [
+            {"platform": "google_maps", "label": "Google Maps", "reply_rate": 0.4},
+            {"platform": "brand_site", "label": "Brand site (product pages)", "reply_rate": 0.0}]}
+        line = rv.reply_line(agg)
+        self.assertIn("Google Maps 40%", line)
+        self.assertIn("overall 40%", line)  # not 4% (2 of 55)
+        self.assertIn("left out of the overall figure", line)
+
+    def test_caption_names_uncapped_imported_platforms(self):
+        meta = {"max_per_platform": 500, "platforms": ["brand_site", "google_maps", "reddit"], "reviews": 2000,
+                "imported_platforms": {"brand_site": 1851}}
+        cap = rv.sample_caption(meta)
+        self.assertIn("newest 500 reviews per platform for Google Maps, Reddit", cap)
+        self.assertIn("all 1,851 Brand site (product pages) reviews, imported uncapped", cap)
+        self.assertEqual(rv.imported_platforms({"imported": [{"rows": {"brand_site": 3}}]},
+                                               [{"platform": "brand_site"}] * 2), {"brand_site": 2})
+        self.assertEqual(rv.sample_caption({"max_per_platform": 500, "platforms": ["reddit"]}),
+                         "the newest 500 reviews per platform")
 
 
 if __name__ == "__main__":

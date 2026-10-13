@@ -32,7 +32,9 @@ gets its own platform row, and Methods says they are collected and moderated by 
   `config/platforms.json`. Reddit and Facebook never count.
 - **Net sentiment**: per review, the mean of its aspect polarities; positive if above 0, negative
   if below. Net = (positive - negative) / reviews that name at least one aspect. Range -1 to +1.
-- **Reply rate**: replied / reviews on platforms where owners can reply (`replies: true`).
+- **Reply rate**: replied / reviews on platforms where owners can reply (`replies: true`), shown
+  per platform first. The overall figure leaves out the brand's own site when nobody replies there
+  (thousands of unreplied product-page reviews would bury the real rate), and says so.
   Reported overall and for 1 to 2 star reviews. **Median reply time** in days, where both dates exist.
 - **Aspect volumes**: mentions, positive (polarity >= +1), negative (<= -1), neutral, share of
   reviews with text.
@@ -58,14 +60,18 @@ gets its own platform row, and Methods says they are collected and moderated by 
   In priority order, a review already quoted under another issue is used again only when there is
   no other candidate. An issue with no qualifying sentence shows no quote rather than a wrong one.
 - **Safety and legal (Read first)**: the fix list is ranked by priority score only. Any review whose
-  own text names an injury (cut my hand, hurt his back, burn, rash, hospital), a hazard (unsafe,
+  own text names a food-safety problem (missing use-by date, undercooked or raw meat, food
+  poisoning, mould, contamination), an injury (cut my hand, hurt his back, burn, rash), a hazard (unsafe,
   sharp edges, exposed wires) or a legal or regulator step (Fair Trading, ACCC, ombudsman, lawyer,
   tribunal, recall) is listed individually in a "Read first: safety and legal reports" box at the top
   of `fix-report.md`, with its quote, link, date and the aspect its sentence matches; the report
   headline summarises them. Figurative discomfort ("ruined my back", "pain in the neck", "killing
-  me") does not count. Reviews the model labelled `safety_legal` whose text names none of these are
+  me") does not count, nor does a negated mention ("never had an issue with contamination"). Injury
+  and hazard words only count in a complaint (3 stars or fewer, a negative aspect, or a complaint
+  word in the sentence): "great help straight out of hospital" is recovery, not harm. Reviews the model labelled `safety_legal` whose text names none of these are
   listed underneath as likely over-labels to check.
-- **Sample caption**: "the newest N reviews per platform" for scraped runs; "a user-supplied sample
+- **Sample caption**: per platform when they differ: "the newest N reviews per platform for
+  Google Maps, Reddit; all 1,851 Brand site (product pages) reviews, imported uncapped"; "a user-supplied sample
   of N reviews; selection method unknown" for `import` runs.
 - **Denominators**: always both, "60 labelled reviews (55 name an aspect)".
 - **Small counts**: under 3 reviews is an individual report, never a pattern. The template writes
@@ -123,8 +129,15 @@ the reviewer says they are leaving.
 
 ## Word clouds
 
-`wordcloud-positive.png`, `wordcloud-negative.png` and `wordcloud.html`. Praise = 4 to 5 stars (or
-positive labels where there are no stars); complaints = 1 to 2 stars (or negative labels). Phrases
+`wordcloud-positive.png`, `wordcloud-negative.png` and `wordcloud.html`. Built from SENTENCES, not
+whole reviews: a sentence takes the side of the labelled aspect it matches best (negative aspect =
+complaint, positive = praise); a sentence about no aspect follows the stars (1 to 2 complaint, 4 to
+5 praise when the review has no complaint). A review with no negative aspect and 3+ stars or no
+stars (most Reddit chat) never feeds the complaint side. Counts are distinct review texts (the same
+post under two ids counts once); a phrase needs at least 2 distinct reviews and at least one
+star-rated one. Competitor names are dropped (capitalised names in Reddit thread titles, plus
+`--block` or `block_words` in run-meta), as are phrases ending in a qualifier ("a little") and
+fragments a longer phrase from the same reviews already covers ("fed eye" in "grass fed eye fillet"). Phrases
 are bigrams and trigrams scored with log-odds and a pooled Dirichlet prior, so a phrase used equally
 by happy and unhappy customers scores near zero. Overlapping fragments of one sentence ("take
 another day", "day off work", "work to wait") collapse to the highest scoring one when they come
