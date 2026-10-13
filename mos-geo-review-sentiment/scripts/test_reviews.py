@@ -341,6 +341,14 @@ class Path_(unittest.TestCase):
             got = rv.run_dir_for("Acme Widgets", "2026-10-12", Path(tmp))
             self.assertEqual(got, Path(tmp).resolve() / "outputs/geo/2026-10/acme-widgets/review-sentiment")
 
+    def test_pm_client_repo_routes_to_geo_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".pm").mkdir()
+            (Path(tmp) / ".pm" / "client.json").write_text("{}")
+            (Path(tmp) / "geo").mkdir()
+            got = rv.run_dir_for("Acme Widgets", "2026-10-12", Path(tmp) / "geo")
+            self.assertEqual(got, Path(tmp).resolve() / "geo/brand-audit/2026-10/review-sentiment")
+
     def test_rerun_reuses_the_folder_unless_new(self):
         with tempfile.TemporaryDirectory() as tmp:
             first = rv.run_dir_for("Acme Widgets", "2026-10-12", Path(tmp))

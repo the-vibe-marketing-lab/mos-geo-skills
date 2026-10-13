@@ -367,9 +367,21 @@ def brain_mode(brain: Path) -> str:
     return m.group(1) if m else "in-house"
 
 
+def find_pm_client(start: Path) -> Path | None:
+    """A Prosperity OS client repo (.pm/client.json) at or above `start`, within
+    one git repository. Its GEO work lives under geo/, not outputs/."""
+    for d in [start, *start.parents]:
+        if (d / ".pm" / "client.json").is_file():
+            return d
+        if (d / ".git").exists():
+            return None
+    return None
+
+
 def run_dir_for(brand: str, day: str, start: Path, new: bool = False) -> Path:
     """campaigns/geo/YYYY-MM/review-sentiment/ in an in-house or client brain;
-    an agency brain (or no brain) adds a brand folder. The same brand in the
+    an agency brain (or no brain) adds a brand folder; a Prosperity OS client
+    repo uses geo/brand-audit/YYYY-MM/review-sentiment/. The same brand in the
     same month reuses its folder (re-runs resume); `new` (or a folder that
     belongs to another brand) moves on to review-sentiment-2, -3 ..."""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
@@ -380,6 +392,8 @@ def run_dir_for(brand: str, day: str, start: Path, new: bool = False) -> Path:
         month = brain / "campaigns" / "geo" / day[:7]
     elif brain:
         month = brain / "campaigns" / "geo" / day[:7] / slug
+    elif (pm := find_pm_client(start.resolve())):
+        month = pm / "geo" / "brand-audit" / day[:7]
     else:
         month = start.resolve() / "outputs" / "geo" / day[:7] / slug
     target, n = month / SKILL_FOLDER, 2
