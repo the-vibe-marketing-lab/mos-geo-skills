@@ -92,6 +92,11 @@ UNREPLIED = "unreplied-negatives.csv"
 SEVERITIES = ("none", "minor", "cost_money", "safety_legal")
 SCHEMA_FIELDS = ("id", "platform", "profile_url", "review_url", "rating", "date", "title", "text",
                  "owner_reply", "reply_date", "lang", "author_hash")
+# Optional, Google Maps only: which place a review belongs to (a search URL can return several).
+PLACE_FIELDS = ("place_name", "place_id", "place_address", "place_country")
+# Optional, brand_site only: the product handle a review sits on.
+OPTIONAL_FIELDS = PLACE_FIELDS + ("product",)
+EMPTY_STRINGS = {"none", "null", "nan", "undefined", "[redacted]"}
 
 
 # --------------------------------------------------------------- helpers --
@@ -662,7 +667,7 @@ def normalise(platform: str, item: dict, profile_url: str, salt: str = "") -> di
     base = special(item) if special else {}
     if base is None:
         return None
-    rec = {f: base[f] if f in base else pick(item, *fmap[f]) for f in fmap}
+    rec = {f: blank(base[f] if f in base else pick(item, *fmap[f])) for f in fmap}
     text = " ".join(str(rec.get("text") or "").split())
     title = " ".join(str(rec.get("title") or "").split())
     rating = num(rec.get("rating"))
@@ -677,7 +682,17 @@ def normalise(platform: str, item: dict, profile_url: str, salt: str = "") -> di
         "author_hash": author_hash(str(rec.get("author") or ""), platform, salt),
     }
     out["id"] = review_id(out, str(rec.get("native_id") or ""))
-    return {f: out.get(f) for f in SCHEMA_FIELDS}
+    row = {f: out.get(f) for f in SCHEMA_FIELDS}
+    row.update({f: blank(base.get(f)) or "" for f in OPTIONAL_FIELDS if f in base})
+    return row
+
+
+def blank(value):
+    """Actor output sometimes carries the strings 'None' or 'null' (and raw files carry
+    '[redacted]'): treat them as empty, never as data."""
+    if isinstance(value, str) and value.strip().lower() in EMPTY_STRINGS:
+        return None
+    return value
 
 
 def author_hash(name: str, platform: str, salt: str) -> str:
@@ -735,10 +750,14 @@ def _reddit(item: dict) -> dict | None:
 
 
 def _google_maps(item: dict) -> dict | None:
-    if item.get("isAdvertisement"):
+    if item.get("isAdvertisement") in (True, "True", "true"):
         return None
-    return {"rating": item.get("stars"), "author": item.get("name") or item.get("reviewerId"),
-            "review_url": item.get("reviewUrl") or "", "title": ""}
+    return {"rating": item.get("stars"), "author": blank(item.get("name")) or blank(item.get("reviewerId")),
+            "review_url": blank(item.get("reviewUrl")) or "", "title": "", "text": blank(item.get("text")),
+            "owner_reply": blank(item.get("responseFromOwnerText")),
+            "reply_date": blank(item.get("responseFromOwnerDate")),
+            "place_name": item.get("title"), "place_id": item.get("placeId"),
+            "place_address": item.get("address"), "place_country": item.get("countryCode")}
 
 
 def _productreview(item: dict) -> dict | None:
@@ -768,7 +787,16 @@ def _capterra(item: dict) -> dict | None:
             "reply_date": pick(vendor, "date", "writtenOn", "createdAt"), "profile_url": item.get("profileUrl")}
 
 
-NORMALISERS: dict = {"g2": _g2, "reddit": _reddit, "google_maps": _google_maps,
+def _brand_site(item: dict) -> dict | None:
+    """Yotpo widget review (the shape `yotpo_scrape` saves)."""
+    reply = item.get("comment") if isinstance(item.get("comment"), dict) else {}
+    return {"rating": item.get("score"), "date": item.get("created_at"), "title": item.get("title"),
+            "text": item.get("content"), "author": pick(item, "user.display_name"),
+            "owner_reply": reply.get("content"), "reply_date": reply.get("created_at"), "review_url": "",
+            "native_id": item.get("id"), "product": item.get("_product")}
+
+
+NORMALISERS: dict = {"brand_site": _brand_site, "g2": _g2, "reddit": _reddit, "google_maps": _google_maps,
                      "productreview": _productreview, "capterra": _capterra}
 
 
@@ -916,13 +944,50 @@ def regional_domains(page: str, domain: str) -> dict:
         host = domain_of(url.rstrip("."))
         if host and registrable(host)[0] == root:
             found.setdefault(host, country_of(host))
-    found.pop(domain_of(domain), None)
-    return found
+    own = registrable(domain_of(domain) or domain)
+    return {h: c for h, c in found.items() if registrable(h) != own}  # subdomains are not regional sites
 
 
 def regional_trustpilot(regions: dict) -> list[dict]:
     return [{"platform": "trustpilot", "url": f"https://www.trustpilot.com/review/{host}", "source": "regional-site",
              "country": country} for host, country in sorted(regions.items())]
+
+
+WIDGETS = {
+    "yotpo": re.compile(r"(?:cdn-widgetsrepository\.yotpo\.com/v1/loader/|staticw2\.yotpo\.com/)([A-Za-z0-9]{20,})"),
+    "judgeme": re.compile(r"judge\.me|jdgm", re.I),
+    "okendo": re.compile(r"okendo", re.I),
+    "stamped": re.compile(r"stamped\.io", re.I),
+}
+YOTPO = "https://api-cdn.yotpo.com/v1/widget/{key}/products/{product}/reviews.json?per_page={per}&page={page}"
+
+
+def review_widget(page: str) -> dict | None:
+    """The on-site review app, if the home page loads one. Only Yotpo has a free
+    public read path here; the others are reported as detected."""
+    m = WIDGETS["yotpo"].search(page)
+    if m:
+        return {"provider": "yotpo", "app_key": m.group(1)}
+    for name in ("judgeme", "okendo", "stamped"):
+        if WIDGETS[name].search(page):
+            return {"provider": name, "app_key": None}
+    return None
+
+
+def onsite_candidate(domain: str, widget: dict) -> dict:
+    readable = widget["provider"] == "yotpo"
+    return {"platform": "brand_site", "url": f"https://{domain}/", "source": "on-site widget", **widget,
+            "note": f"{widget['provider'].capitalize()} reviews on the brand's own product pages"
+                    + ("" if readable else ": detected, but no free public read path yet; import them instead")}
+
+
+def yotpo_bottomline(key: str) -> dict:
+    """Site-wide totals from Yotpo's public widget API (no key, free)."""
+    st, body = http_json("GET", YOTPO.format(key=key, product="yotpo_site_reviews", per=1, page=1), timeout=30)
+    bl = ((body or {}).get("response") or {}).get("bottomline") or {} if st == 200 else {}
+    return {"rating": num(bl.get("average_score")), "reviews": num(bl.get("total_review")),
+            "organic_reviews": num(bl.get("total_organic_reviews")),
+            "star_distribution": bl.get("star_distribution") or None}
 
 
 def brand_site_candidates(domain: str, platforms: list[dict], scrapling: str) -> tuple[list[dict], str, dict]:
@@ -935,7 +1000,9 @@ def brand_site_candidates(domain: str, platforms: list[dict], scrapling: str) ->
         if p:
             out.append({"platform": p["id"], "url": url, "source": "brand-site"})
     regions = regional_domains(page, domain)
-    return out + regional_trustpilot(regions), f"brand site read via {via} ({final})", regions
+    widget = review_widget(page)
+    onsite = [onsite_candidate(domain, widget)] if widget else []
+    return out + regional_trustpilot(regions) + onsite, f"brand site read via {via} ({final})", regions
 
 
 def search_queries(brand: str, platforms: list[dict], found: set) -> dict:
@@ -1014,7 +1081,8 @@ def add_maps_search(brand: str, cands: list[dict]) -> None:
     if not any(c["platform"] == "google_maps" for c in cands):
         cands.append({"platform": "google_maps", "source": "search-url",
                       "url": f"https://www.google.com/maps/search/{urllib.parse.quote_plus(brand)}",
-                      "note": "Search URL: the actor scrapes the first place Google returns. Confirm it is the brand."})
+                      "note": "⚠ Search URL: may return several places. Only a place whose name and country match "
+                              "the brand is kept; a place link from the brand's site is better."})
 
 
 def profile_root(url: str, platform: str) -> str:
@@ -1188,9 +1256,15 @@ def profile_stats(cand: dict, brand: str, domain: str, ref: str, scrapling: str)
     snip = cand.get("snippet_stats") or {}
     if cand["platform"] in ("google_maps", "reddit"):
         return {**base, **snip, "read": "not readable without a scrape", "match": "unknown", "dates": []}
+    if cand["platform"] == "brand_site":
+        bl = yotpo_bottomline(cand["app_key"]) if cand.get("provider") == "yotpo" else {}
+        return {**base, **bl, "provider": cand.get("provider"), "app_key": cand.get("app_key"), "match": "match",
+                "read": "Yotpo public bottomline" if bl.get("reviews") is not None else "not readable for free",
+                "dates": []}
     status, page, final, via = fetch_page(cand["url"], scrapling)
     if status != 200 or not page:
-        return {**base, **snip, "read": f"blocked (HTTP {status})" + (", Google snippet" if snip else ""),
+        read = "no profile (404)" if status in (404, 410) else f"blocked (HTTP {status})"
+        return {**base, **snip, "read": read + (", Google snippet" if snip and status not in (404, 410) else ""),
                 "match": "unknown", "dates": []}
     parsed = merge_stats(trustpilot_stats(page), jsonld_stats(page), regex_stats(page), snip)
     rec = recency(parsed.get("dates") or [], ref, parsed.get("reviews"))
@@ -1246,14 +1320,22 @@ def flag(match: str) -> str:
     return {"match": "", "partial": "⚠ partial match", "mismatch": "⚠ name/domain mismatch"}.get(match, "? not checked")
 
 
+def onsite_spec(stats_row: dict) -> dict | None:
+    """The brand's own Yotpo reviews read through the free public API: $0, no actor."""
+    if stats_row.get("platform") == "brand_site" and stats_row.get("provider") == "yotpo":
+        return {"actor": "yotpo-public-api", "price_per_review_usd": 0.0, "start_fee_usd": 0.0,
+                "last_smoke_tested": "free public API"}
+    return None
+
+
 def picker_rows(stats: list[dict], cap: int | None) -> list[dict]:
     plats, actors = platform_index(), load_config("actors.json")["actors"]
     rows = []
     for s in stats:
         p = plats.get(s["platform"], {})
-        spec = actors.get(s["platform"])
+        spec = actors.get(s["platform"]) or onsite_spec(s)
         n, cost = est_cost(spec, s.get("reviews"), cap)
-        if str(s.get("read", "")).endswith("(HTTP 404)"):
+        if str(s.get("read", "")).startswith("no profile"):
             continue  # a guessed profile that does not exist
         rows.append({"id": s["id"], "platform": p.get("label", s["platform"]), "url": s["url"],
                      "country": s.get("country") or "".join(c for c in p.get("countries", ["*"]) if c != "*"
@@ -1262,6 +1344,7 @@ def picker_rows(stats: list[dict], cap: int | None) -> list[dict]:
                      "last_12m": s.get("last_12m"), "latest": s.get("latest"), "est_reviews": n, "est_cost_usd": cost,
                      "scrapable": bool(spec and spec.get("last_smoke_tested")), "ai_citation": p.get("ai_citation", ""),
                      "flag": flag(s.get("match", "unknown")), "read": s.get("read", ""),
+                     "provider": s.get("provider"), "app_key": s.get("app_key"),
                      "note": " ".join(x for x in (s.get("note", ""), "" if not spec or spec.get("last_smoke_tested")
                                                   else "Actor not smoke-tested yet: not offered.") if x)})
     return rows
@@ -1337,23 +1420,117 @@ def picked_rows(run: Path, pick_ids: list[str]) -> list[dict]:
     return [rows[i] for i in pick_ids]
 
 
+def name_matches(name: str, brand: str) -> bool:
+    """Same rule as the stats check: every word of the brand appears in the name."""
+    tokens = [t for t in re.findall(r"[a-z0-9]+", brand.lower()) if len(t) > 1]
+    return bool(tokens) and all(t in re.findall(r"[a-z0-9]+", (name or "").lower()) for t in tokens)
+
+
+def filter_places(recs: list[dict], brand: str, country: str) -> tuple[list[dict], list[dict], str]:
+    """A Google Maps search URL can return reviews from several places. Keep the
+    reviews of exactly one place whose name matches the brand and whose country
+    matches the run; with none or several matches keep nothing and say why."""
+    places: dict = {}
+    for r in recs:
+        key = r.get("place_id") or r.get("place_name") or "unknown"
+        p = places.setdefault(key, {"place_id": r.get("place_id"), "name": r.get("place_name"),
+                                    "address": r.get("place_address"), "country": r.get("place_country"),
+                                    "reviews": 0})
+        p["reviews"] += 1
+    for p in places.values():
+        p["matches"] = name_matches(p["name"], brand) and (
+            not country or not p["country"] or p["country"].upper() == country.upper())
+    good = [k for k, p in places.items() if p["matches"]]
+    if len(good) == 1:
+        kept = [r for r in recs if (r.get("place_id") or r.get("place_name") or "unknown") == good[0]]
+        msg = f"kept 1 place ({places[good[0]]['name']}, {places[good[0]]['address']})"
+    else:
+        kept = []
+        msg = ("no place matches the brand name and country" if not good else
+               f"{len(good)} places match the brand; ambiguous") + \
+            ": nothing kept. Pick the right place on Google Maps and re-run with its place URL."
+    report = [dict(p, kept=(k in good and len(good) == 1)) for k, p in places.items()]
+    return kept, report, msg
+
+
+def finish_platform(platform: str, recs: list[dict], brand: str, country: str, limit: int | None) -> tuple[list, dict]:
+    """Shared by scrape and renormalise: drop off-topic Reddit, keep the one matching
+    Google Maps place, then sort newest first and apply the cap (after filtering)."""
+    brand_re = brand_pattern(brand)
+    recs = [r for r in recs if keep_review(r, platform, brand_re)]
+    info: dict = {}
+    if platform == "google_maps" and any(r.get("place_id") or r.get("place_name") for r in recs):
+        recs, info["places"], info["place_note"] = filter_places(recs, brand, country)
+    recs.sort(key=lambda r: r.get("date") or "", reverse=True)
+    return (recs[:limit] if limit else recs), info
+
+
+def print_places(pid: str, info: dict) -> None:
+    for p in info.get("places") or []:
+        print(f"    {pid}: {'KEPT' if p['kept'] else 'dropped'} {p['reviews']:>4} reviews  {p['name']}, "
+              f"{p['address']} ({p['country'] or '?'})")
+    if info.get("place_note"):
+        print(f"    {pid}: {info['place_note']}")
+
+
+def yotpo_reviews(key: str, product: str, limit: int, per: int = 150) -> list[dict]:
+    out, page = [], 1
+    while len(out) < limit:
+        st, body = http_json("GET", YOTPO.format(key=key, product=product, per=per, page=page), timeout=60)
+        batch = (((body or {}).get("response") or {}).get("reviews") or []) if st == 200 else []
+        out += batch
+        if len(batch) < per:
+            break
+        page += 1
+    return out
+
+
+def shopify_products(site: str, max_pages: int = 20) -> list[dict]:
+    """Product ids and handles from Shopify's public /products.json."""
+    out = []
+    for page in range(1, max_pages + 1):
+        st, body = http_json("GET", f"{site.rstrip('/')}/products.json?limit=250&page={page}", timeout=60)
+        batch = (body or {}).get("products") or [] if st == 200 else []
+        out += [{"id": p.get("id"), "handle": p.get("handle")} for p in batch]
+        if len(batch) < 250:
+            break
+    return out
+
+
+def yotpo_scrape(row: dict, limit: int, salt: str, raw_dir: Path) -> tuple[list[dict], dict]:
+    """The brand's own product-page reviews from Yotpo's public widget API: site
+    reviews plus every Shopify product. Free, no Apify."""
+    key, site = row.get("app_key"), row["url"]
+    if not key:
+        return [], run_record("brand_site", "yotpo-public-api", None, 0, "no Yotpo app key on this row")
+    items = [dict(r, _product="site") for r in yotpo_reviews(key, "yotpo_site_reviews", limit)]
+    for p in shopify_products(site):
+        items += [dict(r, _product=p["handle"]) for r in yotpo_reviews(key, str(p["id"]), limit)]
+    write_json(raw_dir / f"{row['id']}.json", redact(items))
+    recs = dedupe([r for r in (normalise("brand_site", it, site, salt) for it in items) if r])
+    recs.sort(key=lambda r: r.get("date") or "", reverse=True)
+    rec = run_record("brand_site", "yotpo-public-api", {"status": "SUCCEEDED", "usageTotalUsd": 0.0}, len(items))
+    rec.update({"profile": row["id"], "kept": len(recs[:limit])})
+    return recs[:limit], rec
+
+
 def scrape_one(client: Apify, row: dict, spec: dict, cap: int | None, brand: str, salt: str,
-               raw_dir: Path) -> tuple[list[dict], dict]:
+               raw_dir: Path, country: str = "") -> tuple[list[dict], dict]:
     platform = row["id"].rsplit("-", 1)[0]
     limit = cap if cap is not None else int(row.get("reviews") or 5000)
+    if platform == "brand_site":
+        return yotpo_scrape(row, limit, salt, raw_dir)
     target = f'"{brand}"' if platform == "reddit" else row["url"]
     try:
         items, run = client.run(spec["actor"], actor_input(spec, target, limit), None, charge_cap(spec, limit))
     except RuntimeError as e:
         return [], run_record(platform, spec["actor"], None, 0, str(e))
     write_json(raw_dir / f"{row['id']}.json", redact(items))
-    brand_re = brand_pattern(brand)
-    recs = [r for r in (normalise(platform, it, row["url"], salt) for it in items) if r]
-    recs = [r for r in recs if keep_review(r, platform, brand_re)]
-    recs.sort(key=lambda r: r.get("date") or "", reverse=True)
+    normalised = [r for r in (normalise(platform, it, row["url"], salt) for it in items) if r]
+    recs, info = finish_platform(platform, normalised, brand, country, limit)
     rec = run_record(platform, spec["actor"], run, len(items))
-    rec.update({"profile": row["id"], "kept": len(recs[:limit]), "dropped_off_topic": len(items) - len(recs)})
-    return recs[:limit], rec
+    rec.update({"profile": row["id"], "kept": len(recs), "dropped": len(normalised) - len(recs), **info})
+    return recs, rec
 
 
 def cmd_scrape(args) -> int:
@@ -1362,22 +1539,35 @@ def cmd_scrape(args) -> int:
     pick_ids = [p.strip() for p in args.pick.split(",") if p.strip()]
     rows = picked_rows(run, pick_ids)
     cap = None if str(args.max_per_platform).lower() == "all" else int(args.max_per_platform)
-    estimate = round(sum(est_cost(load_config("actors.json")["actors"][r["id"].rsplit("-", 1)[0]],
-                                  r.get("reviews"), cap)[1] or 0 for r in rows), 4)
+    actors = load_config("actors.json")["actors"]
+    estimate = round(sum(est_cost(actors.get(r["id"].rsplit("-", 1)[0]) or onsite_spec(
+        {"platform": r["id"].rsplit("-", 1)[0], "provider": r.get("provider")}), r.get("reviews"), cap)[1] or 0
+        for r in rows), 4)
     print(f"Plan: {', '.join(pick_ids)} at {'all' if cap is None else cap} reviews each; estimate ${estimate:.3f}")
     if args.dry_run:
         return 0
     if args.approve_usd is None or args.approve_usd + 1e-9 < estimate:
         sys.exit(f"refusing to spend: pass --approve-usd {estimate:.3f} (or more) once the user has approved the cost")
-    actors = load_config("actors.json")["actors"]
-    client = Apify(load_env(args.env_file).get("APIFY_TOKEN", ""))
+    if all(r["id"].startswith("brand_site") for r in rows):
+        client = None  # on-site reviews only: no Apify token needed
+    else:
+        client = Apify(load_env(args.env_file).get("APIFY_TOKEN", ""))
     salt = load_env(args.env_file).get("REVIEW_HASH_SALT") or meta.get("salt") or ""
-    jobs = {r["id"]: (r, actors[r["id"].rsplit("-", 1)[0]]) for r in rows}
+    jobs = {r["id"]: (r, actors.get(r["id"].rsplit("-", 1)[0]) or {}) for r in rows}
     with cf.ThreadPoolExecutor(max_workers=6) as ex:
-        futs = {k: ex.submit(scrape_one, client, r, s, cap, meta.get("brand", ""), salt, run / DATA / "raw")
+        futs = {k: ex.submit(scrape_one, client, r, s, cap, meta.get("brand", ""), salt, run / DATA / "raw",
+                             meta.get("country", ""))
                 for k, (r, s) in jobs.items()}
         results = {k: f.result() for k, f in futs.items()}
     return finish_scrape(run, results, args.append)
+
+
+def log_places(run: Path, infos: dict) -> None:
+    """Which Google Maps places each scrape returned, kept or dropped, in run-meta."""
+    places = {pid: {"places": i.get("places"), "note": i.get("place_note")}
+              for pid, i in infos.items() if i.get("places")}
+    if places:
+        update_meta(run, google_maps_places={**(run_meta(run).get("google_maps_places") or {}), **places})
 
 
 def finish_scrape(run: Path, results: dict, append: bool) -> int:
@@ -1391,6 +1581,8 @@ def finish_scrape(run: Path, results: dict, append: bool) -> int:
         spent += rec.get("cost_usd") or 0
         status = "ok" if not rec.get("error") else f"FAILED: {rec['error'][:120]}"
         print(f"  {pid:<16} {len(recs):>5} reviews  ${rec.get('cost_usd') or 0:.4f}  {status}")
+        print_places(pid, rec)
+    log_places(run, {pid: rec for pid, (_, rec) in results.items()})
     update_meta(run, scraped_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                 profiles=sorted(set(run_meta(run).get("profiles", []) if append else []) | set(results)))
     print(f"{len(kept)} reviews after dedupe ({len(merged) - len(kept)} duplicates dropped). "
@@ -1398,6 +1590,41 @@ def finish_scrape(run: Path, results: dict, append: bool) -> int:
     failed = [k for k, (_, rec) in results.items() if rec.get("error")]
     if failed:
         print(f"Failed: {', '.join(failed)}. The others are saved; retry those with --pick ... --append.")
+    return 0
+
+
+# ------------------------------------------------------------ renormalise --
+
+def cmd_renormalise(args) -> int:
+    """Rebuild data/reviews.jsonl from the saved raw actor output, with no network
+    and no spend: for when normalising or filtering rules change after a scrape.
+    Raw files hold no reviewer names, so author hashes come out empty."""
+    run = Path(args.run_dir)
+    meta = run_meta(run)
+    rows = {r["id"]: r for r in (read_json(run / DATA / "picker.json") or {}).get("rows", [])}
+    cap = meta.get("max_per_platform")
+    out, infos = [], {}
+    for pid in meta.get("profiles") or []:
+        raw = run / DATA / "raw" / f"{pid}.json"
+        if not raw.is_file():
+            print(f"  {pid:<16} no raw file, skipped")
+            continue
+        platform = pid.rsplit("-", 1)[0]
+        url = (rows.get(pid) or {}).get("url", "")
+        normalised = [r for r in (normalise(platform, it, url, meta.get("salt", "")) for it in read_json(raw)) if r]
+        recs, info = finish_platform(platform, normalised, meta.get("brand", ""), meta.get("country", ""), cap)
+        infos[pid] = info
+        out += recs
+        print(f"  {pid:<16} {len(recs):>5} reviews (from {len(normalised)} in the raw file)")
+        print_places(pid, info)
+    extra = [r for r in read_jsonl(run / DATA / "reviews.jsonl") if r.get("platform") == "brand_site"] \
+        if args.keep_imported else []
+    kept = dedupe(out + extra)
+    write_jsonl(run / DATA / "reviews.jsonl", kept)
+    log_places(run, infos)
+    counts = Counter(r["platform"] for r in kept)
+    print(f"{len(kept)} reviews: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
+          + f". Wrote {run / DATA / 'reviews.jsonl'} ($0, no network).")
     return 0
 
 
@@ -1424,7 +1651,9 @@ def imported_row(row: dict, salt: str) -> tuple[dict | None, str]:
            "reply_date": parse_date(row.get("reply_date")), "lang": row.get("lang") or "",
            "author_hash": row.get("author_hash") or author_hash(author, platform, salt)}
     rec["id"] = str(row.get("id") or review_id(rec))
-    return {f: rec.get(f) for f in SCHEMA_FIELDS}, ""
+    out = {f: rec.get(f) for f in SCHEMA_FIELDS}
+    out.update({f: str(row[f]) for f in OPTIONAL_FIELDS if row.get(f) not in (None, "")})
+    return out, ""
 
 
 def read_rows(path: Path) -> list[dict]:
@@ -1434,12 +1663,29 @@ def read_rows(path: Path) -> list[dict]:
     return read_jsonl(path)
 
 
+def append_import(run: Path, existing: list[dict], good: list[dict], errs: list[str], name: str) -> int:
+    """Merge imported rows into a scraped run (e.g. the brand's own on-site reviews).
+    The run keeps its scraped sample caption; the file is recorded per platform."""
+    kept = dedupe(existing + good)
+    write_jsonl(run / DATA / "reviews.jsonl", kept)
+    added = Counter(r["platform"] for r in good)
+    imported = run_meta(run).get("imported") or []
+    imported.append({"file": name, "rows": dict(added), "at": time.strftime("%Y-%m-%d %H:%M:%S")})
+    update_meta(run, imported=imported)
+    print(f"Appended {len(kept) - len(existing)} reviews ({', '.join(f'{k} {v}' for k, v in added.items())}; "
+          f"{len(good) - (len(kept) - len(existing))} duplicates, {len(errs)} rejected). "
+          f"{len(kept)} reviews in {run / DATA / 'reviews.jsonl'}.")
+    return 0 if not errs else 1
+
+
 def cmd_import(args) -> int:
     """Start from reviews the user already has: validate, hash any author names,
     dedupe, and record honestly that nothing was scraped."""
     run = Path(args.run_dir)
-    if (run / DATA / "reviews.jsonl").is_file() and not args.force:
-        sys.exit("this run already has reviews; pass --force to replace them")
+    existing = read_jsonl(run / DATA / "reviews.jsonl")
+    append = getattr(args, "append", False)
+    if existing and not (args.force or append):
+        sys.exit("this run already has reviews; pass --append to add to them or --force to replace them")
     salt = run_meta(run).get("salt") or hashlib.sha256(os.urandom(16)).hexdigest()[:16]
     good, errs = [], []
     for n, row in enumerate(read_rows(Path(args.file)), 1):
@@ -1452,6 +1698,8 @@ def cmd_import(args) -> int:
         print(f"  - {e}")
     if not good:
         sys.exit("no valid reviews to import")
+    if append and existing:
+        return append_import(run, existing, good, errs, Path(args.file).name)
     kept = dedupe(good)
     write_jsonl(run / DATA / "reviews.jsonl", kept)
     dates = sorted(r["date"] for r in kept if r.get("date"))
@@ -2642,6 +2890,27 @@ def listing_link_note(agg: dict) -> list[str]:
             "individual review (the scraper returns no per-review link); search the listing for the quoted words."]
 
 
+def onsite_methods_note(agg: dict, run: Path) -> list[str]:
+    """On-site reviews are the brand's own, collected and moderated by it: say so,
+    and give the widget's own totals when we have them."""
+    if "brand_site" not in agg["meta"].get("platforms", []):
+        return []
+    stats = next((s for s in (read_json(Path(run) / DATA / "profile-stats.json") or {}).get("profiles", [])
+                  if s.get("platform") == "brand_site"), {})
+    extra = []
+    if stats.get("reviews") is not None:
+        extra.append(f"the widget reports {fmt_num(stats['reviews'])} reviews averaging {fmt_num(stats.get('rating'), 2)}")
+    if stats.get("organic_reviews") is not None:
+        extra.append(f"{fmt_num(stats['organic_reviews'])} of them organic (not requested by the brand)")
+    dist = stats.get("star_distribution")
+    if dist:
+        extra.append("star split " + ", ".join(f"{k}★ {v}" for k, v in sorted(dist.items(), reverse=True)))
+    return ["- **Brand site reviews:** the product-page reviews are collected and moderated by the brand "
+            "(review requests after purchase, the brand's own display rules), so they lean positive and are not "
+            "comparable with independent sites: read them as a separate row, not as proof of sentiment"
+            + (f"; {'; '.join(extra)}" if extra else "") + "."]
+
+
 def retailer_methods_note(run: Path) -> list[str]:
     retailers = (read_json(Path(run) / DATA / "candidates.json") or {}).get("retailers") or {}
     if not retailers:
@@ -2675,6 +2944,7 @@ def methods_md(agg: dict, run: Path) -> str:
         "- **Every number is computed in code** (`reviews.py aggregate`); no model did any maths.",
         *listing_link_note(agg),
         *retailer_methods_note(run),
+        *onsite_methods_note(agg, run),
         "- **Fix priority** = volume share × average severity × recency weight × visibility weight × (1 + share "
         f"unreplied). Severity weights: {weights_text(sc['severity_weights'])}; reviews from the last "
         f"{sc['recency']['recent_months']} months count {sc['recency']['recent_weight']}×; visibility weights: "
@@ -3028,7 +3298,7 @@ def cmd_workbook(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{path,preflight,discover,stats,estimate,scrape,import,"
+    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{path,preflight,discover,stats,estimate,scrape,renormalise,import,"
                                                                 "taxonomy,label,aggregate,wordcloud,report,workbook}")
 
     def add(name, fn, help_text, run=True):
@@ -3078,11 +3348,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--env-file")
     p.add_argument("--dry-run", action="store_true")
 
+    p = add("renormalise", cmd_renormalise, "rebuild data/reviews.jsonl from data/raw/ (no network, $0)")
+    p.add_argument("--keep-imported", action="store_true",
+                   help="keep brand_site reviews added with `import --append`")
+
     p = add("import", cmd_import, "start from a reviews file the user supplies (JSONL or CSV), no scrape")
     p.add_argument("--file", required=True, help="reviews.jsonl or .csv in the common schema (author names are hashed)")
     p.add_argument("--brand", required=True)
     p.add_argument("--domain", default="")
     p.add_argument("--force", action="store_true", help="replace reviews already in this run")
+    p.add_argument("--append", action="store_true",
+                   help="add to the reviews already in this run (e.g. on-site brand_site reviews)")
 
     p = add("taxonomy", cmd_taxonomy, "`sample` reviews for Claude to propose aspects; `lock` the approved set")
     p.add_argument("action", choices=("sample", "lock"))

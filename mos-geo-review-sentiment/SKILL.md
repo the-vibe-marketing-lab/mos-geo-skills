@@ -160,7 +160,19 @@ Picked profiles run in parallel. Each is capped twice (the actor's row cap and A
 A failing platform is reported and the rest are saved; retry it alone with `--pick <id> --append`.
 Raw actor output goes to `data/raw/` with reviewer names redacted; every Apify run's real cost
 (from the run record) goes to `data/run-cost.json`. Reddit results that do not name the brand are
-dropped. Common schema: `references/report-spec.md`.
+dropped. Google Maps keeps only the one place whose name and country match the brand (the cap is
+applied after that filter); every place returned, kept or dropped, is printed and logged in
+`run-meta.json`. If none or several match, nothing is kept: ask the user for the place URL.
+Common schema: `references/report-spec.md`.
+
+**Brand site reviews** (`brand_site-1`, found when the home page loads Yotpo) cost $0: `scrape`
+reads Yotpo's public API for the site reviews and every Shopify product, no Apify. Judge.me, Okendo
+and Stamped are detected but not read; pull them yourself in the common schema (with a `product`
+field) and add them with `$R import --run-dir "$RUN" --file <file> --brand "<brand>" --append`.
+
+**Rules changed after a scrape?** `$R renormalise --run-dir "$RUN"` rebuilds `data/reviews.jsonl`
+from `data/raw/` with no network and no spend (author hashes come out empty, since raw files hold
+no names). Run it before any `import --append`, or pass `--keep-imported`.
 
 ## Stage 5: Taxonomy (the user approves)
 
@@ -282,8 +294,10 @@ $0.50). That is a ceiling, not a charge; the row cap is what limits spend. The f
 **ProductReview has one listing per product, plus a store listing.** The store listing ("<brand>
 online store") is about the company; product listings are about one product. Pick deliberately.
 
-**Google Maps candidates from a search URL scrape the first place Google returns.** Only pick one
-when the brand has a real place, and say which one in the report.
+**A Google Maps search URL can return several places** (one live run returned a New York sushi bar,
+a New Jersey meal service and the brand). The place filter keeps only the brand's own place, but a
+place link from the brand's site (`maps.app.goo.gl`, `?cid=`, a place URL) is better: discovery
+uses it instead of a search URL when the site has one.
 
 **Trustpilot redirects regional profiles** (koala.com to au.koala.com). The stats step follows the
 redirect and shows the final name; check it is the right country.
