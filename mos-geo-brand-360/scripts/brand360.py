@@ -28,15 +28,15 @@ Run folder layout
                           domains.csv, header.md, sections-1-17.md,
                           section-18.md, raw/ (per-call API responses)
 
-Providers (primary first; a failed or unconfigured primary falls back):
-  models  DataForSEO LLM Responses  ->  OpenRouter
-  apps    DataForSEO LLM Scraper / SERP API  ->  Bright Data
+Providers:
+  models  DataForSEO LLM Responses  ->  OpenRouter (fallback when DataForSEO
+          has no credentials or a call fails)
+  apps    DataForSEO LLM Scraper / SERP API only (a failed call is recorded
+          as failed, with no fallback)
 
 Credentials come from the environment, or from --env-file:
   DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD
   OPENROUTER_API_KEY
-  BRIGHTDATA_API_KEY, BRIGHTDATA_SERP_ZONE (zone only needed for the
-  AI Overviews fallback)
 
 Nothing in this script ever receives the brand's domain before the run.
 That is deliberate: the test is whether the engines can find the brand
@@ -63,8 +63,7 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = SKILL_DIR / "config" / "engines.json"
 UA = "mos-geo-brand-360/1.0"
-ENV_KEYS = ("DATAFORSEO_LOGIN", "DATAFORSEO_PASSWORD", "OPENROUTER_API_KEY",
-            "BRIGHTDATA_API_KEY", "BRIGHTDATA_SERP_ZONE")
+ENV_KEYS = ("DATAFORSEO_LOGIN", "DATAFORSEO_PASSWORD", "OPENROUTER_API_KEY")
 PHASES = ("closed-book", "api-search", "app")
 DATA_DIR = "data"
 VISIBILITY_REPORT = "visibility-report.md"
@@ -109,7 +108,6 @@ def has_provider(env: dict, provider: str) -> bool:
     return {
         "dataforseo": bool(env.get("DATAFORSEO_LOGIN") and env.get("DATAFORSEO_PASSWORD")),
         "openrouter": bool(env.get("OPENROUTER_API_KEY")),
-        "brightdata": bool(env.get("BRIGHTDATA_API_KEY")),
     }.get(provider, False)
 
 
@@ -324,100 +322,6 @@ def or_model_call(cfg, env, model, prompt, with_search, country):
     return resp, msg.get("content") or "", [resolve_grounding_url(c) for c in cites], [], cost, None
 
 
-# ----------------------------------------------------------- Bright Data --
-
-def pick(record: dict, fields: list[str]):
-    for f in fields:
-        cur = record
-        for part in f.split("."):
-            cur = cur.get(part) if isinstance(cur, dict) else None
-        if cur:
-            return cur
-    return None
-
-
-def bd_batch(cfg, env, scraper_id, prompts, raw_dir, country):
-    """One trigger per scraper with every prompt; returns {prompt_id: (answer, cites, err)}."""
-    bd = cfg["providers"]["brightdata"]
-    scraper = bd["scrapers"][scraper_id]
-    inputs = []
-    for p in prompts:
-        url = scraper["url_template"].replace("{q}", urllib.parse.quote_plus(p["text"])) \
-            if scraper.get("url_template") else scraper["url"]
-        row = {"url": url, "prompt": p["text"]}
-        if scraper.get("set_country") and country:
-            row["country"] = country.upper()
-        row.update(scraper.get("input_extra", {}))
-        inputs.append(row)
-    fail = lambda msg: {p["id"]: ("", [], msg) for p in prompts}
-    headers = {"Authorization": f"Bearer {env['BRIGHTDATA_API_KEY']}"}
-    qs = urllib.parse.urlencode({"dataset_id": scraper["dataset_id"], "format": "json",
-                                 "include_errors": "true"})
-    status, resp = http_json("POST", f"{bd['trigger_url']}?{qs}", headers, inputs, timeout=120)
-    snap = (resp or {}).get("snapshot_id")
-    if status != 200 or not snap:
-        return fail(f"Bright Data trigger failed HTTP {status}: {json.dumps(resp)[:300]}")
-
-    deadline, state = time.time() + bd.get("timeout_seconds", 900), "running"
-    while time.time() < deadline:
-        time.sleep(bd.get("poll_seconds", 15))
-        _, prog = http_json("GET", bd["progress_url"].format(snapshot_id=snap), headers, timeout=60)
-        state = (prog or {}).get("status", "unknown")
-        if state in ("ready", "failed", "canceled"):
-            break
-    if state != "ready":
-        return fail(f"Bright Data snapshot {snap} ended as '{state}'")
-    records = None
-    for _ in range(20):  # the snapshot can say "building" briefly after "ready"
-        _, records = http_json("GET", bd["snapshot_url"].format(snapshot_id=snap), headers, timeout=300)
-        if isinstance(records, list):
-            break
-        time.sleep(10)
-    if not isinstance(records, list):
-        return fail(f"Bright Data snapshot {snap} never became downloadable")
-    (raw_dir / f"brightdata-{scraper_id}.json").write_text(json.dumps(records, indent=2), encoding="utf-8")
-
-    by_prompt = {}
-    for rec in records:
-        text = pick(rec, ["prompt", "input.prompt"])
-        if text:
-            by_prompt.setdefault(text.strip(), rec)
-    out = {}
-    for i, p in enumerate(prompts):
-        rec = by_prompt.get(p["text"].strip())
-        if rec is None and len(records) == len(prompts):
-            rec = records[i]  # fall back to input order
-        if rec is None:
-            out[p["id"]] = ("", [], "Bright Data returned no record for this prompt")
-            continue
-        answer = pick(rec, bd["answer_fields"]) or ""
-        answer = answer if isinstance(answer, str) else json.dumps(answer)
-        cites = citation_list(pick(rec, bd["citation_fields"]))
-        err = rec.get("error") or rec.get("error_code")
-        out[p["id"]] = (answer, cites, str(err) if err and not answer else None)
-    return out
-
-
-def bd_ai_overview(cfg, env, prompt, country):
-    serp = cfg["providers"]["brightdata"]["serp"]
-    search = serp["search_url"].replace("{q}", urllib.parse.quote_plus(prompt["text"])) \
-                               .replace("{country}", (country or "us").lower())
-    status, resp = http_json(
-        "POST", serp["request_url"], {"Authorization": f"Bearer {env['BRIGHTDATA_API_KEY']}"},
-        {"zone": env["BRIGHTDATA_SERP_ZONE"], "url": search, "format": "raw"}, timeout=120)
-    if status != 200 or not isinstance(resp, dict):
-        return "", [], f"Bright Data SERP HTTP {status}: {json.dumps(resp)[:300]}"
-    overview = resp.get("ai_overview") or {}
-    parts = []
-    for block in overview.get("texts") or []:
-        if block.get("snippet"):
-            parts.append(block["snippet"])
-        parts += ["- " + i["snippet"] for i in block.get("list") or []
-                  if isinstance(i, dict) and i.get("snippet")]
-    cites = citation_list(overview.get("references"))
-    return "\n".join(parts) or NO_AIO, cites, None
-
-
 # ------------------------------------------------------------------ path --
 
 def _main_checkout(git_file: Path) -> Path | None:
@@ -536,8 +440,7 @@ def cmd_preflight(args) -> int:
     print("mos-geo-brand-360 preflight")
     print("===========================")
     for key in ENV_KEYS:
-        shown = env.get(key) if key == "BRIGHTDATA_SERP_ZONE" else mask(env.get(key))
-        print(f"{key:<21} {shown or 'MISSING'}")
+        print(f"{key:<21} {mask(env.get(key)) or 'MISSING'}")
 
     if has_provider(env, "dataforseo"):
         print("\nDataForSEO models")
@@ -577,8 +480,6 @@ def cmd_preflight(args) -> int:
         print(f"  {m['label']:<24} {' -> '.join(chain) or 'NO PROVIDER'}")
     for a in apps:
         chain = [p for p in cfg["provider_order"]["apps"] if p in a and has_provider(env, p)]
-        if a["id"] == "google-aio" and "brightdata" in chain and not env.get("BRIGHTDATA_SERP_ZONE"):
-            chain.remove("brightdata")
         problems += 0 if chain else 1
         print(f"  {a['label']:<24} {' -> '.join(chain) or 'NO PROVIDER'}")
     off = [i["label"] for i in cfg["models"] + cfg["apps"] if not i.get("enabled", True)]
@@ -647,10 +548,7 @@ def cmd_run(args) -> int:
     app_jobs = [(a, p) for a in apps for p in search_prompts] if "app" in phases else []
 
     def chain(item, kind):
-        c = [pr for pr in cfg["provider_order"][kind] if pr in item and has_provider(env, pr)]
-        if item["id"] == "google-aio" and not env.get("BRIGHTDATA_SERP_ZONE") and "brightdata" in c:
-            c.remove("brightdata")
-        return c
+        return [pr for pr in cfg["provider_order"][kind] if pr in item and has_provider(env, pr)]
 
     print(f"Plan: {len(model_jobs)} model calls + {len(app_jobs)} app calls, country "
           f"{args.country.upper()}. One run each, no repeats.")
@@ -685,14 +583,13 @@ def cmd_run(args) -> int:
 
     def app_work(job):
         a, p = job
-        c = chain(a, "apps")
-        if c[:1] != ["dataforseo"]:
-            return a, p, None, [], c
+        if chain(a, "apps") != ["dataforseo"]:
+            return record("app", "app", a, None, p, "", [], [], 0.0, "no provider configured", [])
         raw, answer, cites, fan_out, cost, err = dfs_app_call(cfg, env, a, p, args.country)
         save_raw(out, "app", a["id"], p["id"], "dataforseo", raw)
         if not err:
-            return a, p, record("app", "app", a, "dataforseo", p, answer, cites, fan_out, cost, None, []), [], c
-        return a, p, None, [f"dataforseo: {err}"], c
+            return record("app", "app", a, "dataforseo", p, answer, cites, fan_out, cost, None, [])
+        return record("app", "app", a, None, p, "", [], [], 0.0, f"dataforseo: {err}", [])
 
     with cf.ThreadPoolExecutor(max_workers=args.workers) as pool:
         for i, rec in enumerate(pool.map(model_work, model_jobs), 1):
@@ -700,39 +597,10 @@ def cmd_run(args) -> int:
             via = rec["provider"] or "FAILED"
             print(f"  [{via:<10}] {i}/{len(model_jobs)} {rec['phase']:<12} {rec['engine']:<11} {rec['prompt_id']}")
 
-        pending = defaultdict(list)  # (app id) -> [(app, prompt, tried)]
-        for a, p, rec, tried, c in pool.map(app_work, app_jobs):
-            if rec:
-                records.append(rec)
-                print(f"  [dataforseo] app {a['id']:<15} {p['id']}")
-            elif "brightdata" in c:
-                pending[a["id"]].append((a, p, tried))
-            else:
-                records.append(record("app", "app", a, None, p, "", [], [], 0.0,
-                                      "; ".join(tried) or "no provider configured", tried))
-                print(f"  [FAILED    ] app {a['id']:<15} {p['id']}")
-
-    if pending:
-        raw_dir = out / DATA_DIR / "raw" / "app"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-
-        def bd_work(item):
-            app_id, rows = item
-            a = rows[0][0]
-            if app_id == "google-aio":
-                return rows, {p["id"]: bd_ai_overview(cfg, env, p, args.country) for _, p, _ in rows}
-            return rows, bd_batch(cfg, env, a["brightdata"], [p for _, p, _ in rows], raw_dir, args.country)
-
-        with cf.ThreadPoolExecutor(max_workers=len(pending)) as pool:
-            for rows, res in pool.map(bd_work, pending.items()):
-                for a, p, tried in rows:
-                    answer, cites, err = res[p["id"]]
-                    if err:
-                        tried = tried + [f"brightdata: {err}"]
-                    records.append(record("app", "app", a, None if err else "brightdata", p, answer,
-                                          cites, [], 0.0, "; ".join(tried) if err else None, tried))
-                bad = sum(1 for _, p, _ in rows if res[p["id"]][2])
-                print(f"  [brightdata] app {rows[0][0]['id']:<15} {len(rows) - bad} ok, {bad} failed")
+        for rec in pool.map(app_work, app_jobs):
+            records.append(rec)
+            via = rec["provider"] or "FAILED"
+            print(f"  [{via:<10}] app {rec['engine']:<15} {rec['prompt_id']}")
 
     with (data / "results.jsonl").open("a", encoding="utf-8") as fh:
         for rec in records:
@@ -747,8 +615,7 @@ def cmd_run(args) -> int:
     fallbacks = sum(1 for r in records if r["fallback_from"] and not r["error"])
     cost = sum(r["cost"] for r in records)
     print(f"\nSaved {len(records)} results to {data / 'results.jsonl'}: {errors} failed, "
-          f"{fallbacks} served by a fallback provider. DataForSEO/OpenRouter cost ${cost:.3f} "
-          "(Bright Data is billed separately).")
+          f"{fallbacks} served by a fallback provider. DataForSEO/OpenRouter cost ${cost:.3f}.")
     return 0 if records and errors < len(records) else 2
 
 
@@ -830,7 +697,7 @@ def cmd_summarise(args) -> int:
     L = [f"# Visibility data: {brand}", ""]
     total = sum(r.get("cost") or 0 for r in rows)
     L.append(f"Industry: {meta.get('industry', 'n/a')} | Country: {meta.get('country', 'n/a')} | "
-             f"Run: {meta.get('run_at', 'n/a')} | API cost: ${total:.3f} (Bright Data billed separately)")
+             f"Run: {meta.get('run_at', 'n/a')} | API cost: ${total:.3f}")
     L.append("")
     L.append("Every prompt was asked **once**, so treat each cell as a snapshot, not a rate.")
     L.append("")

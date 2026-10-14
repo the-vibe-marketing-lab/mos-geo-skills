@@ -97,12 +97,12 @@ These are the names and sources the engines put in front of buyers for the five 
 - **One snapshot:** every prompt ran once. AI answers change between runs, so a single miss or hit is not a pattern. Re-run the same `data/prompts.json` to measure change.
 - **Accuracy is yours to judge:** this section shows what the engines said. It does not score whether each statement is true.
 - **Logged-out users only:** the app answers (ChatGPT, Gemini, AI Mode, AI Overviews) reflect a logged-out user in {country}. Signed-in users with history may see different answers.
-- **{One provider / Fallbacks used}:** {"every answer came from DataForSEO. No fallback provider was needed." OR name the surfaces a fallback served, from the Via column}.
+- **{One provider / Fallbacks used}:** {"every answer came from DataForSEO. No fallback provider was needed." OR name the model surfaces OpenRouter served, from the Via column}.
 - **Researcher context:** {same fact as the header, one or two sentences}.
 ```
 
 Drop a table row for a surface that was switched off, and add one for an extra that was
-switched on (Grok, Perplexity app, Copilot). Adjust the `/5` counts if the prompt set was
+switched on (Grok). Adjust the `/5` counts if the prompt set was
 changed.
 
 ---

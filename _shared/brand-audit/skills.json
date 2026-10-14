@@ -9,7 +9,7 @@
       "run": "/mos-geo-brand-360",
       "output": "campaigns/geo/YYYY-MM/brand-360-report/",
       "feeds_tab": "Brand Truth Review",
-      "needs": "DataForSEO (OpenRouter, Bright Data optional)"
+      "needs": "DataForSEO (OpenRouter optional)"
     },
     {
       "skill": "mos-geo-ai-info",

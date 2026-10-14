@@ -8,8 +8,8 @@ description: >
   questions, off-site truth consistency, summary), then asks ChatGPT, Claude and Gemini with no
   search (closed-book), the same engines plus Perplexity with web search, and what real users see
   in the ChatGPT and Gemini apps, Google AI Mode and Google AI Overviews, once each, through
-  DataForSEO (OpenRouter and Bright Data as automatic fallbacks), and scores it all in an AI
-  Visibility Scorecard.
+  DataForSEO (OpenRouter as the automatic fallback for the model answers), and scores it all
+  in an AI Visibility Scorecard.
   USE WHEN the user says "brand 360", "brand intelligence report", "brand brain", "is my brand
   known by AI", "does ChatGPT know my brand", "can AI find my brand", "AI brand visibility",
   "LLM brand audit", "what do LLMs say about [brand]", "entity audit", "brand GEO audit",
@@ -110,9 +110,10 @@ DataForSEO (and at OpenRouter, the fallback), and prints which provider chain wi
 each surface. On a `GONE` model, pick a current name from the list it prints and update the
 config.
 
-**DataForSEO is the primary provider and is enough on its own.** OpenRouter and Bright Data
-only step in when a DataForSEO call fails. If a surface shows `NO PROVIDER`, stop and point
-the user to **`references/providers.md`**.
+**DataForSEO is the primary provider and is enough on its own.** OpenRouter only steps in
+for the model answers when a DataForSEO call fails. The four app surfaces run on DataForSEO
+only: a failed app call is recorded as failed, with the DataForSEO error. If a surface shows
+`NO PROVIDER`, stop and point the user to **`references/providers.md`**.
 
 ## Stage 1: Prompt set
 
@@ -130,7 +131,7 @@ python3 "$SKILL/scripts/brand360.py" run --brand "<brand>" --industry "<industry
 ## Stage 2: Engine run and research, in parallel
 
 Start the engine run in the background (drop `--dry-run`). DataForSEO calls take 5 to 60
-seconds each and run six at a time; a Bright Data fallback batch can add several minutes.
+seconds each and run six at a time.
 
 While it runs, spawn **one** research agent with the Research brief from
 **`references/report-spec.md`**, filled with the two inputs and nothing else. It writes
@@ -247,17 +248,13 @@ Review tab; every Inaccurate or Out of date verdict becomes an Initiative.
 **Google sometimes throws error 40101 through DataForSEO.** The script retries once. If a
 surface still fails, retry it alone with `--only`.
 
-**Grok, the Perplexity app and Copilot are off by default.** DataForSEO does not offer them.
-They can be switched on in the config and then run on OpenRouter (Grok) or Bright Data
-(the two apps).
-
-**Bright Data's Gemini and Copilot output fields are undocumented.** If a Bright Data
-fallback returns empty answers with no error, open one record in
-`data/raw/app/brightdata-<id>.json` (just one) and add the real field name to `answer_fields`.
+**Grok is off by default.** DataForSEO does not offer it. It can be switched on in the
+config and then runs on OpenRouter only. The Perplexity and Copilot apps are not covered.
 
 **Note which provider served each answer.** The `Via` column in `visibility-report.md` shows it.
-If a fallback served part of a surface, say so in 18.5: the fallback is the API or a
-different scraper, so its answer can differ from the primary's.
+If OpenRouter served part of a model surface, say so in 18.5: it is a different API, so its
+answer can differ from DataForSEO's. A failed app surface is a gap in the data, not a
+"not mentioned" result.
 
 **No AI Overview is a result.** Google shows overviews for some queries only. The script
 records "(Google showed no AI Overview for this query.)" rather than an error.
