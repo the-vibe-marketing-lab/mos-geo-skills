@@ -14,8 +14,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).parent))
 import brand360 as b  # noqa: E402
 
-ENV = {"DATAFORSEO_LOGIN": "l", "DATAFORSEO_PASSWORD": "p", "OPENROUTER_API_KEY": "o",
-       "BRIGHTDATA_API_KEY": "k", "BRIGHTDATA_SERP_ZONE": "z"}
+ENV = {"DATAFORSEO_LOGIN": "l", "DATAFORSEO_PASSWORD": "p", "OPENROUTER_API_KEY": "o"}
+CALLS = []  # every URL fake_http saw, so tests can prove no other provider was tried
 PROMPTS = {"closed_book": [{"id": "cb01", "text": "What is Acme Widgets?"}],
            "branded": [{"id": "br01", "text": "Is Acme Widgets any good?"}],
            "unbranded": [{"id": "un01", "text": "Best widget maker in Australia"}]}
@@ -26,6 +26,7 @@ def dfs_ok(result, cost=0.01):
 
 
 def fake_http(method, url, headers=None, body=None, timeout=0):
+    CALLS.append(url)
     if "llm_scraper/locations" in url:
         return dfs_ok({"location_code": 2036, "country_iso_code": "AU", "location_type": "Country"})
     if "claude/llm_responses/live" in url:  # primary fails for Claude only
@@ -46,22 +47,13 @@ def fake_http(method, url, headers=None, body=None, timeout=0):
     if "llm_scraper/live" in url:
         return dfs_ok({"markdown": "Acme Widgets builds widgets.", "fan_out_queries": ["acme widgets australia"],
                        "sources": [{"url": "https://acme.example/", "title": "Acme"}], "items": []})
-    if "ai_mode/live" in url:  # primary fails for AI Mode -> Bright Data batch
+    if "ai_mode/live" in url:  # DataForSEO fails for AI Mode; apps have no fallback
         return 200, {"status_code": 20000, "tasks": [{"status_code": 40101, "status_message": "Internal SE Server Error.", "cost": 0}]}
     if "organic/live" in url:
         if "Best widget" in body[0]["keyword"]:
             return dfs_ok({"items": [{"type": "organic"}]})  # no AI Overview shown
         return dfs_ok({"items": [{"type": "ai_overview", "markdown": "Acme Widgets is a maker.",
                                   "references": [{"url": "https://www.reddit.com/r/widgets", "domain": "reddit.com"}]}]})
-    if "datasets/v3/trigger" in url:
-        assert "gd_mcswdt6z2elth3zqr2" in url and "udm=50&q=" in body[0]["url"] and body[0]["country"] == "AU"
-        return 200, {"snapshot_id": "sd_1"}
-    if "datasets/v3/progress" in url:
-        return 200, {"status": "ready"}
-    if "datasets/v3/snapshot" in url:
-        return 200, [{"prompt": p["text"], "answer_text": f"Bright Data says: {p['text']} Acme Widgets",
-                      "citations": [{"url": "https://acme.example/faq"}]}
-                     for p in PROMPTS["branded"] + PROMPTS["unbranded"]]
     raise AssertionError(f"unexpected call: {url}")
 
 
@@ -71,6 +63,7 @@ class Brand360Test(unittest.TestCase):
         self.dir = Path(self.tmp.name)
         (self.dir / "prompts.json").write_text(json.dumps(PROMPTS))
         b._LOCATION_CACHE.clear()
+        CALLS.clear()
         patches = [mock.patch.object(b, "http_json", side_effect=fake_http),
                    mock.patch.object(b, "load_env", return_value=dict(ENV)),
                    mock.patch.object(b.time, "sleep"),
@@ -95,16 +88,25 @@ class Brand360Test(unittest.TestCase):
         by = {(r["phase"], r["engine"], r["prompt_id"]): r for r in rows}
         # 3 closed-book + 8 api-search + 8 app
         self.assertEqual(len(rows), 19)
-        self.assertFalse([r for r in rows if r["error"]])
+        self.assertEqual(sorted((r["engine"], r["prompt_id"]) for r in rows if r["error"]),
+                         [("aimode", "br01"), ("aimode", "un01")])
         gpt = by[("api-search", "chatgpt", "br01")]
         self.assertEqual((gpt["provider"], gpt["answer"]), ("dataforseo", "Acme Widgets is a widget maker."))
         self.assertEqual(gpt["fan_out"], ["Acme Widgets"])
         claude = by[("closed-book", "claude", "cb01")]
         self.assertEqual(claude["provider"], "openrouter")
         self.assertIn("40200", claude["fallback_from"][0])
+        # An app surface that fails on DataForSEO is recorded as failed, with
+        # the DataForSEO error and no other provider tried.
         aimode = by[("app", "aimode", "un01")]
-        self.assertEqual(aimode["provider"], "brightdata")
-        self.assertTrue(aimode["answer"].startswith("Bright Data says"))
+        self.assertIsNone(aimode["provider"])
+        self.assertEqual((aimode["answer"], aimode["citations"], aimode["fallback_from"]), ("", [], []))
+        self.assertEqual(aimode["error"], "dataforseo: task 40101: Internal SE Server Error.")
+        aimode_calls = [u for u in CALLS if "ai_mode" in u]
+        self.assertEqual(len(aimode_calls), 4)  # 2 prompts x (1 try + DataForSEO's own retry on 40101)
+        self.assertTrue(all(u.startswith("https://api.dataforseo.com/") for u in aimode_calls))
+        self.assertFalse([u for u in CALLS if "openrouter.ai" not in u
+                          and not u.startswith("https://api.dataforseo.com/")])
         self.assertEqual(by[("app", "google-aio", "un01")]["answer"], b.NO_AIO)
         self.assertNotIn(("closed-book", "perplexity", "cb01"), by)
 
@@ -123,7 +125,7 @@ class Brand360Test(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (run / "data").iterdir()),
                          ["domains.csv", "prompts.json", "raw", "results.jsonl", "run-meta.json"])
         self.assertIn("| Claude (API) | api | openrouter |", md)
-        self.assertIn("| Google AI Mode | app | brightdata |", md)
+        self.assertIn("| Google AI Mode | app | failed | - | - | - | - | 2 |", md)
         self.assertIn("| acme.example | own |", md)
         self.assertIn("| reddit.com | platform |", md)  # platform beats competitor
         self.assertIn("## 6. Search queries", md)
@@ -131,7 +133,8 @@ class Brand360Test(unittest.TestCase):
         self.assertIn("| Engine | Mentions brand | Top cited domains | What it said |", md)
         self.assertIn("| ChatGPT (API) | **Yes** | acme.example |", md)
         self.assertIn("| Google AI Overviews | No | - |", md)
-        self.assertNotIn("## 7. Failed calls", md)
+        self.assertIn("## 7. Failed calls", md)
+        self.assertIn("- Google AI Mode / un01: dataforseo: task 40101: Internal SE Server Error.", md)
         # the retry replaced, not duplicated, the AI Overview rows
         self.assertIn("| Google AI Overviews | app | dataforseo | - | 1/1 | 1/1 | 0/1 | 0 |", md)
 

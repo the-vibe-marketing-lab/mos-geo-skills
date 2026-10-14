@@ -1,9 +1,11 @@
 # Providers: keys, setup, fallback and cost
 
-**DataForSEO is the primary provider** for every surface. OpenRouter and Bright Data are
-fallbacks: the script tries providers in the order set in `config/engines.json`
-(`provider_order`) and moves to the next one when a provider has no credentials or a call
-fails. Each result records which provider served it (`Via` column in `visibility-report.md`).
+**DataForSEO is the primary provider** for every surface. OpenRouter is the fallback for the
+model answers: the script tries providers in the order set in `config/engines.json`
+(`provider_order`) and moves to OpenRouter when DataForSEO has no credentials or a call
+fails. The app surfaces have no fallback: when DataForSEO fails, the result is recorded as
+failed with the DataForSEO error. Each result records which provider served it (`Via` column
+in `visibility-report.md`).
 
 | Surface | Primary (DataForSEO) | Fallback |
 |---|---|---|
@@ -11,11 +13,11 @@ fails. Each result records which provider served it (`Via` column in `visibility
 | Claude (API) | LLM Responses `claude` | OpenRouter `~anthropic/claude-sonnet-latest` |
 | Gemini (API) | LLM Responses `gemini` | OpenRouter `~google/gemini-flash-latest` |
 | Perplexity (Sonar API) | LLM Responses `perplexity` | OpenRouter `perplexity/sonar` |
-| ChatGPT (app) | LLM Scraper `chat_gpt` | Bright Data ChatGPT scraper |
-| Gemini (app) | LLM Scraper `gemini` | Bright Data Gemini scraper |
-| Google AI Mode | SERP API `google/ai_mode` | Bright Data AI Mode scraper |
-| Google AI Overviews | SERP API `google/organic` with `load_async_ai_overview` | Bright Data SERP API (needs a SERP zone) |
-| Grok (API), Perplexity (app), Copilot (app) | not offered | Optional extras, off by default. Switch on in the config. |
+| ChatGPT (app) | LLM Scraper `chat_gpt` | none |
+| Gemini (app) | LLM Scraper `gemini` | none |
+| Google AI Mode | SERP API `google/ai_mode` | none |
+| Google AI Overviews | SERP API `google/organic` with `load_async_ai_overview` | none |
+| Grok (API) | not offered | OpenRouter only. Optional extra, off by default; switch on in the config. |
 
 Credentials are read from environment variables, or from a `.env` file passed with
 `--env-file`. Copy `.env.example` somewhere outside this repo. Never commit a key.
@@ -49,17 +51,6 @@ Create a key at openrouter.ai/keys and add credit. Web search uses `"engine": "n
 so each model searches with its own provider's search. Never switch it to Exa: that is a
 different index and skews the "can it find the brand" result.
 
-## Bright Data setup (fallback for apps)
-
-1. Create an account at brightdata.com (5,000 free credits a month).
-2. Copy the API key from Account settings.
-3. For the AI Overviews fallback only: add a SERP API zone and put its name in
-   `BRIGHTDATA_SERP_ZONE`.
-
-App scrapers are triggered as one batch per engine and polled until ready, which can take
-several minutes. Dataset IDs live in `config/engines.json`. The Grok scraper is listed as
-unavailable by Bright Data and is not configured.
-
 ## Cost of one run
 
 **Measured on 2026-09-16: $2.11 on DataForSEO for a full default run** (3 closed-book + 10
@@ -78,5 +69,3 @@ calls cost $0.004 each, and AI Overviews $0.004 including the async overview fee
 | `task 40200` / `40210` | DataForSEO balance too low | Add funds |
 | `task 40101` | Google-side error | Already retried once; re-run with `--only <id>` |
 | `HTTP 429` | Rate limit | Re-run the failed surface with `--only <id> --workers 2` |
-| Bright Data `trigger failed` | Wrong dataset ID or no credits | Check the ID in Bright Data's scraper library |
-| Bright Data answers empty, no error | Undocumented output field | Open one record in `data/raw/app/brightdata-<id>.json` and add the field name to `answer_fields` |
